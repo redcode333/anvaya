@@ -1,0 +1,14 @@
+[
+  {"name": "bihar_62_bpl", "rule_id": "R_IGNOAPS_BIHAR", "facts": {"state": "Bihar", "age": 62, "bpl": true, "receives_other_pension": false}, "expected": "PROVISIONAL"},
+  {"name": "maharashtra_62", "rule_id": "R_IGNOAPS_MAHARASHTRA", "facts": {"state": "Maharashtra", "age": 62, "bpl": true, "receives_other_pension": false}, "expected": "MISMATCH"},
+  {"name": "maharashtra_66", "rule_id": "R_IGNOAPS_MAHARASHTRA", "facts": {"state": "Maharashtra", "age": 66, "bpl": true, "receives_other_pension": false}, "expected": "PROVISIONAL"},
+  {"name": "bihar_gets_pension", "rule_id": "R_IGNOAPS_BIHAR", "facts": {"state": "Bihar", "age": 70, "bpl": true, "receives_other_pension": true}, "expected": "MISMATCH"},
+  {"name": "nsap_missing_bpl", "rule_id": "R_NSAP_IGNOAPS", "facts": {"age": 70}, "expected": "INSUFFICIENT_INFORMATION"},
+  {"name": "ap_rural_67", "rule_id": "R_AP_INDIRAMMA_OAP_RURAL", "facts": {"state": "Andhra Pradesh", "age": 67, "bpl": true, "area": "rural", "receives_other_pension": false}, "expected": "PROVISIONAL"},
+  {"name": "ap_rural_but_urban", "rule_id": "R_AP_INDIRAMMA_OAP_RURAL", "facts": {"state": "Andhra Pradesh", "age": 67, "bpl": true, "area": "urban", "receives_other_pension": false}, "expected": "MISMATCH"},
+  {"name": "widow_case_insensitive", "rule_id": "R_IGNWPS", "facts": {"marital_status": "Widowed", "age": 45, "bpl": true}, "expected": "PROVISIONAL"},
+  {"name": "widow_80", "rule_id": "R_IGNWPS", "facts": {"marital_status": "widowed", "age": 80, "bpl": true}, "expected": "MISMATCH"},
+  {"name": "pmay_income_limit", "rule_id": "R_PMAY_URBAN", "facts": {"annual_income": 1800001, "owns_pucca_house": false, "area": "urban"}, "expected": "MISMATCH"},
+  {"name": "spectacles_needs_review", "rule_id": "R_AP_SPECTACLES_SENIOR", "facts": {"state": "Andhra Pradesh", "age": 61}, "meta": {"review_status": "needs_review"}, "expected": "NEEDS_HUMAN_REVIEW"},
+  {"name": "verified_everything", "rule_id": "R_PMJJBY", "facts": {"age": 30, "has_bank_account": true}, "docs": {"bank_passbook": "verified"}, "meta": {"source_verified_at": "2099-01-01T00:00:00+00:00"}, "expected": "MATCH"}
+]

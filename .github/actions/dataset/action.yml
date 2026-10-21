@@ -1,0 +1,22 @@
+name: Ensure scheme dataset
+description: >
+  Makes data/raw/structured_govt_schemes_converted.csv available. Tests and the Docker image import it.
+  Uses the committed CSV, otherwise extracts it from the supplied "archive (1).zip".
+runs:
+  using: composite
+  steps:
+    - name: Locate or extract dataset
+      shell: bash
+      run: |
+        csv="data/raw/structured_govt_schemes_converted.csv"
+        if [ -f "$csv" ]; then
+          echo "Using committed $csv"
+        elif [ -f "archive (1).zip" ]; then
+          mkdir -p data/raw
+          unzip -o -q "archive (1).zip" -d data/raw
+          echo "Extracted $csv from archive (1).zip"
+        else
+          echo "::error::Dataset missing. Commit $csv or 'archive (1).zip' (see README › CI/CD)."
+          exit 1
+        fi
+        echo "rows: $(($(wc -l < "$csv")))  sha256: $(sha256sum "$csv" | cut -c1-16)"

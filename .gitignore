@@ -1,0 +1,14 @@
+node_modules/
+frontend/dist/
+backend/instance/
+__pycache__/
+*.pyc
+.env
+*.db
+*.db-wal
+*.db-shm
+k8s/secrets.env
+.pytest_cache/
+*.log
+# Dataset is committed as the extracted CSV; the original ZIP is a duplicate.
+archive (1).zip

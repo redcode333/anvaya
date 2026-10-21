@@ -1,0 +1,31 @@
+# Hostnames under localtest.me resolve to 127.0.0.1, so this works with a local ingress-nginx out of the box.
+# Change hosts (and add a tls: section with a cert-manager issuer) for a real cluster.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: anvaya
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 6m   # voice uploads are capped at 5 MB by the API
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: anvaya.localtest.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: anvaya
+                port:
+                  name: http
+    - host: grafana.localtest.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  name: http

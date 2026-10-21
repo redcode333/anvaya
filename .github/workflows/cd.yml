@@ -1,0 +1,125 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false   # never cancel a half-finished push or rollout
+
+jobs:
+  publish:
+    name: Build & push image to GHCR
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      sha_tag: ${{ steps.image.outputs.sha_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/dataset
+      - name: Image name (GHCR requires lowercase)
+        id: image
+        run: |
+          echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/anvaya-ai" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Kubernetes (production)
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+    steps:
+      - name: Check cluster credentials
+        id: gate
+        run: |
+          if [ -z "$KUBE_CONFIG" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::KUBE_CONFIG secret not set on the 'production' environment; skipping deploy."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.enabled == 'true'
+      - name: Configure kubectl
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          mkdir -p ~/.kube
+          printf '%s' "$KUBE_CONFIG" > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl version --client
+      - name: Write k8s/secrets.env from GitHub secrets
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          ANVAYA_METRICS_TOKEN: ${{ secrets.ANVAYA_METRICS_TOKEN }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          VERBX_BASE_URL: ${{ secrets.VERBX_BASE_URL }}
+          VERBX_API_KEY: ${{ secrets.VERBX_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          for required in ANVAYA_METRICS_TOKEN GRAFANA_ADMIN_PASSWORD; do
+            if [ -z "${!required}" ]; then echo "::error::Secret $required is required for deploy"; exit 1; fi
+          done
+          umask 077
+          {
+            echo "ANVAYA_METRICS_TOKEN=${ANVAYA_METRICS_TOKEN}"
+            echo "GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}"
+            echo "VERBX_BASE_URL=${VERBX_BASE_URL}"
+            echo "VERBX_API_KEY=${VERBX_API_KEY}"
+            echo "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
+          } > k8s/secrets.env
+      - name: Pin image to this commit
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          if ! command -v kustomize >/dev/null; then
+            curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz" \
+              | sudo tar -xz -C /usr/local/bin kustomize
+          fi
+          kustomize edit set image "anvaya-ai=${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.sha_tag }}"
+      - name: Apply
+        if: steps.gate.outputs.enabled == 'true'
+        run: kubectl apply -k .
+      - name: Wait for rollout
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          for d in anvaya prometheus grafana; do
+            kubectl -n anvaya rollout status "deploy/$d" --timeout=300s
+          done
+      - name: Remove rendered secrets
+        if: always() && steps.gate.outputs.enabled == 'true'
+        run: rm -f k8s/secrets.env ~/.kube/config

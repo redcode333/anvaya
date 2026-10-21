@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 5s        # short for live demo; use 15–30s in production
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: anvaya
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["anvaya:5000"]
+        labels:
+          service: anvaya-api
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

@@ -1,0 +1,20 @@
+# Kubernetes variant of monitoring/prometheus/prometheus.yml: same target name (Service "anvaya"),
+# plus the bearer token that protects /metrics behind the Ingress.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: anvaya
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/metrics-token
+    static_configs:
+      - targets: ["anvaya:5000"]
+        labels:
+          service: anvaya-api
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

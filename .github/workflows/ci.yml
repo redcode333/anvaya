@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  KUBECONFORM_VERSION: v0.6.7
+  KUBERNETES_VERSION: 1.30.0
+
+jobs:
+  backend:
+    name: Backend tests (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/dataset
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Run tests (rules engine, extraction, API contracts, TC1–TC4)
+        working-directory: backend
+        run: python -m pytest -q
+
+  frontend:
+    name: Frontend (typecheck, vitest, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        working-directory: frontend
+        run: npx tsc -b
+      - name: Offline rules engine vs shared fixtures
+        working-directory: frontend
+        run: npm test
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  manifests:
+    name: Kubernetes & Compose manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dummy secrets for rendering
+        run: cp k8s/secrets.env.example k8s/secrets.env
+      - name: Render kustomization
+        run: kubectl kustomize . > rendered.yaml
+      - name: Install kubeconform
+        run: |
+          curl -sSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin kubeconform
+      - name: Validate (strict)
+        run: kubeconform -strict -summary -kubernetes-version "${KUBERNETES_VERSION}" rendered.yaml
+      - name: Validate docker-compose.yml
+        run: docker compose config -q
+
+  docker:
+    name: Docker image smoke test (TC1–TC4)
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/dataset
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: anvaya-ai:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Run container (read-only rootfs, as in Kubernetes)
+        run: |
+          docker run -d --name anvaya --read-only --tmpfs /tmp -v anvaya-ci:/app/var -p 5000:5000 anvaya-ai:ci
+      - name: Wait for readiness
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -sf http://localhost:5000/api/v1/ready; then echo; exit 0; fi
+            sleep 2
+          done
+          echo "::error::Service never became ready"; docker logs anvaya; exit 1
+      - name: Official scenarios TC1–TC4
+        run: |
+          fail=0
+          for tc in TC1 TC2 TC3 TC4; do
+            out=$(curl -sf -X POST "http://localhost:5000/api/v1/test-runs/$tc") || { echo "::error::$tc request failed"; fail=1; continue; }
+            passed=$(echo "$out" | jq -r '.passed')
+            echo "$tc passed=$passed"
+            if [ "$passed" != "true" ]; then
+              echo "::error::$tc failed"; echo "$out" | jq '.checks[] | select(.passed == false)'; fail=1
+            fi
+          done
+          exit $fail
+      - name: Metrics endpoint
+        run: curl -sf http://localhost:5000/metrics | grep -q '^anvaya_eligibility_outcomes_total'
+      - name: Container logs
+        if: always()
+        run: docker logs anvaya 2>&1 | tail -n 50

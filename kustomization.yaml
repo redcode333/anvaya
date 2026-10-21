@@ -1,0 +1,56 @@
+# Kubernetes deployment for Anvaya AI (app + Prometheus + Grafana).
+#   cp k8s/secrets.env.example k8s/secrets.env   # then fill in values
+#   kubectl apply -k .
+# Kept at the repo root so Grafana reuses monitoring/grafana/* without duplicating the dashboard.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: anvaya
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: anvaya
+    includeSelectors: false
+
+resources:
+  - k8s/namespace.yaml
+  - k8s/app/deployment.yaml
+  - k8s/app/service.yaml
+  - k8s/app/ingress.yaml
+  - k8s/app/networkpolicy.yaml
+  - k8s/monitoring/prometheus.yaml
+  - k8s/monitoring/grafana.yaml
+
+images:
+  # Override for a registry, e.g. `kustomize edit set image anvaya-ai=ghcr.io/<org>/anvaya-ai:1.0.0`
+  - name: anvaya-ai
+    newTag: latest
+
+configMapGenerator:
+  - name: anvaya-config
+    literals:
+      - ANVAYA_RULE_BUNDLE_VERSION=rules-2026.10.1
+      - ANVAYA_SESSION_TTL_HOURS=12
+      - ANVAYA_CASE_CODE_TTL_HOURS=72
+      - ANVAYA_CODE_LOOKUP_LIMIT=10
+      - ANVAYA_LLM_EXTRACTION=off
+      - ANVAYA_LLM_MODEL=claude-opus-5-5
+      - VERBX_STT_PATH=/v1/stt
+      - VERBX_TTS_PATH=/v1/tts
+      - VERBX_TIMEOUT_S=15
+  - name: prometheus-config
+    files:
+      - prometheus.yml=k8s/monitoring/prometheus.yml
+  - name: grafana-datasources
+    files:
+      - prometheus.yml=monitoring/grafana/provisioning/datasources/prometheus.yml
+  - name: grafana-dashboard-providers
+    files:
+      - dashboards.yml=monitoring/grafana/provisioning/dashboards/dashboards.yml
+  - name: grafana-dashboards
+    files:
+      - anvaya.json=monitoring/grafana/dashboards/anvaya.json
+
+secretGenerator:
+  - name: anvaya-secrets
+    envs:
+      - k8s/secrets.env

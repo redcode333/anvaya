@@ -1,0 +1,305 @@
+{
+  "bundle_note": "Curated demo rule set. Each criterion quotes the eligibility text of the supplied dataset row. 'team_reviewed' means a team member compared the structured criterion with the dataset text; it does NOT mean verified against the official portal. source_verified_at stays null until a data steward verifies the rule against the official source in /admin/schemes.",
+  "reviewed_at": "2026-10-21",
+  "rules": [
+    {
+      "rule_id": "R_NSAP_IGNOAPS",
+      "scheme_id": "63ae7e58dc9a0dc54aab0449",
+      "version": 1,
+      "jurisdiction": {"level": "Central"},
+      "intent_tags": ["pension", "old age", "elderly"],
+      "all": [
+        {"id": "c1", "fact": "bpl", "op": "is_true", "quote": "The applicant should belong to a Below Poverty Line (BPL) household."},
+        {"id": "c2", "fact": "age", "op": ">=", "value": 60, "quote": "The applicant should be 60 years of age or above."}
+      ],
+      "manual_checks": [
+        {"id": "m1", "text": "Citizenship of India is checked by the reviewer.", "quote": "The applicant should be a citizen of India."}
+      ],
+      "evidence_requirements": ["age_proof", "bpl_card", "residence_proof", "bank_passbook", "photo", "no_pension_affidavit"],
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_IGNOAPS_BIHAR",
+      "scheme_id": "66d19d5a9c9ff8daef6cd697",
+      "version": 1,
+      "jurisdiction": {"level": "State", "state": "Bihar"},
+      "intent_tags": ["pension", "old age", "elderly"],
+      "all": [
+        {"id": "c1", "fact": "state", "op": "==", "value": "Bihar", "quote": "The applicant (Woman/Man) should be a resident of Bihar."},
+        {"id": "c2", "fact": "age", "op": ">=", "value": 60, "quote": "The applicant should be 60 years of age or older."},
+        {"id": "c3", "fact": "bpl", "op": "is_true", "quote": "The applicant should belong to a Below Poverty Line (BPL) family."},
+        {"id": "c4", "fact": "receives_other_pension", "op": "is_false", "quote": "The applicant should not be receiving pension benefits under any social security scheme."}
+      ],
+      "manual_checks": [],
+      "evidence_requirements": ["aadhaar", "photo", "residence_proof", "age_proof", "bpl_card", "bank_passbook"],
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_IGNOAPS_MAHARASHTRA",
+      "scheme_id": "671a21dd80ec82b742b8fee4",
+      "version": 1,
+      "jurisdiction": {"level": "State", "state": "Maharashtra"},
+      "intent_tags": ["pension", "old age", "elderly"],
+      "all": [
+        {"id": "c1", "fact": "state", "op": "==", "value": "Maharashtra", "quote": "The applicant should be a resident of Maharashtra."},
+        {"id": "c2", "fact": "age", "op": ">=", "value": 65, "quote": "The applicant should be 65 years of age or older."},
+        {"id": "c3", "fact": "bpl", "op": "is_true", "quote": "The applicant should be from a Below Poverty Line (BPL) family."},
+        {"id": "c4", "fact": "receives_other_pension", "op": "is_false", "quote": "The applicant should not be receiving pension benefits under any social security scheme."}
+      ],
+      "manual_checks": [],
+      "evidence_requirements": ["aadhaar", "photo", "residence_proof", "age_proof", "bpl_card", "bank_passbook"],
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_IGNOAPS_PUNJAB",
+      "scheme_id": "680a02cb41f9fb65ecb3453f",
+      "version": 1,
+      "jurisdiction": {"level": "State", "state": "Punjab"},
+      "intent_tags": ["pension", "old age", "elderly"],
+      "all": [
+        {"id": "c1", "fact": "state", "op": "==", "value": "Punjab", "quote": "The applicant should be a resident of Punjab."},
+        {"id": "c2", "fact": "age", "op": ">=", "value": 60, "quote": "The applicant should be 60 years of age or older."},
+        {"id": "c3", "fact": "bpl", "op": "is_true", "quote": "The applicant should be from a Below Poverty Line (BPL) family."},
+        {"id": "c4", "fact": "receives_other_pension", "op": "is_false", "quote": "The applicant should not be receiving pension benefits under any social security scheme."}
+      ],
+      "manual_checks": [],
+      "evidence_requirements": ["residence_proof", "age_proof", "bpl_card", "bank_passbook"],
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_IGNOAPS_TAMILNADU",
+      "scheme_id": "65e04974da55878ebe0900eb",
+      "version": 1,
+      "jurisdiction": {"level": "State", "state": "Tamil Nadu"},
+      "intent_tags": ["pension", "old age", "elderly"],
+      "all": [
+        {"id": "c1", "fact": "state", "op": "==", "value": "Tamil Nadu", "quote": null, "note": "Residence criterion taken from the dataset 'state' field; not stated in the eligibility text."},
+        {"id": "c2", "fact": "age", "op": ">=", "value": 60, "quote": "The applicant's age should be 60 years and above."},
+        {"id": "c3", "fact": "bpl", "op": "is_true", "quote": "The applicant should belong to the \"Below Poverty Line\" category."}
+      ],
+      "manual_checks": [
+        {"id": "m1", "text": "Destitution is assessed by the reviewer/officer.", "quote": "The applicant should be destitute."}
+      ],
+      "evidence_requirements": ["photo", "aadhaar", "age_proof", "ration_card", "bank_passbook", "bpl_card"],
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_AP_INDIRAMMA_OAP_RURAL",
+      "scheme_id": "679c93f9ecdc87934b7de3d6",
+      "version": 1,
+      "jurisdiction": {"level": "State", "state": "Andhra Pradesh"},
+      "intent_tags": ["pension", "old age", "elderly"],
+      "all": [
+        {"id": "c1", "fact": "state", "op": "==", "value": "Andhra Pradesh", "quote": "The applicant should be a local resident of the district."},
+        {"id": "c2", "fact": "bpl", "op": "is_true", "quote": "The applicant should be from a Below Poverty Line (BPL) family."},
+        {"id": "c3", "fact": "area", "op": "==", "value": "rural", "quote": "The applicant should be from a rural area."},
+        {"id": "c4", "fact": "receives_other_pension", "op": "is_false", "quote": "The applicant should not be covered under any other Pension Scheme."},
+        {"id": "c5", "fact": "age", "op": ">=", "value": 65, "quote": "The applicant should be 65 years of age or above in age."}
+      ],
+      "manual_checks": [
+        {"id": "m1", "text": "Destitution and lack of family support are identified by the Gram Sabha.", "quote": "The applicant should be destitute."}
+      ],
+      "evidence_requirements": ["bpl_card", "age_proof", "residence_proof", "no_pension_affidavit"],
+      "evidence_note": "The dataset 'documents' column for this scheme holds description text, not a document list; evidence items were derived from the eligibility criteria and need steward review.",
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_AP_INDIRAMMA_OAP_URBAN",
+      "scheme_id": "67a2eac8da50340fc8eed8d0",
+      "version": 1,
+      "jurisdiction": {"level": "State", "state": "Andhra Pradesh"},
+      "intent_tags": ["pension", "old age", "elderly"],
+      "all": [
+        {"id": "c1", "fact": "state", "op": "==", "value": "Andhra Pradesh", "quote": "The applicant should be a local resident of a district of Andhra Pradesh."},
+        {"id": "c2", "fact": "bpl", "op": "is_true", "quote": "The applicant should be from a Below Poverty Line (BPL) family."},
+        {"id": "c3", "fact": "area", "op": "==", "value": "urban", "quote": "The applicant should be from an urban area."},
+        {"id": "c4", "fact": "receives_other_pension", "op": "is_false", "quote": "The applicant should not be covered under any other Pension Scheme."},
+        {"id": "c5", "fact": "age", "op": ">=", "value": 65, "quote": "The applicant should be 65 years of age or above."}
+      ],
+      "manual_checks": [
+        {"id": "m1", "text": "Destitution is identified by the Ward Sabha.", "quote": "The applicant should be destitute"}
+      ],
+      "evidence_requirements": ["bpl_card", "age_proof", "residence_proof", "no_pension_affidavit"],
+      "evidence_note": "The dataset 'documents' column for this scheme holds description text, not a document list; evidence items were derived from the eligibility criteria and need steward review.",
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_AP_INDIRAMMA_WIDOW_RURAL",
+      "scheme_id": "67a03df5e924567693c47df8",
+      "version": 1,
+      "jurisdiction": {"level": "State", "state": "Andhra Pradesh"},
+      "intent_tags": ["pension", "widow"],
+      "all": [
+        {"id": "c1", "fact": "state", "op": "==", "value": "Andhra Pradesh", "quote": "The applicant should be a local resident of a district of Andhra Pradesh."},
+        {"id": "c2", "fact": "bpl", "op": "is_true", "quote": "The applicant should be from a Below Poverty Line (BPL) family."},
+        {"id": "c3", "fact": "area", "op": "==", "value": "rural", "quote": "The applicant should be from a rural area."},
+        {"id": "c4", "fact": "receives_other_pension", "op": "is_false", "quote": "The applicant should not be covered under any other Pension Scheme."},
+        {"id": "c5", "fact": "marital_status", "op": "==", "value": "widowed", "quote": "The applicant should be a Widow."}
+      ],
+      "manual_checks": [],
+      "evidence_requirements": ["bpl_card", "spouse_death_certificate", "residence_proof", "no_pension_affidavit"],
+      "evidence_note": "The dataset 'documents' column for this scheme holds description text, not a document list; evidence items were derived from the eligibility criteria and need steward review.",
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_IGNWPS",
+      "scheme_id": "628c79f250b52bb011ccb5ee",
+      "version": 1,
+      "jurisdiction": {"level": "Central"},
+      "intent_tags": ["pension", "widow"],
+      "all": [
+        {"id": "c1", "fact": "marital_status", "op": "==", "value": "widowed", "quote": "The applicant must be a widow in the age group of 40-79 years."},
+        {"id": "c2", "fact": "age", "op": "between", "value": [40, 79], "quote": "The applicant must be a widow in the age group of 40-79 years."},
+        {"id": "c3", "fact": "bpl", "op": "is_true", "quote": "The applicant should belong to a household living below the poverty line"}
+      ],
+      "manual_checks": [],
+      "evidence_requirements": ["spouse_death_certificate", "age_proof", "bpl_card", "bank_passbook"],
+      "evidence_note": "The dataset 'documents' column for this scheme holds description text, not a document list; evidence items were derived from the eligibility criteria and need steward review.",
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_PM_KISAN",
+      "scheme_id": "62a70e86f038bd8499a6aa53",
+      "version": 1,
+      "jurisdiction": {"level": "Central"},
+      "intent_tags": ["farmer", "agriculture", "income support"],
+      "all": [
+        {"id": "c1", "fact": "owns_cultivable_land", "op": "is_true", "quote": "All landholding farmers' families, which have cultivable land holding in their names are eligible to get benefit under the scheme."}
+      ],
+      "manual_checks": [
+        {"id": "m1", "text": "Official PM-KISAN exclusion categories (e.g. income-tax payers, institutional land holders) are not present in the dataset text and must be checked by the reviewer.", "quote": null}
+      ],
+      "evidence_requirements": ["aadhaar", "land_records", "bank_passbook"],
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_APY",
+      "scheme_id": "628b41a2c9b440ca7f31ff6c",
+      "version": 1,
+      "jurisdiction": {"level": "Central"},
+      "intent_tags": ["pension", "savings", "insurance"],
+      "all": [
+        {"id": "c1", "fact": "age", "op": "between", "value": [18, 40], "quote": "The minimum age of joining APY is 18 years and maximum is 40 years."},
+        {"id": "c2", "fact": "has_bank_account", "op": "is_true", "quote": "from the savings bank account of the subscriber"}
+      ],
+      "manual_checks": [],
+      "evidence_requirements": ["bank_passbook"],
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_PMJJBY",
+      "scheme_id": "62a1a38e07ac3b4e623091b1",
+      "version": 1,
+      "jurisdiction": {"level": "Central"},
+      "intent_tags": ["insurance", "life insurance"],
+      "all": [
+        {"id": "c1", "fact": "age", "op": "between", "value": [18, 50], "quote": "The age of the applicant must be between 18 to 50 Years."},
+        {"id": "c2", "fact": "has_bank_account", "op": "is_true", "quote": "The applicant must hold an individual bank / post office account."}
+      ],
+      "manual_checks": [],
+      "evidence_requirements": ["bank_passbook"],
+      "evidence_note": "The dataset 'documents' column for this scheme is empty; bank account evidence derived from the eligibility text.",
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_PMSBY",
+      "scheme_id": "6290a249e65001fa5dfa97b0",
+      "version": 1,
+      "jurisdiction": {"level": "Central"},
+      "intent_tags": ["insurance", "accident insurance"],
+      "all": [
+        {"id": "c1", "fact": "age", "op": "between", "value": [18, 70], "quote": "aged between 18 years (completed) and 70 years (age nearer birthday)"},
+        {"id": "c2", "fact": "has_bank_account", "op": "is_true", "quote": "Individual bank account holders of participating banks"}
+      ],
+      "manual_checks": [],
+      "evidence_requirements": ["bank_passbook"],
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_PMAY_URBAN",
+      "scheme_id": "62a198e0b53f102de0e5a396",
+      "version": 1,
+      "jurisdiction": {"level": "Central"},
+      "intent_tags": ["housing"],
+      "all": [
+        {"id": "c1", "fact": "annual_income", "op": "<=", "value": 1800000, "quote": "Middle Income Group-2 (MIG-2): households with annual income between ₹12,00,001 and ₹18,00,000."},
+        {"id": "c2", "fact": "owns_pucca_house", "op": "is_false", "quote": "The applicant or his/her family members must not own a pucca house in any part of the country."},
+        {"id": "c3", "fact": "area", "op": "==", "value": "urban", "quote": "The town/city in which the family resides must be covered under the scheme."}
+      ],
+      "manual_checks": [
+        {"id": "m1", "text": "Whether the specific town/city is covered is checked by the reviewer.", "quote": "The town/city in which the family resides must be covered under the scheme."},
+        {"id": "m2", "text": "No earlier Government of India housing benefit availed.", "quote": "The family MUST NOT have previously availed the benefits of any housing-related schemes"}
+      ],
+      "evidence_requirements": ["aadhaar", "income_certificate", "residence_proof"],
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_TG_RYTHU_BIMA",
+      "scheme_id": "63eb866fdf687019476906e5",
+      "version": 1,
+      "jurisdiction": {"level": "State", "state": "Telangana"},
+      "intent_tags": ["farmer", "insurance", "agriculture"],
+      "all": [
+        {"id": "c1", "fact": "occupation", "op": "==", "value": "farmer", "quote": "The applicant must be a farmer."},
+        {"id": "c2", "fact": "state", "op": "==", "value": "Telangana", "quote": "The applicant must be a resident of Telangana."},
+        {"id": "c3", "fact": "age", "op": "between", "value": [18, 59], "quote": "The applicant must be aged between 18 and 59 years."}
+      ],
+      "manual_checks": [
+        {"id": "m1", "text": "Land record presence in the Dharani RoR database is checked by the officer.", "quote": "The applicant’s details should be available in the Dharani database"}
+      ],
+      "evidence_requirements": ["pattadar_passbook", "aadhaar", "bank_passbook"],
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_AP_SPECTACLES_SENIOR",
+      "scheme_id": "667aa919113e1b5b0a84cd5e",
+      "version": 1,
+      "jurisdiction": {"level": "State", "state": "Andhra Pradesh"},
+      "intent_tags": ["elderly", "health"],
+      "all": [
+        {"id": "c1", "fact": "state", "op": "==", "value": "Andhra Pradesh", "quote": null, "note": "Residence criterion taken from the dataset 'state' field."},
+        {"id": "c2", "fact": "age", "op": ">=", "value": 60, "quote": "The applicant's age should be 60 years and above."}
+      ],
+      "manual_checks": [
+        {"id": "m1", "text": "Benefit not availed earlier.", "quote": "The applicant should not have availed the benefit of this scheme earlier."}
+      ],
+      "evidence_requirements": ["aadhaar", "income_certificate"],
+      "review_status": "needs_review",
+      "review_note": "Dataset inconsistency: the 'benefits' column for this spectacles scheme describes distribution of Daisy Players with income categories. Held for steward review; outcome will be NEEDS_HUMAN_REVIEW.",
+      "freshness_days": 365
+    },
+    {
+      "rule_id": "R_PMUY_2",
+      "scheme_id": "64aeba4c481f59106a72e761",
+      "version": 1,
+      "jurisdiction": {"level": "Central"},
+      "intent_tags": ["lpg", "women", "cooking gas"],
+      "all": [
+        {"id": "c1", "fact": "age", "op": ">=", "value": 18, "quote": "The applicant must be at least 18 years old."},
+        {"id": "c2", "fact": "gender", "op": "==", "value": "female", "quote": "The applicant woman must belong to any one of the eligible categories."}
+      ],
+      "manual_checks": [
+        {"id": "m1", "text": "Household has no existing LPG connection.", "quote": "The applicant’s household must not have any existing LPG connection."},
+        {"id": "m2", "text": "Belongs to one of the listed eligible categories (SC/ST, PMAY-G, AAY, SECC, 14-point declaration, etc.).", "quote": "The applicant woman must belong to any one of the eligible categories."}
+      ],
+      "evidence_requirements": ["aadhaar", "ration_card", "bank_passbook"],
+      "review_status": "team_reviewed",
+      "freshness_days": 365
+    }
+  ]
+}
