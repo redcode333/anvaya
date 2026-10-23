@@ -1,5 +1,5 @@
 Flask>=3.0
 requests>=2.31
-prometheus_client>=0.20
+prometheus_client>=0.26.0
 pytest>=8
 gunicorn>=22; sys_platform != "win32"
