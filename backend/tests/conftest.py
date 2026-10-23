@@ -9,7 +9,9 @@ def app(tmp_path_factory):
     db_path = str(tmp_path_factory.mktemp("db") / "test.db")
     # LLM extraction is off unless a test turns it on with mocked providers (tests/test_llm.py).
     app = create_app({"DB_PATH": db_path, "TESTING": True, "CODE_LOOKUP_LIMIT_PER_MIN": 1000,
-                      "LLM_EXTRACTION": False, "LLM_PROVIDERS": [], "LLM_ALLOW_REAL_DATA": False})
+                      "LLM_EXTRACTION": False, "LLM_PROVIDERS": [], "LLM_ALLOW_REAL_DATA": False,
+                      # never trace to a real Langfuse from tests (tests/test_tracing.py uses a fake exporter)
+                      "LANGFUSE_PUBLIC_KEY": "", "LANGFUSE_SECRET_KEY": "", "LANGFUSE_BASE_URL": ""})
     conn = connect(db_path)
     ingest.bootstrap(conn, app.config["DATASET_CSV"], app.config["GOLDEN_RULES"], app.config["RULE_BUNDLE_VERSION"])
     conn.close()

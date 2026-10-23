@@ -117,3 +117,97 @@ def report(res: dict) -> str:
     lines += ["", f"target merged high-impact precision >= {TARGET_HIGH_IMPACT_PRECISION}: "
                   f"{_f(mp)} -> {'MET' if ok else 'NOT MET'}"]
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------- Langfuse datasets & experiments (optional)
+
+DATASET = "anvaya-extraction-eval"
+
+
+def _predict(utterance: str, provider: dict | None) -> dict:
+    """{attribute: {value, alternatives}} as the citizen's confirmation step would see it."""
+    det = extraction.extract(utterance)
+    facts = det["facts"]
+    if provider is not None:
+        res = run_turn(utterance)
+        if res["result"] == "ok":
+            facts, _ = merge.merge(det["facts"], res["facts"], det["other_people"], utterance)
+    return {a: {"value": f["value"], "alternatives": f.get("alternatives")} for a, f in _pred(facts).items()}
+
+
+def _item_evaluator(*, input, output, expected_output, **kwargs):
+    from langfuse import Evaluation
+
+    tally, wrong = defaultdict(Counter), []
+    _score(output or {}, expected_output or {}, tally, wrong, input.get("id", "?"))
+    t = _sum(tally, ATTRIBUTES)
+    hi_wrong = sum(w["attribute"] in extraction.HIGH_IMPACT for w in wrong)
+    return [Evaluation(name="wrong_facts", value=t["fp"],
+                       comment="; ".join(f"{w['attribute']}={w['got']!r} (expected {w['expected']!r})" for w in wrong)
+                       or None),
+            Evaluation(name="wrong_high_impact_facts", value=hi_wrong),
+            Evaluation(name="recall", value=t["tp"] / (t["tp"] + t["fn"]) if t["tp"] + t["fn"] else 1.0)]
+
+
+def _run_evaluator(*, item_results, **kwargs):
+    from langfuse import Evaluation
+
+    total = sum(e.value for r in item_results for e in r.evaluations if e.name == "wrong_facts")
+    hi = sum(e.value for r in item_results for e in r.evaluations if e.name == "wrong_high_impact_facts")
+    recalls = [e.value for r in item_results for e in r.evaluations if e.name == "recall"]
+    return [Evaluation(name="wrong_facts_reaching_confirmation", value=total),
+            Evaluation(name="wrong_high_impact_facts", value=hi),
+            Evaluation(name="mean_recall", value=sum(recalls) / len(recalls) if recalls else None)]
+
+
+def push_to_langfuse(path: Path = FIXTURE, use_llm: bool = True) -> list[dict]:
+    """LANGFUSE_TRACE_EVAL=1: upsert the eval utterances as the Langfuse dataset `anvaya-extraction-eval` (stable item
+    ids, so re-runs update rather than duplicate) and run one experiment per configuration: rule-based only, then rule-
+    based + each configured LLM provider on its own. Demo data only (the fixture), so inputs/outputs are sent in full."""
+    from flask import current_app
+
+    from . import prompt, tracing
+    from . import providers as configured_providers
+
+    lf = tracing.client()
+    if lf is None:
+        return []
+    items = json.loads(Path(path).read_text(encoding="utf-8"))["items"]
+    try:
+        lf.create_dataset(name=DATASET, description="Anvaya extraction eval: demo utterances (en/hi/te/Hinglish) with "
+                                                    "the facts a careful human reads from each.",
+                          metadata={"source": "data/fixtures/extraction_eval.json"})
+    except Exception:  # noqa: BLE001 - already exists
+        pass
+    for it in items:
+        lf.create_dataset_item(dataset_name=DATASET, id=f"anvaya-eval-{it['id']}",
+                               input={"id": it["id"], "utterance": it["utterance"], "lang": it["lang"]},
+                               expected_output=it["expected"], metadata={"lang": it["lang"]})
+    dataset = lf.get_dataset(DATASET)
+    app = current_app._get_current_object()
+    configs = [("rules-only", None)]
+    if use_llm and enabled():
+        configs += [(f"rules+{p['name']}:{p['model']}", p) for p in configured_providers()]
+    stamp = time.strftime("%Y-%m-%d %H:%M")
+    out = []
+    saved = app.config["LLM_PROVIDERS"]
+    try:
+        for label, p in configs:
+            app.config["LLM_PROVIDERS"] = [p] if p else saved
+
+            def task(*, item, **kwargs):
+                with app.app_context():
+                    return _predict(item.input["utterance"], p)
+
+            result = dataset.run_experiment(
+                name="extraction-eval", run_name=f"{label} · {prompt.version()} · {stamp}",
+                description=f"Candidate facts reaching the confirmation step: {label}", task=task,
+                evaluators=[_item_evaluator], run_evaluators=[_run_evaluator], max_concurrency=1,
+                metadata={"config": label, "prompt_version": prompt.version()})
+            scores = {e.name: e.value for e in result.run_evaluations}
+            out.append({"run": label, "items": len(result.item_results), **scores,
+                        "url": result.experiment_url})
+    finally:
+        app.config["LLM_PROVIDERS"] = saved
+        tracing.flush()
+    return out

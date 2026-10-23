@@ -2,4 +2,6 @@ Flask>=3.0
 requests>=2.31
 prometheus_client>=0.20
 pytest>=8
+# Optional Langfuse tracing of LLM extraction; imported only when LANGFUSE_* keys are set.
+langfuse>=5.0.4,<6
 gunicorn>=22; sys_platform != "win32"

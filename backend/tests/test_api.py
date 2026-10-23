@@ -366,3 +366,13 @@ def test_schema_migration_adds_confusable_column(tmp_path):
     init_schema(old)
     init_schema(old)  # idempotent
     assert old.execute("SELECT confusable FROM facts WHERE fact_id='F-1'").fetchone()[0] == 0
+
+
+def test_no_user_facing_string_promises_eligibility_or_approval():
+    """Server-generated citizen text (en/hi/te) uses potential-match / provisional wording, never a promise."""
+    from anvaya import i18n
+    promise = re.compile(r"\beligible\b|\bapproved\b|\bguaranteed?\b|पात्र|मंजूर|मंज़ूर|అర్హులు", re.I)
+    tables = [i18n.OUTCOMES, i18n.MESSAGES, i18n.QUESTIONS, i18n.REVIEW_OUTCOMES, i18n.CASE_STATUS, i18n.DOC_STATUS]
+    texts = [s for table in tables for entry in table.values() for s in entry.values()]
+    texts += [s for entry in i18n.DOCUMENTS.values() for pair in entry.values() for s in pair]
+    assert texts and [s for s in texts if promise.search(s)] == []

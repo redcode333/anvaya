@@ -245,7 +245,9 @@ def public_status(code: str) -> dict:
     status_label = i18n.t(i18n.CASE_STATUS, row["status"], lang)
     return {
         "status": row["status"], "status_label": status_label, "updated_at": row["updated_at"],
-        "review_outcome": row["review_outcome"], "scheme_name": scheme["name"], "language": lang,
+        "review_outcome": row["review_outcome"],
+        "review_outcome_label": i18n.t(i18n.REVIEW_OUTCOMES, row["review_outcome"], lang) if row["review_outcome"] else None,
+        "scheme_name": scheme["name"], "language": lang,
         "spoken_summary": i18n.t(i18n.MESSAGES, "status_line", lang, status=status_label, ts=row["updated_at"][:16].replace("T", " ")),
         "correction_note": row["reviewer_note"] if row["status"] == "CORRECTION_REQUESTED" else None,
         "notice": "Status of a draft review. No government submission has been made.",

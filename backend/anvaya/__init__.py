@@ -33,10 +33,18 @@ def create_app(overrides: dict | None = None) -> Flask:
     finally:
         conn.close()
     app.extensions["anvaya.startup"] = startup.check(app.config, demo_users)
+    if app.config["LANGFUSE_PUBLIC_KEY"] and app.config["LANGFUSE_SECRET_KEY"] and app.config["LANGFUSE_BASE_URL"]:
+        from .llm import tracing
+        with app.app_context():
+            try:
+                tracing.client()  # import + set up once at boot, not inside the first traced turn
+            except Exception:  # noqa: BLE001 - tracing is optional
+                log.warning("langfuse: client setup failed; LLM extraction runs untraced")
 
     @app.before_request
     def _start():
-        g.request_id = request.headers.get("X-Request-Id") or uuid.uuid4().hex[:16]
+        # 32 hex chars: also the Langfuse trace id of an LLM-extraction turn (W3C / OpenTelemetry trace-id format).
+        g.request_id = request.headers.get("X-Request-Id") or uuid.uuid4().hex
         g.t0 = time.perf_counter()
 
     @app.after_request

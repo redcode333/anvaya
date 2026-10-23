@@ -13,3 +13,6 @@ k8s/secrets.env
 # Dataset is committed as the extracted CSV; the original ZIP is a duplicate.
 archive (1).zip
 .venv/
+
+# Submission notes are kept locally, not in the repository.
+SUBMISSION.md
