@@ -75,7 +75,12 @@ def main(argv: list[str]) -> int:
         from .llm import evaluate
         with app.app_context():
             res = evaluate.run(use_llm="--no-llm" not in argv)
+            pushed = evaluate.push_to_langfuse(use_llm="--no-llm" not in argv) if cfg["LANGFUSE_TRACE_EVAL"] else []
         print(json.dumps(res, indent=2, ensure_ascii=False) if "--json" in argv else evaluate.report(res))
+        for r in pushed:
+            print(f"langfuse experiment {r['run']}: {r['items']} items, wrong facts {r.get('wrong_facts_reaching_confirmation')}"
+                  f" (high-impact {r.get('wrong_high_impact_facts')}), mean recall {r.get('mean_recall')}"
+                  + (f"  {r['url']}" if r.get("url") else ""))
         return 0
     print(__doc__)
     return 1

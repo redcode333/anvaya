@@ -122,7 +122,7 @@ export function showValue(attr: string, v: any, lang: Lang): string {
 }
 
 export const OUTCOME_LABEL: Record<string, Record<Lang, string>> = {
-  MATCH: { en: "Likely eligible", hi: "संभवतः पात्र", te: "అర్హత ఉండే అవకాశం" },
+  MATCH: { en: "Potential match", hi: "संभावित मिलान", te: "సంభావ్య సరిపోలిక" },
   PROVISIONAL: { en: "Provisional match", hi: "अस्थायी मिलान", te: "తాత్కాలిక సరిపోలిక" },
   MISMATCH: { en: "Does not match", hi: "मेल नहीं खाता", te: "సరిపోలలేదు" },
   INSUFFICIENT_INFORMATION: { en: "Need more information", hi: "और जानकारी चाहिए", te: "మరింత సమాచారం కావాలి" },

@@ -32,6 +32,14 @@ def check(cfg, demo_password_users: list[str]) -> dict:
         integrations["llm"] = {"status": "missing", "missing": ["LLM_PROVIDERS"],
                                "effect": "deterministic extraction only"}
 
+    lf_need = [k for k, v in (("LANGFUSE_PUBLIC_KEY", cfg["LANGFUSE_PUBLIC_KEY"]),
+                              ("LANGFUSE_SECRET_KEY", cfg["LANGFUSE_SECRET_KEY"]),
+                              ("LANGFUSE_BASE_URL", cfg["LANGFUSE_BASE_URL"])) if not v]
+    integrations["langfuse"] = {
+        "status": "missing" if lf_need else "configured", "missing": lf_need,
+        "effect": "LLM-extraction traces not exported (SDK not loaded)" if lf_need
+        else "LLM-extraction turns traced to Langfuse (input/output for demo data only)"}
+
     integrations["metrics"] = {
         "status": "configured" if cfg["METRICS_TOKEN"] else "missing",
         "missing": [] if cfg["METRICS_TOKEN"] else ["ANVAYA_METRICS_TOKEN"],

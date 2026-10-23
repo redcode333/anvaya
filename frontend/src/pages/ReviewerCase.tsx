@@ -91,9 +91,9 @@ export default function ReviewerCase() {
             <button className="btn" onClick={() => act("verify_documents")} disabled={!verify.length}>Mark ticked documents verified</button>
             <button className="btn" onClick={() => act("request_correction")}>Request correction</button>
             <select value={outcome} onChange={(e) => setOutcome(e.target.value)} style={{ width: "auto" }} aria-label="Review outcome">
-              <option value="appears_eligible">appears eligible</option>
+              <option value="appears_eligible">potential match (not an approval)</option>
               <option value="needs_more_documents">needs more documents</option>
-              <option value="not_eligible">not eligible</option>
+              <option value="not_eligible">no match</option>
             </select>
             <button className="btn primary" onClick={() => act("record_review")}>Record review</button>
           </div>

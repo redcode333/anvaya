@@ -21,7 +21,7 @@ from pathlib import Path
 from flask import current_app
 
 from .. import metrics
-from . import cache, client, prompt, state, validate
+from . import cache, client, prompt, state, tracing, validate
 from .providers import is_configured, public
 from .validate import ATTRIBUTES  # noqa: F401  (re-exported)
 
@@ -49,12 +49,14 @@ def demo_phrases() -> frozenset[str]:
     return frozenset(_norm(s["text"]) for items in data.values() for s in items)
 
 
-def allowed(session: dict, utterance: str) -> bool:
-    """Privacy gate: unless LLM_ALLOW_REAL_DATA, only demo/test data may reach (free-tier) providers — TC-runner
-    sessions, sessions created with "demo": true, and the kiosk's built-in demo phrases."""
-    if current_app.config["LLM_ALLOW_REAL_DATA"]:
-        return True
+def is_demo_data(session: dict, utterance: str) -> bool:
+    """Demo/test data: TC-runner sessions, sessions created with "demo": true, and the kiosk's built-in demo phrases."""
     return bool(session.get("is_test") or session.get("is_demo")) or _norm(utterance) in demo_phrases()
+
+
+def allowed(session: dict, utterance: str) -> bool:
+    """Privacy gate: unless LLM_ALLOW_REAL_DATA, only demo/test data may reach (free-tier) providers."""
+    return bool(current_app.config["LLM_ALLOW_REAL_DATA"]) or is_demo_data(session, utterance)
 
 
 def status() -> dict:
@@ -80,14 +82,16 @@ def source_language(utterance: str) -> str | None:
     return next((lang for lang, pat in _SCRIPT if pat.search(utterance)), None)
 
 
-def english_translation(utterance: str, deadline: float) -> str | None:
+def english_translation(utterance: str, deadline: float, tr=tracing._NOOP) -> str | None:
     from .. import translation
 
     lang = source_language(utterance)
     remaining = deadline - time.monotonic() - MIN_CALL_S  # leave room for at least one LLM call
     if not lang or remaining <= 0.2:
         return None
-    return translation.translate_for_extraction(utterance, lang, timeout=min(remaining, 3.5))
+    with tr.translate(lang, utterance) as span:
+        span["text"] = translation.translate_for_extraction(utterance, lang, timeout=min(remaining, 3.5))
+    return span["text"]
 
 
 # ---------------------------------------------------------------- extraction
@@ -105,16 +109,17 @@ def _log(p, result, status=None, latency=None, usage=None):
              usage.get("prompt_tokens"), usage.get("completion_tokens"))
 
 
-def run_turn(utterance: str) -> dict:
-    """Translation (hi/te) + extraction inside one turn budget. Validated facts only; never raises."""
+def run_turn(utterance: str, tr=tracing._NOOP) -> dict:
+    """Translation (hi/te) + extraction inside one turn budget. Validated facts only; never raises.
+    `tr` is the turn's Langfuse trace (tracing.turn), a no-op when tracing is off."""
     deadline = time.monotonic() + current_app.config["LLM_TURN_BUDGET_S"]
-    tr = english_translation(utterance, deadline)
-    res = extract(utterance, tr, deadline)
-    res["translated"] = bool(tr)
+    english = english_translation(utterance, deadline, tr)
+    res = extract(utterance, english, deadline, tr)
+    res["translated"] = bool(english)
     return res
 
 
-def extract(utterance: str, translation: str | None, deadline: float) -> dict:
+def extract(utterance: str, translation: str | None, deadline: float, tr=tracing._NOOP) -> dict:
     ps = providers()
     if not ps:
         return _result(result="not_configured")
@@ -128,6 +133,7 @@ def extract(utterance: str, translation: str | None, deadline: float) -> dict:
             facts, dropped = validate.check(items, utterance, translation)
             metrics.LLM_CALLS.labels(p["name"], "cache_hit").inc()
             _log(p, "cache_hit")
+            tr.llm_call(p, 1, messages, cached=True).end("cache_hit", content=json.dumps({"facts": items}))
             return _result(facts, dropped, "ok", p["name"], p["model"], cached=True, latency_ms=0)
 
     failed_from = None
@@ -149,10 +155,12 @@ def extract(utterance: str, translation: str | None, deadline: float) -> dict:
                 _log(p, "budget_exceeded")
                 return _result(result="budget_exceeded")
             t0 = time.monotonic()
+            call = tr.llm_call(p, attempt, msgs)
             try:
                 resp = client.chat(p, msgs, timeout=min(current_app.config["LLM_CALL_TIMEOUT_S"], remaining))
             except client.LLMError as e:
                 latency = time.monotonic() - t0
+                call.end(e.kind, e.status)
                 metrics.LLM_LATENCY.labels(name).observe(latency)
                 metrics.LLM_CALLS.labels(name, e.kind).inc()
                 _log(p, e.kind, e.status, latency)
@@ -166,12 +174,14 @@ def extract(utterance: str, translation: str | None, deadline: float) -> dict:
             metrics.LLM_LATENCY.labels(name).observe(latency)
             state.count_request(p)
             if time.monotonic() > deadline:
+                call.end("budget_exceeded", 200, resp, resp["content"])
                 metrics.LLM_CALLS.labels(name, "budget_exceeded").inc()
                 _log(p, "budget_exceeded", 200, latency, resp)
                 return _result(result="budget_exceeded")
             try:
                 items = validate.parse(resp["content"])
             except validate.InvalidOutput as e:
+                call.end("invalid_output", 200, resp, resp["content"])
                 metrics.LLM_CALLS.labels(name, "invalid_output").inc()
                 _log(p, "invalid_output", 200, latency, resp)
                 if attempt == 1:
@@ -179,6 +189,7 @@ def extract(utterance: str, translation: str | None, deadline: float) -> dict:
                     continue
                 state.record(name, False)
                 break
+            call.end("ok", 200, resp, resp["content"])
             metrics.LLM_CALLS.labels(name, "ok").inc()
             _log(p, "ok", 200, latency, resp)
             state.record(name, True)

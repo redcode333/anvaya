@@ -12,20 +12,23 @@ SECRET = "sk-test-value-never-logged"
 
 def boot(tmp_path, caplog, **cfg):
     with caplog.at_level(logging.INFO, logger="anvaya.startup"):
-        app = create_app({"DB_PATH": str(tmp_path / "boot.db"), "TESTING": True, **cfg})
+        app = create_app({"DB_PATH": str(tmp_path / "boot.db"), "TESTING": True, "LANGFUSE_PUBLIC_KEY": "",
+                          "LANGFUSE_SECRET_KEY": "", "LANGFUSE_BASE_URL": "", **cfg})
     return app, [r.getMessage() for r in caplog.records if r.name == "anvaya.startup"]
 
 
 def test_one_line_per_integration_and_never_a_value(tmp_path, caplog):
     providers = load_providers({"LLM_PROVIDERS": "groq,gemini", "GROQ_API_KEY": SECRET, "GROQ_MODEL": "m"})
     app, lines = boot(tmp_path, caplog, VERBX_BASE_URL="https://verbx.test", VERBX_API_KEY=SECRET,
-                      LLM_PROVIDERS=providers, METRICS_TOKEN="")
+                      LLM_PROVIDERS=providers, METRICS_TOKEN="", LANGFUSE_PUBLIC_KEY="", LANGFUSE_SECRET_KEY="",
+                      LANGFUSE_BASE_URL="")
     integ = [ln for ln in lines if ln.startswith("integration")]
-    assert len(integ) == 4  # verbx, llm.groq, llm.gemini, metrics
+    assert len(integ) == 5  # verbx, llm.groq, llm.gemini, langfuse, metrics
     assert "integration verbx        configured" in integ[0]
     assert "llm.groq" in integ[1] and "configured" in integ[1]
     assert "llm.gemini" in integ[2] and "missing (missing GEMINI_MODEL, GEMINI_API_KEY)" in integ[2]
-    assert "metrics" in integ[3] and "missing" in integ[3]
+    assert "langfuse" in integ[3] and "missing (missing LANGFUSE_PUBLIC_KEY" in integ[3]
+    assert "metrics" in integ[4] and "missing" in integ[4]
     assert not any(SECRET in ln or "verbx.test" in ln for ln in lines)
 
 

@@ -286,7 +286,13 @@ def _llm_turn(session: dict, utterance: str, det_facts: list[dict], other_people
         return det_facts, {"used": False, "result": "disabled"}
     if not llm.allowed(session, utterance):
         return det_facts, {"used": False, "result": "real_data_not_allowed"}
-    run = llm.run_turn(utterance)
+    with llm.tracing.turn(session["session_id"], llm.is_demo_data(session, utterance), utterance,
+                          llm.prompt.version(), environment="tc-runner" if session.get("is_test") else None) as tr:
+        return _traced_llm_turn(tr, utterance, det_facts, other_people)
+
+
+def _traced_llm_turn(tr, utterance: str, det_facts: list[dict], other_people: list[dict]) -> tuple[list[dict], dict]:
+    run = llm.run_turn(utterance, tr)
     for d in run["dropped"]:
         metrics.LLM_MERGE.labels("dropped_evidence" if d["reason"] == "evidence" else "dropped_invalid").inc()
     summary = {"used": run["result"] == "ok", "result": run["result"], "provider": run["provider"],
@@ -294,8 +300,11 @@ def _llm_turn(session: dict, utterance: str, det_facts: list[dict], other_people
                "translated": run["translated"], "prompt_version": run["prompt_version"],
                "dropped": [d["reason"] for d in run["dropped"]]}
     if run["result"] != "ok":
+        tr.finish(run, None)
         return det_facts, summary
     candidates, merged = llm_merge.merge(det_facts, run["facts"], other_people, utterance)
+    tr.merge(merged["outcomes"], run["dropped"], candidates)
+    tr.finish(run, candidates)
     for outcome in merged["outcomes"].values():
         metrics.LLM_MERGE.labels(outcome).inc()
     return candidates, {**summary, "merge": merged["outcomes"], "disputed": merged["disputed"]}

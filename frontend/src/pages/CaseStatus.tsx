@@ -32,7 +32,7 @@ export default function CaseStatus() {
         <div className="stack">
           <div className="row"><StatusBadge status={res.status} /><strong>{res.status_label}</strong></div>
           <p>{res.scheme_name}</p>
-          {res.review_outcome && <p className="small">Review outcome: <strong>{res.review_outcome.replace(/_/g, " ")}</strong></p>}
+          {res.review_outcome && <p className="small"><strong>{res.review_outcome_label ?? res.review_outcome.replace(/_/g, " ")}</strong></p>}
           {res.correction_note && <div className="notice">Reviewer note: {res.correction_note}</div>}
           <p className="tiny">Updated {res.updated_at}</p>
           <button className="btn" onClick={async () => speak(await voiceProvider(), null, res.spoken_summary, res.language)}>🔊 {t("listen", lang)}</button>

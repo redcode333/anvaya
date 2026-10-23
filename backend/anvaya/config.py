@@ -81,3 +81,13 @@ class Config:
     LLM_CIRCUIT_OPEN_S = _num("LLM_CIRCUIT_OPEN_S", 60.0)
     # Free-tier providers may only see demo/test data: real citizen utterances are sent only when this is true.
     LLM_ALLOW_REAL_DATA = _flag("LLM_ALLOW_REAL_DATA", False)
+
+    # Optional Langfuse tracing of LLM extraction (anvaya/llm/tracing.py). Off unless all three are set; then the SDK
+    # is imported and turns that used the LLM are traced (input/output for demo/test data only, metadata otherwise).
+    LANGFUSE_PUBLIC_KEY = os.environ.get("LANGFUSE_PUBLIC_KEY", "")
+    LANGFUSE_SECRET_KEY = os.environ.get("LANGFUSE_SECRET_KEY", "")
+    LANGFUSE_BASE_URL = os.environ.get("LANGFUSE_BASE_URL", "") or os.environ.get("LANGFUSE_HOST", "")
+    LANGFUSE_TIMEOUT_S = _num("LANGFUSE_TIMEOUT_S", 2, int)  # export HTTP timeout; export runs in the background
+    # 1 = `manage eval-extraction` also pushes the eval utterances as a Langfuse dataset and each run as an experiment.
+    LANGFUSE_TRACE_EVAL = _flag("LANGFUSE_TRACE_EVAL", False)
+    LANGFUSE_SPAN_EXPORTER = None  # tests only: a fake OpenTelemetry exporter in place of OTLP/HTTP

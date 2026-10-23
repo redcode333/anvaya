@@ -78,7 +78,7 @@ DOC_STATUS = {
 }
 
 OUTCOMES = {
-    "MATCH": {"en": "Likely eligible", "hi": "संभवतः पात्र", "te": "అర్హత ఉండే అవకాశం"},
+    "MATCH": {"en": "Potential match", "hi": "संभावित मिलान", "te": "సంభావ్య సరిపోలిక"},
     "PROVISIONAL": {"en": "Provisional match", "hi": "अस्थायी मिलान", "te": "తాత్కాలిక సరిపోలిక"},
     "MISMATCH": {"en": "Does not match", "hi": "मेल नहीं खाता", "te": "సరిపోలలేదు"},
     "INSUFFICIENT_INFORMATION": {"en": "Need more information", "hi": "और जानकारी चाहिए", "te": "మరింత సమాచారం కావాలి"},
@@ -230,6 +230,16 @@ MESSAGES = {
         "hi": "आपके केस की स्थिति: {status}। अपडेट {ts}।",
         "te": "మీ కేసు స్థితి: {status}. నవీకరణ {ts}.",
     },
+}
+
+# Reviewer outcomes as the citizen sees them (stored codes stay appears_eligible / not_eligible / needs_more_documents).
+REVIEW_OUTCOMES = {
+    "appears_eligible": {"en": "Reviewer found a potential match (not an approval)",
+                         "hi": "समीक्षक को संभावित मिलान मिला (यह स्वीकृति नहीं है)",
+                         "te": "సమీక్షకుడు సంభావ్య సరిపోలికను గుర్తించారు (ఇది ఆమోదం కాదు)"},
+    "not_eligible": {"en": "Reviewer found no match", "hi": "समीक्षक को मिलान नहीं मिला",
+                     "te": "సమీక్షకుడికి సరిపోలిక కనిపించలేదు"},
+    "needs_more_documents": {"en": "More documents needed", "hi": "और दस्तावेज़ चाहिए", "te": "మరిన్ని పత్రాలు అవసరం"},
 }
 
 CASE_STATUS = {
