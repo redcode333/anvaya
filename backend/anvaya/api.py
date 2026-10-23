@@ -1,3 +1,5 @@
+from functools import wraps
+
 from flask import Blueprint, current_app, g, jsonify, request
 
 from . import cases, catalogue, i18n, llm, profile, sync, testrunner, voice
@@ -130,8 +132,8 @@ def add_fact(sid):
 
 @bp.post("/sessions/<sid>/profile/confirm-all")
 def confirm_all(sid):
-    profile.confirm_all(sid)
-    return profile.profile_view(sid)
+    res = profile.confirm_all(sid)
+    return {**profile.profile_view(sid), **res}
 
 
 @bp.post("/sessions/<sid>/voice/transcribe")
@@ -382,16 +384,28 @@ def reimport():
 
 # ---------------------------------------------------------------- test runner
 
+def admin_unless_demo(fn):
+    """Scenario runs write test sessions and reset wipes them: admin only, unless ANVAYA_DEMO_TEST_RUNS=on."""
+    guarded = require_role("admin")(fn)
+
+    @wraps(fn)
+    def wrapper(*a, **kw):
+        return fn(*a, **kw) if current_app.config["DEMO_TEST_RUNS"] else guarded(*a, **kw)
+    return wrapper
+
+
 @bp.get("/test-runs")
 def test_runs():
-    return testrunner.latest_runs()
+    return {**testrunner.latest_runs(), "demo_mode": current_app.config["DEMO_TEST_RUNS"]}
 
 
 @bp.post("/test-runs/<tc_id>")
+@admin_unless_demo
 def run_test(tc_id):
     return testrunner.run(tc_id.upper())
 
 
 @bp.post("/test-runs/reset")
+@admin_unless_demo
 def reset_tests():
     return testrunner.reset()

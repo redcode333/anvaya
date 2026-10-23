@@ -131,6 +131,9 @@ def _fact_row_to_public(r) -> dict:
         "confirmed": bool(r["confirmed"]), "inferred": bool(r["inferred"]), "note": r["note"],
         "captured_at": r["captured_at"], "confirmed_at": r["confirmed_at"],
         "high_impact": r["attribute"] in extraction.HIGH_IMPACT,
+        "confusable": bool(r["confusable"]),
+        # High-impact facts and confusable spoken numbers are read back and confirmed one by one, never in bulk.
+        "confirm_individually": r["attribute"] in extraction.HIGH_IMPACT or bool(r["confusable"]),
     }
 
 
@@ -152,7 +155,7 @@ def fact_history(session_id: str) -> list[dict]:
 
 
 def upsert_fact(session_id, attribute, value, *, source, raw_text=None, confidence=1.0, inferred=False,
-                note=None, confirmed=False) -> dict:
+                note=None, confirmed=False, confusable=False) -> dict:
     value = validate_value(attribute, value)
     db = get_db()
     existing = db.execute(
@@ -167,9 +170,9 @@ def upsert_fact(session_id, attribute, value, *, source, raw_text=None, confiden
     fact_id = f"F-{session_id[-6:]}-{seq:03d}"
     db.execute(
         """INSERT INTO facts(fact_id, session_id, attribute, value_json, raw_text, source, confidence, confirmed,
-           inferred, note, captured_at, confirmed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+           inferred, note, captured_at, confirmed_at, confusable) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (fact_id, session_id, attribute, dumps(value), raw_text, source, confidence, int(confirmed), int(inferred),
-         note, iso(), iso() if confirmed else None),
+         note, iso(), iso() if confirmed else None, int(confusable)),
     )
     previous = None
     if existing:
@@ -207,24 +210,30 @@ def patch_fact(session_id: str, fact_id: str, body: dict) -> dict:
     return res
 
 
-def confirm_all(session_id: str) -> None:
+def confirm_all(session_id: str) -> dict:
+    """Bulk-confirm low-impact facts only. High-impact facts (age, income, state, area, household size) and
+    confusable spoken numbers stay pending until each one is read back and confirmed on its own."""
     get_session(session_id)
     db = get_db()
-    db.execute("UPDATE facts SET confirmed=1, confirmed_at=? WHERE session_id=? AND superseded_by IS NULL AND confirmed=0",
-               (iso(), session_id))
-    audit("profile.confirm_all", session_id=session_id)
+    pending = [f for f in current_facts(session_id).values() if not f["confirmed"]]
+    bulk = [f["fact_id"] for f in pending if not f["confirm_individually"]]
+    db.executemany("UPDATE facts SET confirmed=1, confirmed_at=? WHERE fact_id=?", [(iso(), fid) for fid in bulk])
+    still = [f["fact_id"] for f in pending if f["confirm_individually"]]
+    audit("profile.confirm_all", session_id=session_id, details={"confirmed": bulk, "needs_individual": still})
     refresh_workflow_state(session_id)
     db.commit()
+    return {"confirmed": bulk, "needs_individual_confirmation": still}
 
 
-def unconfirmed_high_impact(session_id: str) -> list[dict]:
-    return [f for f in current_facts(session_id).values() if f["high_impact"] and not f["confirmed"]]
+def unconfirmed_critical(session_id: str) -> list[dict]:
+    """Facts that block screening until confirmed one by one."""
+    return [f for f in current_facts(session_id).values() if f["confirm_individually"] and not f["confirmed"]]
 
 
 def refresh_workflow_state(session_id: str) -> str:
     db = get_db()
     state = db.execute("SELECT workflow_state FROM sessions WHERE session_id=?", (session_id,)).fetchone()[0]
-    if unconfirmed_high_impact(session_id):
+    if unconfirmed_critical(session_id):
         new = "PROFILE_NEEDS_CONFIRMATION"
     elif state == "PROFILE_NEEDS_CONFIRMATION":
         new = "SESSION_ACTIVE"
@@ -262,18 +271,21 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
         raise ApiError("INVALID_UTTERANCE", "Utterance must be 1–2000 characters.", 422)
 
     result = extraction.extract(utterance)
+    relative_ages = {o["value"] for o in result["other_people"] if o["attribute"] == "age"}
     candidates = result["facts"] + [c for c in (llm_candidates or [])
-                                    if c["attribute"] not in {f["attribute"] for f in result["facts"]}]
+                                    if c["attribute"] not in {f["attribute"] for f in result["facts"]}
+                                    and not (c["attribute"] == "age" and c["value"] in relative_ages)]
     applied = []
     for cand in candidates:
-        # High-impact facts always need explicit confirmation; voice-derived facts all do.
+        # High-impact facts and confusable spoken numbers always need explicit confirmation; voice-derived facts all do.
         auto_confirm = channel == "text" and not cand.get("high_impact") and not cand.get("inferred") \
-            and cand.get("source") != "llm"
+            and not cand.get("confusable") and cand.get("source") != "llm"
         try:
             res = upsert_fact(session_id, cand["attribute"], cand["value"],
                               source=cand.get("source") or channel, raw_text=cand.get("raw_text"),
                               confidence=cand.get("confidence", 0.9) * (0.85 if channel == "voice" else 1.0),
-                              inferred=cand.get("inferred", False), note=cand.get("note"), confirmed=auto_confirm)
+                              inferred=cand.get("inferred", False), note=cand.get("note"), confirmed=auto_confirm,
+                              confusable=bool(cand.get("confusable")))
         except ApiError:
             continue
         if res["changed"]:
@@ -289,6 +301,13 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
         parts.append(f"{i18n.t(i18n.MESSAGES, 'heard', lang)} {heard}.")
     else:
         parts.append(i18n.t(i18n.MESSAGES, "nothing_heard", lang))
+    for f in applied:
+        cand = next((c for c in candidates if c["attribute"] == f["attribute"]), {})
+        if f["confusable"] and cand.get("heard_as"):
+            parts.append(i18n.t(i18n.MESSAGES, "confusable_number", lang, value=display_value(f["attribute"], f["value"], lang),
+                                words=cand["heard_as"], alt=" / ".join(cand["confusable_with"])))
+    for o in result["other_people"]:
+        parts.append(i18n.t(i18n.MESSAGES, "relative_age_ignored", lang, relation=o["relation"], age=o["value"]))
     q = next_question(session_id, lang, needed)
     if wf == "PROFILE_NEEDS_CONFIRMATION":
         parts.append(i18n.t(i18n.MESSAGES, "please_confirm", lang))
@@ -315,28 +334,51 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
         "extracted": applied,
         "intents": result["intents"],
         "glossary": result["glossary"],
+        "other_people": result["other_people"],
         "next_question": q,
         "workflow_state": wf,
-        "needs_confirmation": [f["fact_id"] for f in unconfirmed_high_impact(session_id)],
+        "needs_confirmation": [f["fact_id"] for f in unconfirmed_critical(session_id)],
     }
 
 
+AGE_UNIT = {"en": "years", "hi": "वर्ष", "te": "సంవత్సరాలు"}
+AREA_LABELS = {"rural": {"en": "rural", "hi": "ग्रामीण", "te": "గ్రామీణ"}, "urban": {"en": "urban", "hi": "शहरी", "te": "పట్టణ"}}
+
+
+def inr(n: int) -> str:
+    """Indian digit grouping: 150000 → 1,50,000."""
+    s = str(abs(int(n)))
+    head, tail = s[:-3], s[-3:]
+    while len(head) > 2:
+        tail = f"{head[-2:]},{tail}"
+        head = head[:-2]
+    return ("-" if n < 0 else "") + (f"{head},{tail}" if head else tail)
+
+
 def display_value(attr: str, value, lang: str) -> str:
+    """Read-back form: numbers always in digits, so a misheard spoken number is easy to spot."""
     if isinstance(value, bool):
         return {"en": ("yes", "no"), "hi": ("हाँ", "नहीं"), "te": ("అవును", "కాదు")}[lang][0 if value else 1]
     if attr == "annual_income":
-        return f"₹{value:,}"
+        return f"₹{inr(value)}"
+    if attr == "age":
+        return f"{value} {AGE_UNIT[lang]}"
+    if attr == "area" and value in AREA_LABELS:
+        return AREA_LABELS[value][lang]
     return str(value)
 
 
 def profile_view(session_id: str) -> dict:
     s = get_session(session_id, allow_ended=True)
     facts = current_facts(session_id)
+    for f in facts.values():
+        f["readback"] = f"{i18n.t(i18n.ATTRIBUTE_LABELS, f['attribute'], s['language'])}: " \
+                        f"{display_value(f['attribute'], f['value'], s['language'])}"
     marks = {r["doc_key"]: r["status"] for r in get_db().execute(
         "SELECT doc_key, status FROM doc_marks WHERE session_id=?", (session_id,))}
     return {
         "session": {k: s[k] for k in ("session_id", "mode", "language", "workflow_state", "created_at", "expires_at", "ended_at")},
         "facts": list(facts.values()),
-        "needs_confirmation": [f["fact_id"] for f in facts.values() if f["high_impact"] and not f["confirmed"]],
+        "needs_confirmation": [f["fact_id"] for f in facts.values() if f["confirm_individually"] and not f["confirmed"]],
         "documents": marks,
     }

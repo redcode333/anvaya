@@ -12,3 +12,4 @@ k8s/secrets.env
 *.log
 # Dataset is committed as the extracted CSV; the original ZIP is a duplicate.
 archive (1).zip
+.venv/

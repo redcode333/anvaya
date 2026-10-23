@@ -40,7 +40,10 @@ export async function api<T = any>(path: string, opts: Opts = {}): Promise<T> {
 export type Fact = {
   fact_id: string; attribute: string; value: any; raw_text?: string; source: string; confidence: number;
   confirmed: boolean; inferred: boolean; note?: string; high_impact: boolean; superseded_by?: string | null;
+  // High-impact facts and confusable spoken numbers: read back in digits and confirmed one by one, never in bulk.
+  confusable?: boolean; confirm_individually?: boolean; readback?: string;
 };
+
 export type Criterion = {
   criterion_id: string; fact: string; operator: string; expected: any; expected_text: string; observed: any;
   outcome: "PASS" | "FAIL" | "UNKNOWN"; fact_id: string | null; quote: string | null; note?: string; explanation: string;

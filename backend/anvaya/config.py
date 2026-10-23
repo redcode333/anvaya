@@ -27,6 +27,9 @@ class Config:
     AUTH_TOKEN_TTL_HOURS = int(os.environ.get("ANVAYA_AUTH_TOKEN_TTL_HOURS", "8"))
     CODE_LOOKUP_LIMIT_PER_MIN = int(os.environ.get("ANVAYA_CODE_LOOKUP_LIMIT", "10"))
 
+    # Running or resetting the official scenarios (POST /test-runs/*) needs an admin token unless demo mode is on.
+    DEMO_TEST_RUNS = os.environ.get("ANVAYA_DEMO_TEST_RUNS", "off").lower() == "on"
+
     # VerbX speech/translation adapter. Unset => voice endpoints return VOICE_UNAVAILABLE
     # and the frontend falls back to browser speech or text.
     VERBX_BASE_URL = os.environ.get("VERBX_BASE_URL", "")

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Fact } from "../api";
+import { splitPending } from "../confirmation";
 import { ErrorNote, StaffLogin, ValueInput } from "../components";
 import { ATTR, attrLabel, showValue, t, type Lang } from "../i18n";
 import { listen, speak, voiceProvider, type Provider, type Recorder } from "../speech";
@@ -131,6 +132,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
 
   const facts = profile?.facts.filter((f) => f.attribute !== "applicant_name") ?? [];
   const pending = profile?.needs_confirmation ?? [];
+  const { individual, bulk } = splitPending(facts);
   const known = new Set(profile?.facts.map((f) => f.attribute));
   const addable = Object.keys(ATTR).filter((a) => !known.has(a));
 
@@ -170,11 +172,12 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
           <h2>{t("profile", lang)}</h2>
           <span className="tiny mono">{profile?.session.workflow_state}</span>
         </div>
-        {pending.length > 0 && <div className="notice">{t("needsConfirm", lang)}: {pending.length}</div>}
+        {individual.length > 0 && <div className="notice">{t("needsConfirm", lang)}: {individual.length} · {t("confirmEach", lang)}</div>}
         <div className="facts">
           {facts.length === 0 && <p className="muted small">—</p>}
           {facts.map((f) => {
             const isPending = !f.confirmed;
+            const readBack = isPending && individual.includes(f) && f.readback;
             const isEditing = editing?.fact_id === f.fact_id;
             return (
               <div key={f.fact_id} className={`fact ${isPending ? "pending" : ""}`}>
@@ -182,6 +185,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
                   <div className="k">{attrLabel(f.attribute, lang)} {f.high_impact && <span className="chip" title="High-impact: must be confirmed">!</span>} <span className="mono tiny">{f.fact_id}</span></div>
                   {isEditing ? <ValueInput attr={f.attribute} value={editing!.value} onChange={(v) => setEditing({ ...editing!, value: v })} lang={lang} />
                     : <div className="v">{showValue(f.attribute, f.value, lang)}</div>}
+                  {readBack && !isEditing && <div className="small" role="status"><strong>{t("isThisRight", lang)}</strong> <span className="mono">{f.readback}</span></div>}
                   <div className="tiny">
                     {f.raw_text && <>“{f.raw_text}” · </>}{f.source}{f.inferred && " · inferred"}{f.note && ` · ${f.note}`}
                   </div>
@@ -215,7 +219,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
           </label>
         )}
         <div className="row">
-          {pending.length > 0 && <button className="btn" onClick={confirmAll}>{t("confirmAll", lang)}</button>}
+          {bulk.length > 0 && <button className="btn" onClick={confirmAll}>{t("confirmAll", lang)}</button>}
           <button className="btn primary" disabled={pending.length > 0 || facts.length === 0} onClick={() => nav("/citizen/schemes")}>{t("checkSchemes", lang)} →</button>
         </div>
         {mode === "kiosk" && <button className="btn danger" onClick={endSession}>{t("endSession", lang)}</button>}

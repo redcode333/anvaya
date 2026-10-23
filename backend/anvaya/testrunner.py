@@ -23,7 +23,7 @@ TC_DEFS = {
     },
     "TC3": {
         "title": "Age misheard",
-        "expected": "Misheard age (26) is held for confirmation and blocks screening; correction to 62 creates a new fact, re-evaluates and changes results.",
+        "expected": "Misheard age (26) is held for confirmation, read back in digits and blocks screening even after confirm-all; correction to 62 creates a new fact, re-evaluates and changes results.",
         "language": "hi",
         "utterance": "मेरी उम्र 26 साल है। मैं बिहार में रहता हूँ। बीपीएल कार्ड है, कोई पेंशन नहीं मिलती। सालाना आय 40000 रुपये।",
         "corrected_age": 62,
@@ -58,10 +58,18 @@ def _session(lang):
     return profile.create_session("personal", lang, is_test=True)["session_id"]
 
 
+def _confirm(sid):
+    """The citizen confirms: low-impact facts in bulk, then each high-impact fact after its digit read-back."""
+    pending = profile.confirm_all(sid)["needs_individual_confirmation"]
+    for fid in pending:
+        profile.patch_fact(sid, fid, {"confirmed": True})
+    return pending
+
+
 def run_tc1(d):
     sid = _session(d["language"])
     turn = profile.handle_turn(sid, d["utterance"], channel="text")
-    profile.confirm_all(sid)
+    _confirm(sid)
     ev1 = catalogue.evaluate_session(sid)
     ev2 = catalogue.evaluate_session(sid)
     rules = _by_rule(ev1)
@@ -90,7 +98,7 @@ def run_tc2(d):
         sid = _session(d["language"])
         sids.append(sid)
         profile.handle_turn(sid, d["utterance"].format(state=st), channel="text")
-        profile.confirm_all(sid)
+        _confirm(sid)
         ev = catalogue.evaluate_session(sid)
         found = catalogue.search(d["query"], state=st, limit=50)
         per_state[st] = {"rules": _by_rule(ev), "search_ids": {i["scheme_id"] for i in found["items"]},
@@ -135,8 +143,16 @@ def run_tc3(d):
     misheard = {c["rule"]["rule_id"]: rules_engine.evaluate(c["rule"], dry, {}, c["meta"])["outcome"]
                 for c in catalogue.candidate_rules("Bihar")}
 
+    bulk = profile.confirm_all(sid)
+    after_bulk = None
+    try:
+        catalogue.evaluate_session(sid)
+    except ApiError as e:
+        after_bulk = e.code
+    readback = next(f["readback"] for f in profile.profile_view(sid)["facts"] if f["attribute"] == "age")
+
     corrected = profile.patch_fact(sid, age_fact["fact_id"], {"value": d["corrected_age"], "raw_text": "citizen correction"})
-    profile.confirm_all(sid)
+    _confirm(sid)
     ev = catalogue.evaluate_session(sid)
     after = {r["rule_id"]: r["outcome"] for r in ev["results"]}
     changed = {k: {"with_misheard_age": misheard.get(k), "after_correction": after.get(k)}
@@ -146,6 +162,10 @@ def run_tc3(d):
         _check("Transcript age 26 extracted and held unconfirmed", age_fact and age_fact["value"] == 26 and not age_fact["confirmed"],
                age_fact and {"fact_id": age_fact["fact_id"], "raw_text": age_fact["raw_text"]}),
         _check("Screening blocked before confirmation", blocked and blocked["code"] == "PROFILE_NEEDS_CONFIRMATION", blocked),
+        _check("Confirm-all leaves high-impact facts pending and screening blocked",
+               age_fact["fact_id"] in bulk["needs_individual_confirmation"] and after_bulk == "PROFILE_NEEDS_CONFIRMATION",
+               bulk),
+        _check("Age read back with digits for individual confirmation", "26" in readback, readback),
         _check("Correction creates new confirmed fact superseding the old one",
                len(history) == 2 and history[0]["superseded_by"] == history[1]["fact_id"] and history[1]["confirmed"],
                [{"fact_id": h["fact_id"], "value": h["value"], "superseded_by": h["superseded_by"]} for h in history]),
@@ -156,14 +176,15 @@ def run_tc3(d):
     ]
     return {"input": {"utterance": d["utterance"], "channel": "voice (simulated transcript)", "language": d["language"],
                       "correction": {"age": d["corrected_age"]}},
-            "actual": {"reply": turn["reply"], "blocked": blocked, "age_history": history, "changed": changed},
+            "actual": {"reply": turn["reply"], "blocked": blocked, "confirm_all": bulk, "age_readback": readback,
+                       "age_history": history, "changed": changed},
             "checks": checks, "session_ids": [sid]}
 
 
 def run_tc4(d):
     sid = _session(d["language"])
     profile.handle_turn(sid, d["utterance"], channel="text")
-    profile.confirm_all(sid)
+    _confirm(sid)
     for doc, st in d["documents"].items():
         catalogue.set_doc_mark(sid, doc, st)
     ev = catalogue.evaluate_session(sid)

@@ -198,7 +198,7 @@ def localize_result(res: dict, lang: str) -> dict:
 def evaluate_session(session_id: str, *, require_confirmed=True, origin="online") -> dict:
     session = profile.get_session(session_id)
     lang = session["language"]
-    pending = profile.unconfirmed_high_impact(session_id)
+    pending = profile.unconfirmed_critical(session_id)
     if require_confirmed and pending:
         metrics.CONFIRMATION_BLOCKS.inc()
         raise ApiError("PROFILE_NEEDS_CONFIRMATION",

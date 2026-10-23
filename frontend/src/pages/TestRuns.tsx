@@ -1,16 +1,21 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { ErrorNote, Json } from "../components";
+import { ErrorNote, Json, StaffBar, StaffLogin } from "../components";
+import { useApp } from "../state";
 
 type Run = { tc_id: string; title: string; expected: string; passed: boolean; ran_at: string; run_id: string; input: any; actual: any; checks: { name: string; passed: boolean; detail: any }[] };
 
 export default function TestRuns() {
+  const { staff } = useApp();
+  const [demo, setDemo] = useState(false);
   const [defs, setDefs] = useState<Record<string, { title: string; expected: string }>>({});
   const [runs, setRuns] = useState<Record<string, Run | null>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<unknown>(null);
 
-  const load = () => api<any>("/test-runs").then((r) => { setDefs(r.definitions); setRuns(r.latest); }).catch(setErr);
+  const load = () => api<any>("/test-runs").then((r) => { setDefs(r.definitions); setRuns(r.latest); setDemo(!!r.demo_mode); }).catch(setErr);
+  // Running and resetting scenarios is admin-only on the server unless demo mode is on.
+  const canRun = demo || staff?.role === "admin";
   useEffect(() => { load(); }, []);
 
   const run = async (tc: string) => {
@@ -23,14 +28,17 @@ export default function TestRuns() {
 
   return (
     <div className="stack">
+      <StaffBar />
       <div className="row spread">
         <h1>Official scenarios TC1–TC4</h1>
-        <div className="row">
+        {canRun && <div className="row">
           {Object.keys(defs).map((tc) => <button key={tc} className="btn" disabled={!!busy} onClick={() => run(tc)}>{busy === tc ? "…" : `Run ${tc}`}</button>)}
           <button className="btn primary" disabled={!!busy} onClick={runAll}>Run all</button>
           <button className="btn ghost" onClick={reset}>Reset</button>
-        </div>
+        </div>}
       </div>
+      {!canRun && Object.keys(defs).length > 0 && <StaffLogin roles={["admin"]} title="Admin sign-in to run scenarios"
+        hint="Running or resetting TC1–TC4 writes test data, so it needs an admin account (demo: admin / admin123). The latest saved runs are shown below." />}
       <p className="small muted">Each scenario creates an isolated test session and runs the real pipeline (extraction → confirmation → deterministic rules → drafts). Evidence is saved with every run.</p>
       <ErrorNote error={err} />
       {Object.entries(defs).map(([tc, d]) => {

@@ -116,7 +116,8 @@ CREATE TABLE IF NOT EXISTS facts (
     note TEXT,
     captured_at TEXT NOT NULL,
     confirmed_at TEXT,
-    superseded_by TEXT
+    superseded_by TEXT,
+    confusable INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_facts_session ON facts(session_id, attribute);
 
@@ -263,8 +264,15 @@ def connect(path: str) -> sqlite3.Connection:
     return conn
 
 
+# Columns added after the first release: (table, column, DDL) applied to databases created before them.
+MIGRATIONS = [("facts", "confusable", "ALTER TABLE facts ADD COLUMN confusable INTEGER NOT NULL DEFAULT 0")]
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    for table, column, ddl in MIGRATIONS:
+        if column not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
+            conn.execute(ddl)
     conn.commit()
 
 

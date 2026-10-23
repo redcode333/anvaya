@@ -1,3 +1,4 @@
+import re
 import uuid
 
 import pytest
@@ -48,7 +49,9 @@ def test_language_switch_keeps_facts(client):
     before = client.get(f"/api/v1/sessions/{sid}").json["facts"]
     client.patch(f"/api/v1/sessions/{sid}", json={"language": "te"})
     after = client.get(f"/api/v1/sessions/{sid}").json
-    assert after["session"]["language"] == "te" and after["facts"] == before
+    strip = lambda facts: [{k: v for k, v in f.items() if k != "readback"} for f in facts]  # noqa: E731
+    assert after["session"]["language"] == "te" and strip(after["facts"]) == strip(before)
+    assert next(f["readback"] for f in after["facts"] if f["attribute"] == "age") == "వయస్సు: 62 సంవత్సరాలు"
     ev = client.post(f"/api/v1/sessions/{sid}/eligibility/evaluate").json
     assert ev["results"][0]["outcome_label"] in ("తాత్కాలిక సరిపోలిక", "మరింత సమాచారం కావాలి", "సరిపోలలేదు", "మానవ సమీక్ష అవసరం")
 
@@ -140,7 +143,8 @@ def test_reviewer_requires_role_and_flow(client, reviewer, operator):
     audit = client.get(f"/api/v1/cases/{h['case_id']}/audit", headers=reviewer).json["events"]
     actions = [e["action"] for e in audit]
     assert {"case.created", "review.request_correction", "case.resubmitted", "review.record_review"} <= set(actions)
-    assert all("62" not in str(e["details"]) for e in audit), "audit must not hold raw profile values"
+    # Whole-number match only: random hex IDs (DRF_1d11563628d8) may contain the digits "62".
+    assert not any(re.search(r"\b62\b", str(e["details"])) for e in audit), "audit must not hold raw profile values"
 
 
 def test_citizen_cannot_set_verified(client):
@@ -242,9 +246,28 @@ def test_voice_unavailable_falls_back_cleanly(client):
 
 
 @pytest.mark.parametrize("tc", ["TC1", "TC2", "TC3", "TC4"])
-def test_official_scenarios(client, tc):
-    r = client.post(f"/api/v1/test-runs/{tc}").json
+def test_official_scenarios(client, admin, tc):
+    r = client.post(f"/api/v1/test-runs/{tc}", headers=admin).json
     assert r["passed"], [c for c in r["checks"] if not c["passed"]]
+
+
+@pytest.mark.parametrize("path", ["/api/v1/test-runs/TC1", "/api/v1/test-runs/reset"])
+def test_test_runs_need_admin(client, reviewer, operator, path):
+    assert client.post(path).json["error"]["code"] == "UNAUTHENTICATED"
+    assert client.post(path, headers=reviewer).status_code == 403
+    assert client.post(path, headers=operator).status_code == 403
+    r = client.get("/api/v1/test-runs")
+    assert r.status_code == 200 and r.json["demo_mode"] is False
+
+
+def test_test_runs_open_in_demo_mode(app, client):
+    app.config["DEMO_TEST_RUNS"] = True
+    try:
+        assert client.get("/api/v1/test-runs").json["demo_mode"] is True
+        assert client.post("/api/v1/test-runs/TC2").json["passed"]
+        assert client.post("/api/v1/test-runs/reset").status_code == 200
+    finally:
+        app.config["DEMO_TEST_RUNS"] = False
 
 
 def test_prometheus_metrics(client):
@@ -267,3 +290,85 @@ def test_metrics_token_enforced_when_configured(app, client):
         assert client.get("/metrics", headers={"Authorization": "Bearer s3cret"}).status_code == 200
     finally:
         app.config["METRICS_TOKEN"] = ""
+
+
+def turn(client, utterance, lang="en"):
+    sid = client.post("/api/v1/sessions", json={"mode": "personal", "language": lang}).json["session_id"]
+    r = client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": utterance})
+    assert r.status_code == 200, r.json
+    return sid, r.json
+
+
+@pytest.mark.parametrize("lang,utterance,note", [
+    ("hi", "मेरी माँ 67 साल की हैं, मेरी उम्र 35 है", "मैंने आपके माँ की उम्र (67) सुनी; इसे आपकी अपनी उम्र नहीं माना।"),
+    ("te", "మా అమ్మ వయస్సు 67 సంవత్సరాలు, నా వయస్సు 35 సంవత్సరాలు",
+     "మీ అమ్మ వయస్సు (67) విన్నాను; దాన్ని మీ స్వంత వయస్సుగా తీసుకోలేదు."),
+    ("en", "My mother is 67 years old and I am 35", "I heard an age for your mother (67); I did not use it as your own age."),
+])
+def test_relative_age_not_stored_and_reply_says_so(client, lang, utterance, note):
+    sid, r = turn(client, utterance, lang)
+    assert [f["value"] for f in r["extracted"] if f["attribute"] == "age"] == [35]
+    assert note in r["reply"] and r["other_people"][0]["value"] == 67
+    facts = client.get(f"/api/v1/sessions/{sid}").json["facts"]
+    assert [f["value"] for f in facts if f["attribute"] == "age"] == [35]
+
+
+def test_llm_candidate_cannot_reintroduce_relative_age(app):
+    from anvaya import profile
+    with app.app_context():
+        sid = profile.create_session("personal", "en")["session_id"]
+        r = profile.handle_turn(sid, "My father is 70 years old", llm_candidates=[
+            {"attribute": "age", "value": 70, "source": "llm", "confidence": 0.7}])
+        assert not any(f["attribute"] == "age" for f in r["extracted"])
+
+
+def test_confirm_all_only_confirms_low_impact_facts(client):
+    sid, _ = turn(client, BIHAR)
+    r = client.post(f"/api/v1/sessions/{sid}/profile/confirm-all").json
+    facts = {f["attribute"]: f for f in r["facts"]}
+    assert {a for a, f in facts.items() if not f["confirmed"]} == {"age", "state"}
+    assert set(r["needs_confirmation"]) == {facts["age"]["fact_id"], facts["state"]["fact_id"]}
+    assert set(r["needs_individual_confirmation"]) == set(r["needs_confirmation"])
+    assert facts["age"]["readback"] == "Age: 62 years" and facts["state"]["readback"] == "State: Bihar"
+    assert client.post(f"/api/v1/sessions/{sid}/eligibility/evaluate").json["error"]["code"] == "PROFILE_NEEDS_CONFIRMATION"
+    client.patch(f"/api/v1/sessions/{sid}/profile/facts/{facts['age']['fact_id']}", json={"confirmed": True})
+    assert client.post(f"/api/v1/sessions/{sid}/eligibility/evaluate").status_code == 409
+    client.patch(f"/api/v1/sessions/{sid}/profile/facts/{facts['state']['fact_id']}", json={"confirmed": True})
+    assert client.post(f"/api/v1/sessions/{sid}/eligibility/evaluate").status_code == 200
+
+
+def test_income_and_area_read_back_with_digits(client):
+    sid, _ = turn(client, "मैं बिहार के गाँव में रहता हूँ। साल भर में डेढ़ लाख की कमाई है", "hi")
+    facts = {f["attribute"]: f for f in client.post(f"/api/v1/sessions/{sid}/profile/confirm-all").json["facts"]}
+    assert facts["annual_income"]["readback"] == "सालाना पारिवारिक आय (₹): ₹1,50,000"
+    assert facts["area"]["confirm_individually"] and not facts["area"]["confirmed"]
+    assert facts["area"]["readback"].endswith("ग्रामीण")
+
+
+@pytest.mark.parametrize("lang,utterance,heard,alt", [
+    ("hi", "मेरी उम्र साठ साल है", "साठ", "सत्तर"),
+    ("en", "I am sixty years old", "sixty", "sixteen"),
+    ("te", "నా వయస్సు అరవై సంవత్సరాలు", "అరవై", "డెబ్బై"),
+])
+def test_confusable_spoken_number_needs_confirmation(client, lang, utterance, heard, alt):
+    sid, r = turn(client, utterance, lang)
+    age = next(f for f in r["extracted"] if f["attribute"] == "age")
+    assert age["value"] == 60 and age["confusable"] and not age["confirmed"]
+    assert age["fact_id"] in r["needs_confirmation"]
+    assert f"“{heard}”" in r["reply"] and alt in r["reply"]
+    after = client.post(f"/api/v1/sessions/{sid}/profile/confirm-all").json
+    assert age["fact_id"] in after["needs_confirmation"]
+
+
+def test_schema_migration_adds_confusable_column(tmp_path):
+    import sqlite3
+
+    from anvaya.db import init_schema
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE facts (fact_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, attribute TEXT NOT NULL)")
+    old.execute("INSERT INTO facts VALUES ('F-1', 'S-1', 'age')")
+    old.commit()
+    init_schema(old)
+    init_schema(old)  # idempotent
+    assert old.execute("SELECT confusable FROM facts WHERE fact_id='F-1'").fetchone()[0] == 0

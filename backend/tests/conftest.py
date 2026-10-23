@@ -45,5 +45,8 @@ def start(client, utterance, lang="en", confirm=True):
     r = client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": utterance})
     assert r.status_code == 200, r.json
     if confirm:
-        client.post(f"/api/v1/sessions/{sid}/profile/confirm-all")
+        # Confirm-all covers low-impact facts; each high-impact fact is confirmed on its own after its read-back.
+        pending = client.post(f"/api/v1/sessions/{sid}/profile/confirm-all").json["needs_confirmation"]
+        for fid in pending:
+            client.patch(f"/api/v1/sessions/{sid}/profile/facts/{fid}", json={"confirmed": True})
     return sid

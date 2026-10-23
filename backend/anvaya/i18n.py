@@ -194,6 +194,16 @@ MESSAGES = {
         "hi": "धन्यवाद। आपकी जानकारी की पुष्टि हो गई है — अब आप योजनाएँ देख सकते हैं।",
         "te": "ధన్యవాదాలు. మీ వివరాలు నిర్ధారించబడ్డాయి — ఇప్పుడు మీరు పథకాలు చూడవచ్చు.",
     },
+    "relative_age_ignored": {
+        "en": "I heard an age for your {relation} ({age}); I did not use it as your own age.",
+        "hi": "मैंने आपके {relation} की उम्र ({age}) सुनी; इसे आपकी अपनी उम्र नहीं माना।",
+        "te": "మీ {relation} వయస్సు ({age}) విన్నాను; దాన్ని మీ స్వంత వయస్సుగా తీసుకోలేదు.",
+    },
+    "confusable_number": {
+        "en": "Please check the number {value}: I heard “{words}”, which can sound like “{alt}”.",
+        "hi": "कृपया संख्या {value} जाँचें: मैंने “{words}” सुना, जो “{alt}” जैसा सुनाई दे सकता है।",
+        "te": "దయచేసి సంఖ్య {value} సరిచూడండి: నేను “{words}” విన్నాను, ఇది “{alt}” లాగా వినిపించవచ్చు.",
+    },
     "summary_intro": {
         "en": "Here is what I found. These are preliminary results, not an approval.",
         "hi": "मुझे यह मिला। ये प्रारंभिक परिणाम हैं, स्वीकृति नहीं।",
