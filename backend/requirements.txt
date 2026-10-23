@@ -1,5 +1,5 @@
 Flask>=3.0
-requests>=2.31
+requests>=2.34.2
 prometheus_client>=0.20
 pytest>=8
 # Optional Langfuse tracing of LLM extraction; imported only when LANGFUSE_* keys are set.
