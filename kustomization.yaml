@@ -33,7 +33,13 @@ configMapGenerator:
       - ANVAYA_CASE_CODE_TTL_HOURS=72
       - ANVAYA_CODE_LOOKUP_LIMIT=10
       - ANVAYA_LLM_EXTRACTION=off
-      - ANVAYA_LLM_MODEL=claude-opus-5-5
+      - LLM_PROVIDERS=groq,gemini
+      - GROQ_MODEL=openai/gpt-oss-120b
+      - GROQ_REASONING_EFFORT=low
+      - GEMINI_MODEL=gemini-3.5-flash-lite
+      - GEMINI_REASONING_EFFORT=low
+      - LLM_TURN_BUDGET_S=7
+      - LLM_ALLOW_REAL_DATA=false
       - VERBX_STT_PATH=/v1/stt
       - VERBX_TTS_PATH=/v1/tts
       - VERBX_TIMEOUT_S=15

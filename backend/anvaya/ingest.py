@@ -6,13 +6,15 @@ import csv
 import hashlib
 import html
 import json
+import os
 import re
 import sqlite3
 import sys
 from pathlib import Path
 
-from werkzeug.security import generate_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
+from .config import STAFF_ACCOUNTS
 from .db import dumps, init_schema, iso, new_id
 
 csv.field_size_limit(min(sys.maxsize, 2**31 - 1))
@@ -21,11 +23,6 @@ URL_RE = re.compile(r"https?://\S+")
 LIST_MARKER_RE = re.compile(r"(^|\n)\s*(\d+[.)]|-|•|\*)\s+")
 WS_RE = re.compile(r"[ \t\r\f\v]+")
 
-DEMO_USERS = [
-    ("reviewer", "reviewer123", "reviewer", "Demo Reviewer"),
-    ("operator", "operator123", "operator", "Demo Kiosk Operator"),
-    ("admin", "admin123", "admin", "Demo Data Steward"),
-]
 
 
 def clean_text(s: str | None) -> str:
@@ -266,13 +263,27 @@ def load_rules(conn: sqlite3.Connection, rules_path: str, bundle_version: str) -
     return {"bundle_version": bundle_version, "rules": results}
 
 
-def seed_users(conn: sqlite3.Connection) -> None:
-    for username, password, role, display in DEMO_USERS:
-        conn.execute(
-            "INSERT OR IGNORE INTO users(user_id, username, password_hash, role, display_name) VALUES (?,?,?,?,?)",
-            (new_id("USR"), username, generate_password_hash(password), role, display),
-        )
+def seed_users(conn: sqlite3.Connection, env=None) -> list[str]:
+    """Create the reviewer / operator / admin accounts. A password set in ANVAYA_<ROLE>_PASSWORD is applied on every
+    start (so changing it in .env takes effect, and an old demo password stops working); when unset, a new account
+    gets the public demo password. Returns the usernames whose password variable is unset."""
+    env = os.environ if env is None else env
+    on_demo = []
+    for username, (var, role, display, demo_password) in STAFF_ACCOUNTS.items():
+        password = env.get(var, "")
+        row = conn.execute("SELECT password_hash FROM users WHERE username=?", (username,)).fetchone()
+        if not password:
+            on_demo.append(username)
+            password = demo_password
+            if row:
+                continue  # keep whatever the account has; never reset it to the demo password
+        if row is None:
+            conn.execute("INSERT INTO users(user_id, username, password_hash, role, display_name) VALUES (?,?,?,?,?)",
+                         (new_id("USR"), username, generate_password_hash(password), role, display))
+        elif not check_password_hash(row[0], password):
+            conn.execute("UPDATE users SET password_hash=? WHERE username=?", (generate_password_hash(password), username))
     conn.commit()
+    return on_demo
 
 
 def bootstrap(conn: sqlite3.Connection, csv_path: str, rules_path: str, bundle_version: str) -> dict:

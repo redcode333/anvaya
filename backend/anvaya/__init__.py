@@ -21,11 +21,18 @@ def create_app(overrides: dict | None = None) -> Flask:
     app.json.ensure_ascii = False
     app.json.sort_keys = False
 
-    with connect(app.config["DB_PATH"]) as conn:
-        init_schema(conn)
-
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     log = logging.getLogger("anvaya.http")
+
+    from . import startup
+    from .ingest import seed_users
+    conn = connect(app.config["DB_PATH"])
+    try:
+        init_schema(conn)
+        demo_users = seed_users(conn)
+    finally:
+        conn.close()
+    app.extensions["anvaya.startup"] = startup.check(app.config, demo_users)
 
     @app.before_request
     def _start():

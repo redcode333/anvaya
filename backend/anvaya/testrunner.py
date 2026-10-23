@@ -59,10 +59,14 @@ def _session(lang):
 
 
 def _confirm(sid):
-    """The citizen confirms: low-impact facts in bulk, then each high-impact fact after its digit read-back."""
+    """The citizen confirms: low-impact facts in bulk, then each high-impact fact after its digit read-back. If the
+    LLM cross-check heard a different value, the scripted citizen picks the value the scenario actually states (the
+    deterministic reading, stored as the fact's value)."""
     pending = profile.confirm_all(sid)["needs_individual_confirmation"]
+    facts = {f["fact_id"]: f for f in profile.current_facts(sid).values()}
     for fid in pending:
-        profile.patch_fact(sid, fid, {"confirmed": True})
+        f = facts.get(fid)
+        profile.patch_fact(sid, fid, {"value": f["value"]} if f and f["disputed"] else {"confirmed": True})
     return pending
 
 

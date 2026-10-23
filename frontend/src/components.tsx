@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api, ApiError } from "./api";
 import { attrLabel, BOOL_ATTRS, ENUMS, NUM_ATTRS, OUTCOME_LABEL, STATES, type Lang } from "./i18n";
 import { useApp } from "./state";
@@ -22,7 +22,27 @@ export function StatusBadge({ status }: { status: string }) {
   return <span className={`badge s-${status}`}>{status}</span>;
 }
 
-export function StaffLogin({ roles, title, hint }: { roles: string[]; title: string; hint: string }) {
+// Staff accounts still on their public demo password (none when ANVAYA_*_PASSWORD are set): only these are hinted.
+let demoAccounts: Promise<Record<string, string>> | null = null;
+export function useDemoAccounts(): Record<string, string> {
+  const [acc, setAcc] = useState<Record<string, string>>({});
+  useEffect(() => {
+    demoAccounts ??= api<{ accounts: { username: string; password: string }[] }>("/auth/demo-accounts", { auth: false })
+      .then((r) => Object.fromEntries(r.accounts.map((a) => [a.username, a.password])))
+      .catch(() => ({}));
+    demoAccounts.then(setAcc);
+  }, []);
+  return acc;
+}
+
+export function DemoCreds({ users }: { users: string[] }) {
+  const acc = useDemoAccounts();
+  const shown = users.filter((u) => acc[u]);
+  if (!shown.length) return null;
+  return <>Demo account{shown.length > 1 ? "s" : ""}: {shown.map((u, i) => <span key={u}>{i > 0 && " · "}<span className="mono">{u} / {acc[u]}</span></span>)}.</>;
+}
+
+export function StaffLogin({ roles, title, hint, demo = [] }: { roles: string[]; title: string; hint: string; demo?: string[] }) {
   const { setStaff } = useApp();
   const [u, setU] = useState(""), [p, setP] = useState("");
   const [err, setErr] = useState<unknown>(null);
@@ -38,12 +58,12 @@ export function StaffLogin({ roles, title, hint }: { roles: string[]; title: str
   return (
     <form className="card stack" style={{ maxWidth: 420 }} onSubmit={submit}>
       <h2>{title}</h2>
-      <p className="small muted">{hint}</p>
+      <p className="small muted">{hint} <DemoCreds users={demo} /></p>
       <label className="field">Username<input type="text" value={u} onChange={(e) => setU(e.target.value)} autoComplete="username" /></label>
       <label className="field">Password<input type="password" value={p} onChange={(e) => setP(e.target.value)} autoComplete="current-password" /></label>
       <ErrorNote error={err} />
       <button className="btn primary" type="submit">Sign in</button>
-      <p className="tiny">Seeded demo accounts only — not production identity.</p>
+      <p className="tiny">Seeded staff accounts only — not production identity.</p>
     </form>
   );
 }

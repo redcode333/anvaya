@@ -204,6 +204,11 @@ MESSAGES = {
         "hi": "कृपया संख्या {value} जाँचें: मैंने “{words}” सुना, जो “{alt}” जैसा सुनाई दे सकता है।",
         "te": "దయచేసి సంఖ్య {value} సరిచూడండి: నేను “{words}” విన్నాను, ఇది “{alt}” లాగా వినిపించవచ్చు.",
     },
+    "disputed_value": {
+        "en": "{label}: {a} or {b}? Please choose the right one.",
+        "hi": "{label}: {a} या {b}? कृपया सही चुनें।",
+        "te": "{label}: {a} లేదా {b}? దయచేసి సరైనది ఎంచుకోండి.",
+    },
     "summary_intro": {
         "en": "Here is what I found. These are preliminary results, not an approval.",
         "hi": "मुझे यह मिला। ये प्रारंभिक परिणाम हैं, स्वीकृति नहीं।",

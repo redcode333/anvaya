@@ -1,16 +1,27 @@
-// Voice path: VerbX (via backend adapter) → browser Web Speech API → text only.
-// The UI always shows which provider is active, and text input is always available.
-import { api } from "./api";
+// Voice input: VerbX STT (via backend adapter) → browser Web Speech API → text only.
+// Read-aloud: VerbX TTS (cached on the server) when configured, else browser speech; a slow or failed VerbX clip
+// leaves the text on screen with an "audio unavailable" note. Text input is always available.
+import { api, ApiError } from "./api";
 import { LANGS, type Lang } from "./i18n";
 
 export type Provider = "verbx" | "browser" | "none";
 
 let verbx: boolean | null = null;
+let verbxDown = false;  // VerbX failed this visit: use browser speech from now on
+export const verbxFailedOver = () => verbxDown;
+
+/** Records a VerbX STT failure; returns true when VerbX itself is down (not just an empty clip) and browser
+ *  speech should take over. */
+export function noteVerbxError(e: unknown): boolean {
+  const down = !(e instanceof ApiError && e.details?.reason === "no_speech");
+  if (down) verbxDown = true;
+  return down;
+}
 export async function voiceProvider(): Promise<Provider> {
   if (verbx === null) {
     try { verbx = (await api<{ verbx_configured: boolean }>("/voice/status")).verbx_configured; } catch { verbx = false; }
   }
-  if (verbx) return "verbx";
+  if (verbx && !verbxDown) return "verbx";
   const w = window as any;
   return w.SpeechRecognition || w.webkitSpeechRecognition ? "browser" : "none";
 }
@@ -47,7 +58,12 @@ export function listen(provider: Provider, sessionId: string, lang: Lang,
         try {
           const r = await api<{ transcript: string }>(`/sessions/${sessionId}/voice/transcribe`, { body: fd });
           onText(r.transcript);
-        } catch (e: any) { onError(e.message); }
+        } catch (e: any) {
+          const serviceDown = noteVerbxError(e);
+          const w = window as any;
+          onError(serviceDown && (w.SpeechRecognition || w.webkitSpeechRecognition)
+            ? `${e.message} Switched to browser speech — tap the mic again.` : e.message);
+        }
         onEnd();
       };
       mr.start();
@@ -59,20 +75,69 @@ export function listen(provider: Provider, sessionId: string, lang: Lang,
   return null;
 }
 
-export async function speak(provider: Provider, sessionId: string | null, text: string, lang: Lang): Promise<string> {
+// Read-aloud never holds up the UI: callers show the text first and call speak() without awaiting it. Text is read
+// sentence by sentence (the backend caches each sentence; fixed prompts are prerendered), all sentences are requested
+// at once and played in order. Any sentence not ready within TTS_WAIT_MS, or failing, ends playback with
+// "unavailable" so the caller can show a small "audio unavailable" note next to the text.
+export const TTS_WAIT_MS = 8000;
+export type SpeakResult = "verbx" | "browser" | "browser (no native voice for this language — may sound accented)"
+  | "unavailable" | "cancelled" | "none";
+
+let playId = 0;
+let playing: HTMLAudioElement | null = null;
+let aborts: AbortController[] = [];
+
+export function stopSpeaking() {
+  playId++;
+  aborts.forEach((a) => a.abort());
+  aborts = [];
+  playing?.pause();
+  playing = null;
+  if (typeof window !== "undefined" && "speechSynthesis" in window) speechSynthesis.cancel();
+}
+
+function fetchClip(sessionId: string, text: string, lang: Lang): Promise<string> {
+  const ctl = new AbortController();
+  aborts.push(ctl);
+  const timer = setTimeout(() => ctl.abort(), TTS_WAIT_MS);
+  return api<{ audio_base64: string; mime_type: string }>(`/sessions/${sessionId}/voice/speak`,
+    { body: { text, language: lang }, signal: ctl.signal })
+    .then((r) => `data:${r.mime_type};base64,${r.audio_base64}`)
+    .finally(() => clearTimeout(timer));
+}
+
+function play(src: string, id: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (id !== playId) return resolve(false);
+    const a = new Audio(src);
+    playing = a;
+    a.onended = () => resolve(true);
+    a.onerror = () => resolve(false);
+    a.play().catch(() => resolve(false));  // e.g. autoplay blocked
+  });
+}
+
+export async function speak(provider: Provider, sessionId: string | null, text: string | string[], lang: Lang): Promise<SpeakResult> {
+  const parts = (Array.isArray(text) ? text : [text]).map((s) => s.trim()).filter(Boolean);
+  stopSpeaking();
+  const id = playId;
+  if (!parts.length) return "none";
   if (provider === "verbx" && sessionId) {
-    try {
-      const r = await api<{ audio_base64: string; mime_type: string }>(`/sessions/${sessionId}/voice/speak`, { body: { text, language: lang } });
-      await new Audio(`data:${r.mime_type};base64,${r.audio_base64}`).play();
-      return "verbx";
-    } catch { /* fall through to browser TTS */ }
+    const clips = parts.map((p) => fetchClip(sessionId, p, lang));
+    clips.forEach((c) => c.catch(() => undefined));  // a rejected later clip must not surface as unhandled
+    for (const clip of clips) {
+      let src: string;
+      try { src = await clip; } catch { return id === playId ? "unavailable" : "cancelled"; }
+      if (id !== playId) return "cancelled";
+      if (!(await play(src, id))) return id === playId ? "unavailable" : "cancelled";
+    }
+    return "verbx";
   }
-  if ("speechSynthesis" in window) {
-    const u = new SpeechSynthesisUtterance(text);
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    const u = new SpeechSynthesisUtterance(parts.join(" "));
     u.lang = speechCode(lang);
     const voice = speechSynthesis.getVoices().find((v) => v.lang === u.lang);
     if (voice) u.voice = voice;
-    speechSynthesis.cancel();
     speechSynthesis.speak(u);
     return voice ? "browser" : "browser (no native voice for this language — may sound accented)";
   }

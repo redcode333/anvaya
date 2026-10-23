@@ -24,7 +24,9 @@ const S = {
   confirm: { en: "Confirm", hi: "पुष्टि करें", te: "నిర్ధారించండి" },
   confirmAll: { en: "Other details are correct — confirm them", hi: "बाकी जानकारी सही है — पुष्टि करें", te: "మిగిలిన వివరాలు సరైనవే — నిర్ధారించండి" },
   confirmEach: { en: "Check each number and confirm it on its own", hi: "हर संख्या जाँचें और अलग से पुष्टि करें", te: "ప్రతి సంఖ్యను సరిచూసి విడిగా నిర్ధారించండి" },
+  machineTranslated: { en: "Machine translation", hi: "मशीनी अनुवाद", te: "యంత్ర అనువాదం" },
   isThisRight: { en: "Is this right?", hi: "क्या यह सही है?", te: "ఇది సరైనదేనా?" },
+  whichIsRight: { en: "Two values were heard — which is right?", hi: "दो अलग मान सुने गए — कौन सा सही है?", te: "రెండు విలువలు వినిపించాయి — ఏది సరైనది?" },
   correct: { en: "Correct", hi: "सुधारें", te: "సరిచేయండి" },
   save: { en: "Save", hi: "सहेजें", te: "సేవ్ చేయండి" },
   cancel: { en: "Cancel", hi: "रद्द करें", te: "రద్దు" },
@@ -39,6 +41,7 @@ const S = {
   source: { en: "Source", hi: "स्रोत", te: "మూలం" },
   prepareDraft: { en: "Prepare draft", hi: "ड्राफ़्ट तैयार करें", te: "డ్రాఫ్ట్ సిద్ధం చేయండి" },
   listen: { en: "Listen to summary", hi: "सारांश सुनें", te: "సారాంశం వినండి" },
+  audioUnavailable: { en: "Audio unavailable — please read the text.", hi: "ऑडियो उपलब्ध नहीं — कृपया लिखा हुआ पढ़ें।", te: "ఆడియో అందుబాటులో లేదు — దయచేసి వచనం చదవండి." },
   notApproval: {
     en: "Preliminary screening only — not an approval and not a guarantee of benefit.",
     hi: "यह केवल प्रारंभिक जाँच है — स्वीकृति या लाभ की गारंटी नहीं।",

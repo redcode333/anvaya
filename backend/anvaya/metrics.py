@@ -21,6 +21,13 @@ IDEMPOTENT_REPLAYS = Counter("anvaya_idempotent_replays_total", "Requests answer
 SYNC_EVENTS = Counter("anvaya_sync_events_total", "Offline outbox events received", ["status"])
 SYNC_RESULT_CHANGED = Counter("anvaya_sync_result_changed_total", "Offline results that changed on online re-check")
 
+LLM_CALLS = Counter("anvaya_llm_calls_total", "LLM extraction calls by provider and result", ["provider", "result"])
+LLM_LATENCY = Histogram("anvaya_llm_latency_seconds", "LLM extraction call latency", ["provider"],
+                        buckets=(.1, .25, .5, 1, 2, 3, 4, 5, 6, 8))
+LLM_FALLBACKS = Counter("anvaya_llm_fallbacks_total", "Moves from one LLM provider to the next", ["from", "to"])
+LLM_MERGE = Counter("anvaya_llm_merge_total", "LLM facts by merge outcome against deterministic extraction",
+                    ["outcome"])
+
 VOICE = Counter("anvaya_voice_requests_total", "Voice adapter calls", ["op", "result"])
 AUTH = Counter("anvaya_auth_events_total", "Auth events", ["result"])
 RATE_LIMITED = Counter("anvaya_code_lookups_rate_limited_total", "Case-code lookups rejected by rate limit", ["bucket"])

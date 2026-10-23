@@ -313,13 +313,7 @@ def test_relative_age_not_stored_and_reply_says_so(client, lang, utterance, note
     assert [f["value"] for f in facts if f["attribute"] == "age"] == [35]
 
 
-def test_llm_candidate_cannot_reintroduce_relative_age(app):
-    from anvaya import profile
-    with app.app_context():
-        sid = profile.create_session("personal", "en")["session_id"]
-        r = profile.handle_turn(sid, "My father is 70 years old", llm_candidates=[
-            {"attribute": "age", "value": 70, "source": "llm", "confidence": 0.7}])
-        assert not any(f["attribute"] == "age" for f in r["extracted"])
+# LLM facts and the relative-age rule: tests/test_llm.py::test_relative_age_rule_applies_to_llm_facts
 
 
 def test_confirm_all_only_confirms_low_impact_facts(client):

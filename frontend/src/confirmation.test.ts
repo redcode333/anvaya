@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Fact } from "./api";
-import { splitPending } from "./confirmation";
+import { choices, splitPending } from "./confirmation";
 
 const fact = (attribute: string, over: Partial<Fact> = {}): Fact => ({
   fact_id: `F-${attribute}`, attribute, value: 1, source: "voice", confidence: 0.9, confirmed: false, inferred: false,
@@ -20,5 +20,18 @@ describe("confirm-all covers only low-impact facts", () => {
     const { individual, bulk } = splitPending(facts);
     expect(individual.map((f) => f.attribute)).toEqual(["bpl"]);
     expect(bulk.map((f) => f.attribute)).toEqual(["gender"]);
+  });
+});
+
+describe("disputed values", () => {
+  it("offers both readings as choices and never puts the fact in confirm-all", () => {
+    const age = fact("age", { value: 60, alternatives: [60, 70], disputed: true, confirm_individually: true });
+    expect(choices(age)).toEqual([60, 70]);
+    expect(splitPending([age]).bulk).toEqual([]);
+  });
+
+  it("offers no choices once the citizen picked one", () => {
+    expect(choices(fact("age", { value: 70, alternatives: [60, 70], disputed: false, confirmed: true }))).toEqual([]);
+    expect(choices(fact("bpl"))).toEqual([]);
   });
 });

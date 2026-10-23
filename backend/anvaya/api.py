@@ -2,7 +2,7 @@ from functools import wraps
 
 from flask import Blueprint, current_app, g, jsonify, request
 
-from . import cases, catalogue, i18n, llm, profile, sync, testrunner, voice
+from . import cases, catalogue, i18n, llm, profile, sync, testrunner, translation, voice
 from .common import (ApiError, audit, current_user, idem_lookup, idem_store, idempotency_key, login,
                      require_role)
 from .db import get_db, iso
@@ -41,9 +41,22 @@ def ready():
     schemes = db.execute("SELECT COUNT(*) FROM schemes").fetchone()[0]
     rules = db.execute("SELECT COUNT(*) FROM rules WHERE active=1").fetchone()[0]
     ok = schemes > 0 and rules > 0
+    boot = current_app.extensions["anvaya.startup"]
+    # Readiness depends on the catalogue only: every integration is optional and reported, never required.
     return jsonify({"ready": ok, "schemes": schemes, "rules": rules,
                     "bundle_version": current_app.config["RULE_BUNDLE_VERSION"],
-                    "voice": voice.status(), "llm_extraction": llm.enabled()}), (200 if ok else 503)
+                    "integrations": {k: {"status": v["status"], "missing": v["missing"]}
+                                     for k, v in boot["integrations"].items()},
+                    "warnings": boot["warnings"], "tts_cache": voice.cache_stats(),
+                    "voice": voice.status(), "llm_extraction": llm.status()}), (200 if ok else 503)
+
+
+@bp.get("/auth/demo-accounts")
+def demo_accounts():
+    """Which staff accounts still use the public demo password, so sign-in pages only show credentials that work."""
+    from .config import STAFF_ACCOUNTS
+    users = current_app.extensions["anvaya.startup"]["demo_password_users"]
+    return {"accounts": [{"username": u, "password": STAFF_ACCOUNTS[u][3]} for u in users]}
 
 
 # ---------------------------------------------------------------- auth
@@ -75,8 +88,11 @@ def create_session():
             raise ApiError("OPERATOR_REQUIRED", "Kiosk sessions are started by a signed-in kiosk operator.", 401)
         g.user = u
         operator_id = u["user_id"]
-    s = profile.create_session(mode, b.get("language", "en"), device_id=b.get("device_id"), operator_id=operator_id)
+    # "demo": true marks demo data, which (unlike real citizen data) may be sent to free-tier LLM providers.
+    s = profile.create_session(mode, b.get("language", "en"), device_id=b.get("device_id"), operator_id=operator_id,
+                               is_demo=b.get("demo") is True)
     return {**{k: s[k] for k in ("session_id", "mode", "language", "workflow_state", "expires_at")},
+            "demo": bool(s["is_demo"]),
             "greeting": i18n.t(i18n.MESSAGES, "greeting", s["language"])}, 201
 
 
@@ -106,9 +122,7 @@ def turn(sid):
     channel = b.get("channel", "text")
     if channel not in ("text", "voice"):
         raise ApiError("INVALID_CHANNEL", "channel must be text or voice.", 422)
-    llm_candidates = llm.extract(utterance) if llm.enabled() else None
-    return profile.handle_turn(sid, utterance, channel=channel, language=b.get("language"),
-                               llm_candidates=llm_candidates)
+    return profile.handle_turn(sid, utterance, channel=channel, language=b.get("language"))
 
 
 @bp.patch("/sessions/<sid>/profile/facts/<fact_id>")
@@ -160,6 +174,23 @@ def voice_status():
     return voice.status()
 
 
+@bp.post("/sessions/<sid>/translate")
+def translate(sid):
+    """Machine translation (VerbX, cached) — always labelled machine_translated; never used for eligibility."""
+    s = profile.get_session(sid)
+    b = body()
+    return translation.translate_text(b.get("text") or "", b.get("source_lang", "en"), b.get("target_lang", s["language"]))
+
+
+def with_summary(ev: dict, sid: str, lang: str) -> dict:
+    names = translation.localize_scheme_names(ev, lang)
+    ev["voice_summary_segments"] = voice.summary_parts(ev, lang, catalogue.doc_marks(sid), names)
+    ev["voice_summary"] = " ".join(ev["voice_summary_segments"])
+    ev["voice_summary_machine_translated"] = any(
+        r["scheme_name_machine_translated"] for r in ev["results"] if r["outcome"] in ("MATCH", "PROVISIONAL"))
+    return ev
+
+
 # ---------------------------------------------------------------- schemes & eligibility
 
 @bp.post("/sessions/<sid>/schemes/search")
@@ -176,8 +207,7 @@ def session_search(sid):
 def evaluate(sid):
     ev = catalogue.evaluate_session(sid)
     s = profile.get_session(sid)
-    ev["voice_summary"] = voice.summarize(ev, s["language"], catalogue.doc_marks(sid))
-    return ev
+    return with_summary(ev, sid, s["language"])
 
 
 @bp.get("/sessions/<sid>/eligibility/latest")
@@ -187,8 +217,7 @@ def latest(sid):
     if not ev:
         raise ApiError("NO_EVALUATION", "No screening has been run yet.", 404)
     ev["results"] = [catalogue.localize_result(r, s["language"]) for r in ev["results"]]
-    ev["voice_summary"] = voice.summarize(ev, s["language"], catalogue.doc_marks(sid))
-    return ev
+    return with_summary(ev, sid, s["language"])
 
 
 @bp.get("/sessions/<sid>/documents")

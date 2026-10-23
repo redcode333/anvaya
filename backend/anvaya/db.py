@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     device_id TEXT,
     operator_id TEXT,
     is_test INTEGER NOT NULL DEFAULT 0,
+    is_demo INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     ended_at TEXT
@@ -117,7 +118,8 @@ CREATE TABLE IF NOT EXISTS facts (
     captured_at TEXT NOT NULL,
     confirmed_at TEXT,
     superseded_by TEXT,
-    confusable INTEGER NOT NULL DEFAULT 0
+    confusable INTEGER NOT NULL DEFAULT 0,
+    alternatives_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_facts_session ON facts(session_id, attribute);
 
@@ -228,6 +230,52 @@ CREATE TABLE IF NOT EXISTS test_runs (
     passed INTEGER NOT NULL,
     evidence_json TEXT NOT NULL
 );
+
+-- Machine translations from VerbX, so each text is translated once.
+CREATE TABLE IF NOT EXISTS translations (
+    source_lang TEXT NOT NULL,
+    target_lang TEXT NOT NULL,
+    source_text TEXT NOT NULL,
+    translated_text TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (source_lang, target_lang, source_text)
+);
+
+-- Synthesized speech keyed by sha256(text, language, voice); the text itself is not stored. pinned=1 rows are the
+-- prerendered fixed prompts (manage prerender-audio) and are kept; other rows may hold profile details read back to
+-- a citizen and are removed by `manage cleanup` after ANVAYA_SESSION_TTL_HOURS.
+CREATE TABLE IF NOT EXISTS tts_cache (
+    cache_key TEXT PRIMARY KEY,
+    language TEXT NOT NULL,
+    voice TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    audio BLOB NOT NULL,
+    synth_ms INTEGER,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+-- LLM provider quota state, so an exhausted free tier stays skipped across restarts until its reset.
+CREATE TABLE IF NOT EXISTS llm_provider_state (
+    provider TEXT PRIMARY KEY,
+    exhausted_until TEXT,
+    day TEXT,
+    requests_today INTEGER NOT NULL DEFAULT 0,
+    last_result TEXT,
+    updated_at TEXT NOT NULL
+);
+
+-- Validated LLM extraction results keyed by sha256(provider + model + prompt); the prompt itself is not stored.
+CREATE TABLE IF NOT EXISTS llm_cache (
+    cache_key TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -265,7 +313,9 @@ def connect(path: str) -> sqlite3.Connection:
 
 
 # Columns added after the first release: (table, column, DDL) applied to databases created before them.
-MIGRATIONS = [("facts", "confusable", "ALTER TABLE facts ADD COLUMN confusable INTEGER NOT NULL DEFAULT 0")]
+MIGRATIONS = [("facts", "confusable", "ALTER TABLE facts ADD COLUMN confusable INTEGER NOT NULL DEFAULT 0"),
+              ("facts", "alternatives_json", "ALTER TABLE facts ADD COLUMN alternatives_json TEXT"),
+              ("sessions", "is_demo", "ALTER TABLE sessions ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0")]
 
 
 def init_schema(conn: sqlite3.Connection) -> None:

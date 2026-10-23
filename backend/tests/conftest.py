@@ -7,7 +7,9 @@ from anvaya.db import connect
 @pytest.fixture(scope="session")
 def app(tmp_path_factory):
     db_path = str(tmp_path_factory.mktemp("db") / "test.db")
-    app = create_app({"DB_PATH": db_path, "TESTING": True, "CODE_LOOKUP_LIMIT_PER_MIN": 1000})
+    # LLM extraction is off unless a test turns it on with mocked providers (tests/test_llm.py).
+    app = create_app({"DB_PATH": db_path, "TESTING": True, "CODE_LOOKUP_LIMIT_PER_MIN": 1000,
+                      "LLM_EXTRACTION": False, "LLM_PROVIDERS": [], "LLM_ALLOW_REAL_DATA": False})
     conn = connect(db_path)
     ingest.bootstrap(conn, app.config["DATASET_CSV"], app.config["GOLDEN_RULES"], app.config["RULE_BUNDLE_VERSION"])
     conn.close()

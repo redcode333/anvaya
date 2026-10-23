@@ -13,7 +13,7 @@ export const getStaffToken = () => staffToken;
 
 export const newKey = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
-type Opts = { method?: string; body?: any; headers?: Record<string, string>; sessionId?: string; auth?: boolean };
+type Opts = { method?: string; body?: any; headers?: Record<string, string>; sessionId?: string; auth?: boolean; signal?: AbortSignal };
 
 export async function api<T = any>(path: string, opts: Opts = {}): Promise<T> {
   const headers: Record<string, string> = { ...(opts.headers || {}) };
@@ -24,8 +24,9 @@ export async function api<T = any>(path: string, opts: Opts = {}): Promise<T> {
   if (staffToken && opts.auth !== false) headers["Authorization"] = `Bearer ${staffToken}`;
   let res: Response;
   try {
-    res = await fetch(`/api/v1${path}`, { method: opts.method || (body ? "POST" : "GET"), headers, body });
-  } catch {
+    res = await fetch(`/api/v1${path}`, { method: opts.method || (body ? "POST" : "GET"), headers, body, signal: opts.signal });
+  } catch (e) {
+    if (opts.signal?.aborted) throw new ApiError("ABORTED", "Request cancelled.", 0);
     throw new ApiError("NETWORK", "Cannot reach the Anvaya server. Check the connection; nothing was saved on the server.", 0);
   }
   const data = await res.json().catch(() => ({}));
@@ -42,6 +43,8 @@ export type Fact = {
   confirmed: boolean; inferred: boolean; note?: string; high_impact: boolean; superseded_by?: string | null;
   // High-impact facts and confusable spoken numbers: read back in digits and confirmed one by one, never in bulk.
   confusable?: boolean; confirm_individually?: boolean; readback?: string;
+  // Deterministic and LLM extraction heard different values: the citizen picks one (plain confirm is refused).
+  alternatives?: any[] | null; disputed?: boolean;
 };
 
 export type Criterion = {
@@ -59,11 +62,13 @@ export type SchemeResult = {
   missing_questions?: { attribute: string; text: string }[]; input_fact_ids: string[];
   source: { source_id: string; source_url: string; imported_at: string; rule_reviewed_at: string; source_verified_at: string | null; review_status: string; stale_or_unverified: boolean };
   evaluated_at: string;
+  // VerbX machine translation of the scheme name (hi/te only; null when unavailable).
+  scheme_name_localized?: string | null; scheme_name_machine_translated?: boolean;
 };
 export type Evaluation = {
   eval_id: string; bundle_version: string; results: SchemeResult[]; input_fact_ids?: string[];
   jurisdiction?: { state: string | null; note: string | null }; changes_since_last?: { scheme_id: string; scheme_name: string; before: string | null; after: string | null }[];
-  provisional_notice?: string; voice_summary?: string; origin?: string;
+  provisional_notice?: string; voice_summary?: string; voice_summary_segments?: string[]; voice_summary_machine_translated?: boolean; origin?: string;
 };
 export type Draft = {
   draft_id: string; session_id: string; scheme_id: string; scheme_name: string; version: number; status: string; origin: string;

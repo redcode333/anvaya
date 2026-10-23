@@ -59,7 +59,7 @@ export default function AdminSchemes() {
       <h1>Scheme catalogue & data freshness</h1>
       <p className="notice small">The dataset is an input catalogue, not proof that entries are current or official. Only the curated rules below are evaluated; every other record is shown with a verification caveat.</p>
       <ErrorNote error={err} />
-      {!isStaff && <StaffLogin roles={["admin", "reviewer"]} title="Steward sign-in (freshness report)" hint="admin / admin123 can verify rules against official sources; reviewers can view." />}
+      {!isStaff && <StaffLogin roles={["admin", "reviewer"]} title="Steward sign-in (freshness report)" hint="Admins can verify rules against official sources; reviewers can view." demo={["admin", "reviewer"]} />}
       {fresh && (
         <div className="grid two">
           <section className="card stack">

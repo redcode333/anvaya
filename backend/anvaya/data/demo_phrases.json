@@ -1,0 +1,32 @@
+{
+  "te": [
+    {
+      "label": "రైతు కుటుంబం (AP)",
+      "text": "నా వయస్సు 67 సంవత్సరాలు. నేను గుంటూరు, ఆంధ్రప్రదేశ్ లో ఒక గ్రామంలో ఉంటాను. 4 మంది సభ్యులు. మా ఆదాయం సంవత్సరానికి 60 వేలు. బీపీఎల్ కార్డు ఉంది. పెన్షన్ రావడం లేదు. నేను రైతు, 2 ఎకరాల భూమి ఉంది. బ్యాంక్ ఖాతా ఉంది."
+    },
+    {
+      "label": "వయస్సు తప్పుగా విన్నది",
+      "text": "నా వయస్సు 26 సంవత్సరాలు. ఆంధ్రప్రదేశ్ గ్రామంలో ఉంటాను. బీపీఎల్ కార్డు ఉంది. పెన్షన్ రావడం లేదు."
+    }
+  ],
+  "hi": [
+    {
+      "label": "बिहार, उम्र गलत सुनी",
+      "text": "मेरी उम्र 26 साल है। मैं बिहार के गाँव में रहता हूँ। बीपीएल कार्ड है, कोई पेंशन नहीं मिलती। सालाना आय 40000 रुपये।"
+    },
+    {
+      "label": "विधवा, बिहार",
+      "text": "मैं 52 साल की विधवा हूँ, बिहार के गाँव में रहती हूँ। परिवार में 3 लोग। आय 3000 रुपये महीना। बीपीएल कार्ड है।"
+    }
+  ],
+  "en": [
+    {
+      "label": "Farmer household (AP)",
+      "text": "I am 67 years old, a farmer in a village in Guntur, Andhra Pradesh. Family of 4, yearly income 60,000 rupees. We have a BPL card, I do not get any pension, I own 2 acres of land and have a bank account."
+    },
+    {
+      "label": "Maharashtra, 62",
+      "text": "I am 62 years old, BPL household, I do not get any pension. I live in Maharashtra, in a city. Family of 2, income 90000 per year."
+    }
+  ]
+}
