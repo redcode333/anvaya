@@ -1,6 +1,6 @@
 Flask>=3.0
 requests>=2.31
-anthropic>=0.70
+anthropic>=1.15.0
 prometheus_client>=0.20
 pytest>=8
 gunicorn>=22; sys_platform != "win32"
