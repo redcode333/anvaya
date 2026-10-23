@@ -237,24 +237,6 @@ A number that cannot be parsed falls back to its default, with a startup warning
 
 ---
 
-## Judge demo script (4 minutes)
-
-The demo phrases are built into the kiosk (*Demo phrases*). Each is sent as a voice transcript, so every fact it
-yields needs confirmation. `SUBMISSION.md` has the exact sentences to speak and the fallback lines if voice or Wi-Fi
-fails.
-
-| Time | Step | What to show |
-|---|---|---|
-| 0:00 | **Kiosk in Telugu** | `/kiosk` → operator sign-in → తెలుగు → *Start*. The greeting appears at once and plays from the prerendered audio cache. |
-| 0:30 | **Misheard age** | *Demo phrases* → "వయస్సు తప్పుగా విన్నది". Age **26** appears with its fact ID and the words heard. *Check schemes* stays disabled: high-impact facts must each be confirmed. |
-| 1:00 | **Correct it** | *Correct* → 67 → *Save* → confirm each remaining fact → *Check schemes*. The new fact supersedes the old one, and the reviewer sees both. |
-| 1:30 | **Scheme Passport** | INDIRAMMA Old Age Pension (Rural) and NSAP old-age pension show as **provisional matches**. *Why* shows each criterion with its quoted rule text, expected vs observed value, fact ID and source URL. 🔊 reads the Telugu summary. |
-| 2:15 | **Documents → draft → reviewer** | Mark the BPL card *missing*; the gap shows on the cards. *Prepare draft*: each field is tagged confirmed / inferred / missing. Tick consent → *Send to reviewer* → case code `ANV-XXXX-XXXX`. |
-| 3:00 | **Offline** | Tick *simulate network loss*: the typed pre-screen runs on the cached bundle. *Sync now*, then *Retry test (resend)*: the resend shows `duplicate` and the reviewer queue gets exactly one case. |
-| 3:30 | **TC1–TC4 + Grafana** | `/test-runs` → *Run all*: input, expected, actual and per-check evidence. Grafana at :3000 shows the outcome mix, latency and VerbX/LLM health. |
-
----
-
 ## Read-aloud (VerbX TTS, cached)
 
 VerbX TTS took 0.9–10.5 s per sentence in testing, so read-aloud never holds up the conversation:
