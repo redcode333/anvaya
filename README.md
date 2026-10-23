@@ -465,25 +465,73 @@ questions and summaries play from the cache.
 
 ## Limitations
 
+### Eligibility rules
 * **17 curated rules.** The other ~3,500 catalogue records are searchable, labelled "not verified", and never
-  evaluated automatically.
+  evaluated automatically. "team_reviewed" rules were checked against the dataset text, not against the official
+  portals.
 * **All-of rules only.** Every criterion in a rule must pass. Either/or conditions ("belongs to one of the listed
   categories") are not expressed as logic yet; they become manual checks for an officer, which keeps the result at
   `PROVISIONAL`.
-* **Offline mode** uses browser storage (`localStorage`) in place of kiosk SQLite. Bundle integrity is a SHA-256
-  checksum, not a cryptographic signature. Only the 17 curated rules work offline.
-* **Free-tier LLMs get demo data only.** Groq and Gemini free tiers may use what they receive, so real citizen turns
-  are rule-based only unless `LLM_ALLOW_REAL_DATA=true`.
-* **Gemini's free tier can be slow.** The same demo sentence took 1.7 s once and 43 s another time, and in the final
-  pre-submission run all three Gemini live calls hit the 6 s cap. A slow or failing provider is skipped within the
-  7 s turn budget, and the turn falls back to rule-based extraction.
+* **One applicant per screening.** Facts about other household members (a parent's age, a spouse's work) are noticed
+  so that they are not mistaken for the applicant's, but they are not used for eligibility. Household-level schemes
+  are judged only on the applicant's own facts.
+* **No time-bound rules.** Application windows, scheme deadlines and annual re-verification are not modelled.
+* **Income is a single yearly figure.** A monthly amount is multiplied by 12, and the conversion is shown for
+  confirmation. Seasonal or irregular income is not modelled.
+
+### Language understanding
+* **Hindi/Telugu understanding** is a deterministic pattern extractor with a small dialect glossary, tested on the
+  phrasings in `tests/test_extraction.py`. It is not general NLU.
+* **Romanized text:** Hinglish number words are understood ("umar saath saal"), but romanized Telugu numbers are not
+  ("vayassu aravai edu" gives no age). Telugu script works.
+* **Unrelated numbers in an income sentence:** the largest amount in the income clause is taken. An unrelated number
+  there, such as a reference number, can be read as income. It is still held for confirmation, and an LLM
+  disagreement makes the citizen choose.
+* **Machine translation:** scheme descriptions stay in English. Scheme names are machine-translated for hi/te, are
+  sometimes only partly translated ("INDIRAMMA Old Age పెన్షన్"), and are always labelled as machine translation.
+
+### Voice and AI services
 * **VerbX STT can mishear numbers:** in testing it heard "साठ" (60) as "सात" (7). The confirmation step handles this.
   High-impact facts (age, income, state, area, household size) are read back in digits, confirmed one by one, and
   never bulk-confirmed. Confusable number words (साठ/सत्तर, sixteen/sixty) are flagged.
 * **VerbX TTS** takes 0.9–10.5 s per uncached sentence. Its rate limit is stricter in practice than the documented
   120/min: HTTP 429 after ~60 quick calls. Hence the cache, the prerendered prompts and the 8 s cap.
-* **Hindi/Telugu understanding** is a deterministic pattern extractor with a small dialect glossary, tested on the
-  phrasings in `tests/test_extraction.py`. It is not general NLU. Scheme descriptions stay in English; names are
-  machine-translated for hi/te.
-* **Out of scope:** SQLite is a single node. PostgreSQL, real identity, OCR, PDF generation, DigiLocker/CSC and any
-  real government submission are not built. Demo credentials and case codes are not production security.
+* **Browser speech fallback:** quality depends on the browser and OS, and many systems have no Telugu voice.
+* **Free-tier LLMs get demo data only.** Groq and Gemini free tiers may use what they receive, so real citizen turns
+  are rule-based only unless `LLM_ALLOW_REAL_DATA=true`.
+* **Gemini's free tier can be slow.** The same demo sentence took 1.7 s once and 43 s another time. In the final run
+  every Gemini live call failed: 6 s timeouts, then HTTP 503 from Google. A slow or failing provider is skipped within
+  the 7 s turn budget, and the turn falls back to rule-based extraction.
+* **Langfuse tracing covers LLM extraction only**, not whole requests, speech or rule evaluation.
+
+### Offline kiosk
+* **Browser storage** (`localStorage`) stands in for kiosk SQLite. Clearing the browser loses the cached bundle and
+  any unsynced outbox events.
+* **Integrity, not authenticity:** the bundle is checked with a SHA-256 checksum, not a cryptographic signature.
+* Only the 17 curated rules work offline, and only typed input (no speech).
+
+### Security (demo scope)
+* **Staff sign-in** is username + password with a bearer token kept in the browser's `sessionStorage`. There is no
+  login throttling or lockout, no MFA, and no SSO.
+* **Rate limits live in process memory:** the case-code limiter resets on restart and is not shared between
+  processes.
+* **Demo credentials and case codes** are not production security.
+
+### Data retention
+* **Clean-up is manual.** `python -m anvaya.manage cleanup` ends expired sessions and deletes live TTS clips; nothing
+  schedules it.
+* **Some caches never expire:** prerendered audio, including clips for wording that has since changed, and validated
+  LLM answers stay until deleted by hand. Both hold demo data only by default.
+* **No backups** are configured for the SQLite volume.
+
+### Operations and scale
+* **Single node:** SQLite and one gunicorn worker with threads. Prometheus counters are per process, so more workers
+  need `prometheus_client` multiprocess mode. The LLM circuit breaker and the TTS background queue are also per
+  process.
+* **Live checks are manual:** CI runs the mocked suite only. The live VerbX, LLM and Langfuse checks
+  (`pytest -m live`, `eval-extraction`) are run by hand.
+* **Accessibility** has ARIA labels and large kiosk controls, but no formal WCAG audit or screen-reader testing.
+
+### Out of scope
+PostgreSQL, real identity (Aadhaar/eKYC), OCR of documents, PDF or official application forms, DigiLocker/CSC
+integration, and any real government submission are not built.
