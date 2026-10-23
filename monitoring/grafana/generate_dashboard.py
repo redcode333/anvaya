@@ -101,6 +101,26 @@ ts("VerbX voice calls", [("sum by (op, result) (rate(anvaya_voice_requests_total
    16, w=8, desc="not_configured / error: clients fall back to browser speech or text.")
 state["y"] += 8
 
+row("LLM extraction (optional; never decides eligibility)")
+ts("LLM calls by provider and result", [
+    ("sum by (provider, result) (rate(anvaya_llm_calls_total[1m])) * 60", "{{provider}} {{result}}")], 0, w=8,
+   desc="ok / cache_hit = answered; timeout, rate_limited, quota_exhausted, server_error, invalid_output = moved on to "
+        "the next provider; skipped_* = exhausted or open circuit.")
+ts("LLM call latency (p50 / p95)", [
+    ("histogram_quantile(0.5, sum by (le, provider) (rate(anvaya_llm_latency_seconds_bucket[5m])))", "p50 {{provider}}"),
+    ("histogram_quantile(0.95, sum by (le, provider) (rate(anvaya_llm_latency_seconds_bucket[5m])))", "p95 {{provider}}")],
+   8, w=8, unit="s", desc="Per call; capped at 6 s, and at 7 s for the whole turn.")
+ts("Provider fallbacks", [
+    ('sum by (from, to) (increase(anvaya_llm_fallbacks_total[5m]))', "{{from}} → {{to}}")], 16, w=8,
+   desc="to=deterministic: every provider failed; the turn used deterministic extraction only.")
+state["y"] += 8
+bars("LLM facts by merge outcome (since server start)", "sum by (outcome) (anvaya_llm_merge_total)", "{{outcome}}", 0,
+     w=12, h=6, desc="agree = same as deterministic; llm_only = added as an unconfirmed candidate; disagree = held for "
+                     "the citizen to choose; dropped_* = evidence not in the utterance, invalid value, relative's age.")
+stat("LLM answers served from cache", 'sum(anvaya_llm_calls_total{result="cache_hit"})', 12, w=6)
+stat("Turns with all providers down", 'sum(anvaya_llm_fallbacks_total{to="deterministic"})', 18, w=6)
+state["y"] += 6
+
 row("Cases, idempotency & offline sync")
 ts("Cases by status", [("anvaya_cases", "{{status}}")], 0, w=8)
 ts("Case transitions", [("sum by (action) (increase(anvaya_case_transitions_total[5m]))", "{{action}}")], 8, w=8)

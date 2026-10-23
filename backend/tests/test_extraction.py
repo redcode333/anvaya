@@ -141,3 +141,68 @@ def test_relative_age_not_attributed_to_applicant(text, relation):
 def test_only_relative_age_gives_no_applicant_age():
     r = extract("मेरी बेटी 12 साल की है")
     assert "age" not in got("मेरी बेटी 12 साल की है") and r["other_people"][0]["value"] == 12
+
+
+@pytest.mark.parametrize("text", [
+    "Family of 6 in a town in Odisha, we already get a widow pension.",
+    "हमें विधवा पेंशन मिलती है।",
+    "మాకు వితంతువు పింఛను వస్తుంది.",
+    "Do I qualify for vidhwa pension?",
+    "Tell me about the widow pension.",
+    "मुझे विधवा पेंशन के बारे में बताइए।",
+    "వితంతు పింఛను గురించి చెప్పండి.",
+    "What is the widow scheme?",
+    "विधवा पेंशन योजना क्या है?",
+])
+def test_widow_pension_names_a_scheme_not_the_speaker(text):
+    r = extract(text)
+    f = {x["attribute"]: x["value"] for x in r["facts"]}
+    assert "marital_status" not in f and "gender" not in f
+    assert "widow" in r["intents"]
+
+
+def test_widow_who_names_the_widow_pension_is_still_a_widow():
+    f = got("I am a widow and I want the widow pension.")
+    assert f["marital_status"] == "widowed" and f["gender"] == "female"
+    f = got("मैं विधवा हूँ, विधवा पेंशन चाहिए।")
+    assert f["marital_status"] == "widowed" and f["gender"] == "female"
+
+
+@pytest.mark.parametrize("text", [
+    "मैं विधवा हूँ",
+    "मेरे पति का देहांत हो गया है।",
+    "my husband passed away",
+    "My late husband was a farmer.",
+    "నేను వితంతువును",
+    "నా భర్త చనిపోయారు.",
+    "నా భర్త మరణించారు.",
+])
+def test_statement_about_the_speaker_sets_widowed(text):
+    f = got(text)
+    assert f["marital_status"] == "widowed" and f["gender"] == "female"
+
+
+@pytest.mark.parametrize("text,attr", [
+    ("Neither of us gets a pension.", "receives_other_pension"),
+    ("None of us has a bank account.", "has_bank_account"),
+    ("Nobody in the family has a BPL card.", "bpl"),
+    ("We have neither land nor a house.", "owns_cultivable_land"),
+])
+def test_neither_none_nobody_negate(text, attr):
+    assert got(text)[attr] is False
+
+
+@pytest.mark.parametrize("text", [
+    "neither of us gets a pension",
+    "हम दोनों को कोई पेंशन नहीं मिलती",
+    "మా ఇద్దరికీ పింఛను రాదు",
+    "మాకు పింఛను అందదు.",
+    "నాకు పెన్షన్ రావట్లేదు.",
+])
+def test_negated_pension_statements(text):
+    assert got(text)["receives_other_pension"] is False
+
+
+@pytest.mark.parametrize("text", ["We already get a pension.", "मुझे पेंशन मिलती है।", "నాకు పింఛను వస్తుంది."])
+def test_affirmed_pension_statements(text):
+    assert got(text)["receives_other_pension"] is True

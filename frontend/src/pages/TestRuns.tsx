@@ -38,7 +38,7 @@ export default function TestRuns() {
         </div>}
       </div>
       {!canRun && Object.keys(defs).length > 0 && <StaffLogin roles={["admin"]} title="Admin sign-in to run scenarios"
-        hint="Running or resetting TC1–TC4 writes test data, so it needs an admin account (demo: admin / admin123). The latest saved runs are shown below." />}
+        hint="Running or resetting TC1–TC4 writes test data, so it needs an admin account. The latest saved runs are shown below." demo={["admin"]} />}
       <p className="small muted">Each scenario creates an isolated test session and runs the real pipeline (extraction → confirmation → deterministic rules → drafts). Evidence is saved with every run.</p>
       <ErrorNote error={err} />
       {Object.entries(defs).map(([tc, d]) => {

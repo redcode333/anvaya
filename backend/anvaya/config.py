@@ -1,8 +1,38 @@
 import os
 from pathlib import Path
 
+from .llm.providers import load_providers
+
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 PROJECT_DIR = BACKEND_DIR.parent
+
+# Problems found while reading the environment (bad numbers, unset demo passwords). Logged once at startup and shown
+# on /ready; they never stop the app. Messages name the variable only, never its value.
+CONFIG_WARNINGS: list[str] = []
+
+
+def _num(name: str, default, cast=float):
+    raw = os.environ.get(name, "")
+    if not raw.strip():
+        return default
+    try:
+        return cast(raw)
+    except ValueError:
+        CONFIG_WARNINGS.append(f"{name} is not a valid number; using the default {default}")
+        return default
+
+
+def _flag(name: str, default: bool, on=("1", "true", "on", "yes")) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    return default if not raw else raw in on
+
+
+# Seeded staff accounts: username -> (password env var, role, display name, demo password used only when unset).
+STAFF_ACCOUNTS = {
+    "reviewer": ("ANVAYA_REVIEWER_PASSWORD", "reviewer", "Demo Reviewer", "reviewer123"),
+    "operator": ("ANVAYA_OPERATOR_PASSWORD", "operator", "Demo Kiosk Operator", "operator123"),
+    "admin": ("ANVAYA_ADMIN_PASSWORD", "admin", "Demo Data Steward", "admin123"),
+}
 
 
 class Config:
@@ -17,29 +47,37 @@ class Config:
     RULE_BUNDLE_VERSION = os.environ.get("ANVAYA_RULE_BUNDLE_VERSION", "rules-2026.10.1")
 
     # Per-rule freshness is configured in golden_rules.json; this is only the fallback.
-    DEFAULT_FRESHNESS_DAYS = int(os.environ.get("ANVAYA_DEFAULT_FRESHNESS_DAYS", "180"))
+    DEFAULT_FRESHNESS_DAYS = _num("ANVAYA_DEFAULT_FRESHNESS_DAYS", 180, int)
 
     # When set, GET /metrics requires "Authorization: Bearer <token>" (used in Kubernetes behind an Ingress).
     METRICS_TOKEN = os.environ.get("ANVAYA_METRICS_TOKEN", "")
 
-    SESSION_TTL_HOURS = int(os.environ.get("ANVAYA_SESSION_TTL_HOURS", "12"))
-    CASE_CODE_TTL_HOURS = int(os.environ.get("ANVAYA_CASE_CODE_TTL_HOURS", "72"))
-    AUTH_TOKEN_TTL_HOURS = int(os.environ.get("ANVAYA_AUTH_TOKEN_TTL_HOURS", "8"))
-    CODE_LOOKUP_LIMIT_PER_MIN = int(os.environ.get("ANVAYA_CODE_LOOKUP_LIMIT", "10"))
+    SESSION_TTL_HOURS = _num("ANVAYA_SESSION_TTL_HOURS", 12, int)
+    CASE_CODE_TTL_HOURS = _num("ANVAYA_CASE_CODE_TTL_HOURS", 72, int)
+    AUTH_TOKEN_TTL_HOURS = _num("ANVAYA_AUTH_TOKEN_TTL_HOURS", 8, int)
+    CODE_LOOKUP_LIMIT_PER_MIN = _num("ANVAYA_CODE_LOOKUP_LIMIT", 10, int)
 
     # Running or resetting the official scenarios (POST /test-runs/*) needs an admin token unless demo mode is on.
     DEMO_TEST_RUNS = os.environ.get("ANVAYA_DEMO_TEST_RUNS", "off").lower() == "on"
 
-    # VerbX speech/translation adapter. Unset => voice endpoints return VOICE_UNAVAILABLE
-    # and the frontend falls back to browser speech or text.
+    # VerbX speech (STT/TTS) and translation; contract in docs/vendor/verbx.md. Unset => voice endpoints return
+    # VOICE_UNAVAILABLE (frontend falls back to browser speech, then text) and scheme names stay in English.
     VERBX_BASE_URL = os.environ.get("VERBX_BASE_URL", "")
     VERBX_API_KEY = os.environ.get("VERBX_API_KEY", "")
-    VERBX_STT_PATH = os.environ.get("VERBX_STT_PATH", "/v1/stt")
-    VERBX_TTS_PATH = os.environ.get("VERBX_TTS_PATH", "/v1/tts")
-    VERBX_TIMEOUT_S = float(os.environ.get("VERBX_TIMEOUT_S", "15"))
+    VERBX_SHELL = os.environ.get("VERBX_SHELL", "saas")
+    VERBX_TTS_VOICE = os.environ.get("VERBX_TTS_VOICE", "verbx-female")
+    VERBX_TIMEOUT_S = _num("VERBX_TIMEOUT_S", 15.0)
+    # A read-aloud request waits at most this long; slower syntheses finish in the background and land in the
+    # audio cache, so the next request for the same text is instant.
+    TTS_WAIT_S = _num("ANVAYA_TTS_WAIT_S", 8.0)
 
-    # Optional LLM fact extraction. Deterministic extraction always runs; the LLM only
-    # proposes extra candidate facts, which are schema-validated and stay unconfirmed.
-    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-    ANVAYA_LLM_MODEL = os.environ.get("ANVAYA_LLM_MODEL", "claude-opus-5-5")
+    # Optional LLM fact extraction (anvaya/llm). Deterministic extraction always runs and stays primary; the LLM only
+    # adds or cross-checks candidate facts, which are validated, merged and never confirmed automatically.
     LLM_EXTRACTION = os.environ.get("ANVAYA_LLM_EXTRACTION", "off").lower() == "on"
+    LLM_PROVIDERS = load_providers(os.environ, CONFIG_WARNINGS)
+    LLM_CALL_TIMEOUT_S = _num("LLM_CALL_TIMEOUT_S", 6.0)
+    LLM_TURN_BUDGET_S = _num("LLM_TURN_BUDGET_S", 7.0)
+    LLM_CIRCUIT_FAILURES = _num("LLM_CIRCUIT_FAILURES", 5, int)
+    LLM_CIRCUIT_OPEN_S = _num("LLM_CIRCUIT_OPEN_S", 60.0)
+    # Free-tier providers may only see demo/test data: real citizen utterances are sent only when this is true.
+    LLM_ALLOW_REAL_DATA = _flag("LLM_ALLOW_REAL_DATA", False)

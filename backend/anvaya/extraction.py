@@ -257,7 +257,9 @@ DISTRICTS = {
 }
 
 NEGATION = re.compile(
-    r"\b(?:no|not|don'?t|do not|doesn'?t|never|without|nahi|nahin|nhi)\b|नहीं|नही|कोई नहीं|లేదు|లేవు|కాదు|లేని|రావడం లేదు"
+    r"\b(?:no|not|don'?t|do not|doesn'?t|never|without|neither|nor|none|nobody|no one|nahi|nahin|nhi)\b|नहीं|नही|कोई नहीं|"
+    r"లేదు|లేవు|కాదు|లేని|రావడం లేదు|రావట్లేదు|రాదు|రావు|అందదు|అందడం లేదు",
+    re.I,  # "No pension", "Neither of us …" start a sentence
 )
 
 AGE_PATTERNS = [
@@ -306,11 +308,18 @@ HOUSEHOLD_RE = [
     re.compile(r"(\d{1,2})\s*(?:మంది|సభ్యులు)"),
 ]
 
-FEMALE = re.compile(r"\b(?:woman|female|lady|widow|mahila|aurat|girl)\b|महिला|औरत|स्त्री|विधवा|స్త్రీ|మహిళ|వితంతువు|ఆడ", re.I)
+# "widow pension" / "विधवा पेंशन" names a scheme the citizen asks about; it says nothing about the speaker.
+_NOT_PENSION = r"(?!\s*(?:pension|pinchan|scheme|yojana|पेंशन|पेन्शन|योजना|పెన్షన్|పింఛన్|పింఛను|ఫించను|పథకం))"
+WIDOW_PENSION = re.compile(r"\b(?:widow|vidhwa|vidhva)\s+(?:pension|pinchan|scheme|yojana)|विधवा\s*(?:पेंशन|पेन्शन|योजना)|"
+                           r"వితంతు(?:వు)?\s*(?:పెన్షన్|పింఛన్|పింఛను|ఫించను|పథకం)", re.I)
+FEMALE = re.compile(r"\b(?:woman|female|lady|mahila|aurat|girl)\b|\bwidow\b" + _NOT_PENSION +
+                    r"|महिला|औरत|स्त्री|विधवा" + _NOT_PENSION + r"|స్త్రీ|మహిళ|వితంతువు" + _NOT_PENSION + r"|ఆడ", re.I)
 MALE = re.compile(r"\b(?:man|male|gent|purush|aadmi)\b|पुरुष|आदमी|పురుషుడు|మగ", re.I)
 
 WIDOW = re.compile(
-    r"\b(?:widow|widowed|vidhwa|vidhva)\b|husband (?:died|passed|is dead|expired)|विधवा|पति की मृत्यु|पति नहीं रहे|वितंतु|వితంతువు|భర్త చనిపోయ|భర్త లేరు",
+    r"\b(?:widow|widowed|vidhwa|vidhva)\b" + _NOT_PENSION + r"|husband (?:died|passed|is dead|expired|is no more)|"
+    r"late husband|विधवा" + _NOT_PENSION + r"|पति की मृत्यु|पति का (?:निधन|देहांत|स्वर्गवास)|पति नहीं रहे|पति गु(?:ज़|ज)र|"
+    r"वितंतु|వితంతువు" + _NOT_PENSION + r"|భర్త చనిపోయ|భర్త మరణించ|భర్త పోయారు|భర్త లేరు",
     re.I,
 )
 SINGLE = re.compile(r"\b(?:unmarried|single|not married)\b|अविवाहित|कुंवारा|कुंवारी|పెళ్లి కాలేదు|అవివాహిత", re.I)
@@ -510,6 +519,9 @@ def extract(text: str, default_state: str | None = None) -> dict:
         facts.append(_fact("marital_status", "single", SINGLE.search(norm).group(0)))
     elif MARRIED.search(norm):
         facts.append(_fact("marital_status", "married", MARRIED.search(norm).group(0)))
+
+    if WIDOW_PENSION.search(norm):
+        intents.add("widow")  # interest in the scheme, not the speaker's status
 
     if not any(f["attribute"] == "gender" for f in facts):
         fm, mm = FEMALE.search(norm), MALE.search(norm)

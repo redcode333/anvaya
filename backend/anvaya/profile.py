@@ -3,7 +3,8 @@ import json
 
 from flask import current_app
 
-from . import extraction, i18n, metrics
+from . import extraction, i18n, llm, metrics
+from .llm import merge as llm_merge
 from .common import ApiError, audit
 from .db import dumps, get_db, iso, iso_in, new_id, now, parse_iso
 
@@ -66,7 +67,7 @@ def validate_value(attr: str, value):
 
 # ---------------------------------------------------------------- sessions
 
-def create_session(mode: str, language: str, device_id=None, operator_id=None, is_test=False) -> dict:
+def create_session(mode: str, language: str, device_id=None, operator_id=None, is_test=False, is_demo=False) -> dict:
     if mode not in SESSION_MODES:
         raise ApiError("INVALID_MODE", "mode must be personal or kiosk.", 422)
     if language not in i18n.SUPPORTED_LANGUAGES:
@@ -75,11 +76,11 @@ def create_session(mode: str, language: str, device_id=None, operator_id=None, i
     db = get_db()
     db.execute(
         """INSERT INTO sessions(session_id, mode, language, workflow_state, device_id, operator_id, is_test,
-           created_at, expires_at) VALUES (?,?,?,?,?,?,?,?,?)""",
-        (sid, mode, language, "SESSION_ACTIVE", device_id, operator_id, int(is_test), iso(),
+           is_demo, created_at, expires_at) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (sid, mode, language, "SESSION_ACTIVE", device_id, operator_id, int(is_test), int(is_demo), iso(),
          iso_in(current_app.config["SESSION_TTL_HOURS"])),
     )
-    audit("session.start", session_id=sid, details={"mode": mode, "language": language})
+    audit("session.start", session_id=sid, details={"mode": mode, "language": language, "demo": bool(is_demo)})
     db.commit()
     return get_session(sid)
 
@@ -125,6 +126,8 @@ def end_session(session_id: str) -> None:
 # ---------------------------------------------------------------- facts
 
 def _fact_row_to_public(r) -> dict:
+    alternatives = json.loads(r["alternatives_json"]) if r["alternatives_json"] else None
+    disputed = bool(alternatives) and not r["confirmed"]
     return {
         "fact_id": r["fact_id"], "attribute": r["attribute"], "value": json.loads(r["value_json"]),
         "raw_text": r["raw_text"], "source": r["source"], "confidence": r["confidence"],
@@ -132,8 +135,12 @@ def _fact_row_to_public(r) -> dict:
         "captured_at": r["captured_at"], "confirmed_at": r["confirmed_at"],
         "high_impact": r["attribute"] in extraction.HIGH_IMPACT,
         "confusable": bool(r["confusable"]),
-        # High-impact facts and confusable spoken numbers are read back and confirmed one by one, never in bulk.
-        "confirm_individually": r["attribute"] in extraction.HIGH_IMPACT or bool(r["confusable"]),
+        # Two extractors heard different values: the citizen picks one of these (PATCH {value}); plain confirm is refused.
+        "alternatives": alternatives,
+        "disputed": disputed,
+        # High-impact facts, confusable spoken numbers and disputed values are read back and confirmed one by one,
+        # never in bulk.
+        "confirm_individually": r["attribute"] in extraction.HIGH_IMPACT or bool(r["confusable"]) or disputed,
     }
 
 
@@ -155,8 +162,9 @@ def fact_history(session_id: str) -> list[dict]:
 
 
 def upsert_fact(session_id, attribute, value, *, source, raw_text=None, confidence=1.0, inferred=False,
-                note=None, confirmed=False, confusable=False) -> dict:
+                note=None, confirmed=False, confusable=False, alternatives=None) -> dict:
     value = validate_value(attribute, value)
+    alternatives = [validate_value(attribute, a) for a in alternatives] if alternatives else None
     db = get_db()
     existing = db.execute(
         "SELECT * FROM facts WHERE session_id=? AND attribute=? AND superseded_by IS NULL", (session_id, attribute)
@@ -164,15 +172,21 @@ def upsert_fact(session_id, attribute, value, *, source, raw_text=None, confiden
     if existing and json.loads(existing["value_json"]) == value:
         if confirmed and not existing["confirmed"]:
             db.execute("UPDATE facts SET confirmed=1, confirmed_at=? WHERE fact_id=?", (iso(), existing["fact_id"]))
+        elif alternatives and not existing["confirmed"]:
+            db.execute("UPDATE facts SET alternatives_json=?, note=? WHERE fact_id=?",
+                       (dumps(alternatives), note, existing["fact_id"]))
+            return {"fact": _fact_row_to_public(db.execute("SELECT * FROM facts WHERE fact_id=?", (existing["fact_id"],)).fetchone()),
+                    "changed": True, "previous": None}
         return {"fact": _fact_row_to_public(db.execute("SELECT * FROM facts WHERE fact_id=?", (existing["fact_id"],)).fetchone()),
                 "changed": False, "previous": None}
     seq = db.execute("SELECT COUNT(*) FROM facts WHERE session_id=?", (session_id,)).fetchone()[0] + 1
     fact_id = f"F-{session_id[-6:]}-{seq:03d}"
     db.execute(
         """INSERT INTO facts(fact_id, session_id, attribute, value_json, raw_text, source, confidence, confirmed,
-           inferred, note, captured_at, confirmed_at, confusable) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           inferred, note, captured_at, confirmed_at, confusable, alternatives_json)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (fact_id, session_id, attribute, dumps(value), raw_text, source, confidence, int(confirmed), int(inferred),
-         note, iso(), iso() if confirmed else None, int(confusable)),
+         note, iso(), iso() if confirmed else None, int(confusable), dumps(alternatives) if alternatives else None),
     )
     previous = None
     if existing:
@@ -195,10 +209,14 @@ def patch_fact(session_id: str, fact_id: str, body: dict) -> dict:
     if "value" in body:
         res = upsert_fact(session_id, row["attribute"], body["value"], source=body.get("source", "citizen_correction"),
                           raw_text=body.get("raw_text"), confidence=1.0, confirmed=True)
-        metrics.FACT_CORRECTIONS.labels(row["attribute"]).inc()
+        if res["changed"]:
+            metrics.FACT_CORRECTIONS.labels(row["attribute"]).inc()
         audit("profile.fact_corrected", session_id=session_id,
               details={"fact_id": fact_id, "new_fact_id": res["fact"]["fact_id"], "attribute": row["attribute"]})
     elif body.get("confirmed") is True:
+        if row["alternatives_json"] and not row["confirmed"]:
+            raise ApiError("VALUE_DISPUTED", "Two different values were heard; choose one by sending {value: ...}.", 409,
+                           {"alternatives": json.loads(row["alternatives_json"])})
         db.execute("UPDATE facts SET confirmed=1, confirmed_at=? WHERE fact_id=?", (iso(), fact_id))
         res = {"fact": _fact_row_to_public(db.execute("SELECT * FROM facts WHERE fact_id=?", (fact_id,)).fetchone()),
                "changed": False, "previous": None}
@@ -261,8 +279,30 @@ def next_question(session_id: str, lang: str, needed: set[str] | None = None) ->
     return None
 
 
+def _llm_turn(session: dict, utterance: str, det_facts: list[dict], other_people: list[dict]) -> tuple[list[dict], dict]:
+    """Deterministic facts merged with LLM facts when the LLM is enabled and allowed for this data; otherwise the
+    deterministic facts unchanged. Returns (candidates, summary without any utterance text or values)."""
+    if not llm.enabled():
+        return det_facts, {"used": False, "result": "disabled"}
+    if not llm.allowed(session, utterance):
+        return det_facts, {"used": False, "result": "real_data_not_allowed"}
+    run = llm.run_turn(utterance)
+    for d in run["dropped"]:
+        metrics.LLM_MERGE.labels("dropped_evidence" if d["reason"] == "evidence" else "dropped_invalid").inc()
+    summary = {"used": run["result"] == "ok", "result": run["result"], "provider": run["provider"],
+               "model": run["model"], "cached": run["cached"], "latency_ms": run["latency_ms"],
+               "translated": run["translated"], "prompt_version": run["prompt_version"],
+               "dropped": [d["reason"] for d in run["dropped"]]}
+    if run["result"] != "ok":
+        return det_facts, summary
+    candidates, merged = llm_merge.merge(det_facts, run["facts"], other_people, utterance)
+    for outcome in merged["outcomes"].values():
+        metrics.LLM_MERGE.labels(outcome).inc()
+    return candidates, {**summary, "merge": merged["outcomes"], "disputed": merged["disputed"]}
+
+
 def handle_turn(session_id: str, utterance: str, channel: str = "text", language: str | None = None,
-                llm_candidates: list[dict] | None = None, needed: set[str] | None = None) -> dict:
+                needed: set[str] | None = None) -> dict:
     session = get_session(session_id)
     if language and language != session["language"]:
         session = set_language(session_id, language)
@@ -271,21 +311,22 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
         raise ApiError("INVALID_UTTERANCE", "Utterance must be 1–2000 characters.", 422)
 
     result = extraction.extract(utterance)
-    relative_ages = {o["value"] for o in result["other_people"] if o["attribute"] == "age"}
-    candidates = result["facts"] + [c for c in (llm_candidates or [])
-                                    if c["attribute"] not in {f["attribute"] for f in result["facts"]}
-                                    and not (c["attribute"] == "age" and c["value"] in relative_ages)]
+    candidates, llm_summary = _llm_turn(session, utterance, result["facts"], result["other_people"])
+    held = current_facts(session_id)
     applied = []
     for cand in candidates:
-        # High-impact facts and confusable spoken numbers always need explicit confirmation; voice-derived facts all do.
+        if cand.get("source") == "llm" and cand["attribute"] in held:
+            continue  # an LLM-only reading never replaces a fact the profile already holds
+        # High-impact facts, confusable spoken numbers and values the two extractors disagree on always need explicit
+        # confirmation; voice-derived and LLM-proposed facts all do.
         auto_confirm = channel == "text" and not cand.get("high_impact") and not cand.get("inferred") \
-            and not cand.get("confusable") and cand.get("source") != "llm"
+            and not cand.get("confusable") and not cand.get("hold") and cand.get("source") != "llm"
         try:
             res = upsert_fact(session_id, cand["attribute"], cand["value"],
                               source=cand.get("source") or channel, raw_text=cand.get("raw_text"),
                               confidence=cand.get("confidence", 0.9) * (0.85 if channel == "voice" else 1.0),
                               inferred=cand.get("inferred", False), note=cand.get("note"), confirmed=auto_confirm,
-                              confusable=bool(cand.get("confusable")))
+                              confusable=bool(cand.get("confusable")), alternatives=cand.get("alternatives"))
         except ApiError:
             continue
         if res["changed"]:
@@ -293,14 +334,20 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
 
     wf = refresh_workflow_state(session_id)
     parts = []
-    if applied:
+    settled = [f for f in applied if not f["disputed"]]
+    if settled:
         heard = ", ".join(
             f"{i18n.t(i18n.ATTRIBUTE_LABELS, f['attribute'], lang)}: {display_value(f['attribute'], f['value'], lang)}"
-            for f in applied
+            for f in settled
         )
         parts.append(f"{i18n.t(i18n.MESSAGES, 'heard', lang)} {heard}.")
-    else:
+    elif not applied:
         parts.append(i18n.t(i18n.MESSAGES, "nothing_heard", lang))
+    for f in applied:
+        if f["disputed"]:
+            a, b = (display_value(f["attribute"], v, lang) for v in f["alternatives"][:2])
+            parts.append(i18n.t(i18n.MESSAGES, "disputed_value", lang,
+                                label=i18n.t(i18n.ATTRIBUTE_LABELS, f["attribute"], lang), a=a, b=b))
     for f in applied:
         cand = next((c for c in candidates if c["attribute"] == f["attribute"]), {})
         if f["confusable"] and cand.get("heard_as"):
@@ -320,16 +367,18 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
     db = get_db()
     db.execute(
         "INSERT INTO turns(turn_id, session_id, language, utterance, channel, extracted_json, reply, created_at) VALUES (?,?,?,?,?,?,?,?)",
-        (new_id("TRN"), session_id, lang, utterance, channel, dumps(result), reply, iso()),
+        (new_id("TRN"), session_id, lang, utterance, channel, dumps({**result, "llm": llm_summary}), reply, iso()),
     )
     metrics.TURNS.labels(channel, lang).inc()
     for f in applied:
         metrics.FACTS_EXTRACTED.labels(f["attribute"]).inc()
     audit("conversation.turn", session_id=session_id,
-          details={"channel": channel, "facts_extracted": [f["fact_id"] for f in applied]})
+          details={"channel": channel, "facts_extracted": [f["fact_id"] for f in applied],
+                   "llm": {k: llm_summary.get(k) for k in ("used", "result", "provider", "cached")}})
     db.commit()
     return {
         "reply": reply,
+        "reply_segments": parts,  # read aloud one by one: fixed sentences come from the prerendered audio cache
         "language": lang,
         "extracted": applied,
         "intents": result["intents"],
@@ -338,6 +387,7 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
         "next_question": q,
         "workflow_state": wf,
         "needs_confirmation": [f["fact_id"] for f in unconfirmed_critical(session_id)],
+        "llm": llm_summary,
     }
 
 

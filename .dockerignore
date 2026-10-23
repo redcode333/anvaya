@@ -1,10 +1,16 @@
-frontend/node_modules
-frontend/dist
-backend/instance
-**/__pycache__
+.git
 .env
+**/.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+frontend/dist
+frontend/tsconfig.tsbuildinfo
+backend/instance
 archive (1).zip
 *.pdf
 k8s
 kustomization.yaml
 monitoring
+scripts
+docs

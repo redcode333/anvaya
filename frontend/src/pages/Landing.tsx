@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { DemoCreds } from "../components";
 import { LANGS, t } from "../i18n";
 import { useApp } from "../state";
 
@@ -39,9 +40,9 @@ export default function Landing() {
         </div>
         <div className="card flat stack small">
           <h3>For judges & staff</h3>
-          <p className="muted">Run the official scenarios on <a href="/test-runs">TC1–TC4</a>, review cases on <a href="/reviewer">Reviewer</a>
-            (reviewer / reviewer123), inspect data freshness on <a href="/admin/schemes">Catalogue</a> (admin / admin123).
-            Kiosk mode needs operator / operator123.</p>
+          <p className="muted">Run the official scenarios on <a href="/test-runs">TC1–TC4</a>, review cases on <a href="/reviewer">Reviewer</a>,
+            inspect data freshness on <a href="/admin/schemes">Catalogue</a>. Kiosk mode needs an operator sign-in.
+            {" "}<DemoCreds users={["reviewer", "admin", "operator"]} /></p>
         </div>
       </section>
     </div>

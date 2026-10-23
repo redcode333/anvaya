@@ -90,7 +90,8 @@ jobs:
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
           VERBX_BASE_URL: ${{ secrets.VERBX_BASE_URL }}
           VERBX_API_KEY: ${{ secrets.VERBX_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           for required in ANVAYA_METRICS_TOKEN GRAFANA_ADMIN_PASSWORD; do
             if [ -z "${!required}" ]; then echo "::error::Secret $required is required for deploy"; exit 1; fi
@@ -101,7 +102,8 @@ jobs:
             echo "GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}"
             echo "VERBX_BASE_URL=${VERBX_BASE_URL}"
             echo "VERBX_API_KEY=${VERBX_API_KEY}"
-            echo "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
+            echo "GROQ_API_KEY=${GROQ_API_KEY}"
+            echo "GEMINI_API_KEY=${GEMINI_API_KEY}"
           } > k8s/secrets.env
       - name: Pin image to this commit
         if: steps.gate.outputs.enabled == 'true'

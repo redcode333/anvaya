@@ -850,7 +850,7 @@
     },
     {
       "type": "row",
-      "title": "Cases, idempotency & offline sync",
+      "title": "LLM extraction (optional; never decides eligibility)",
       "id": 19,
       "collapsed": false,
       "gridPos": {
@@ -862,12 +862,12 @@
     },
     {
       "type": "timeseries",
-      "title": "Cases by status",
-      "description": "",
+      "title": "LLM calls by provider and result",
+      "description": "ok / cache_hit = answered; timeout, rate_limited, quota_exhausted, server_error, invalid_output = moved on to the next provider; skipped_* = exhausted or open circuit.",
       "targets": [
         {
-          "expr": "anvaya_cases",
-          "legendFormat": "{{status}}",
+          "expr": "sum by (provider, result) (rate(anvaya_llm_calls_total[1m])) * 60",
+          "legendFormat": "{{provider}} {{result}}",
           "refId": "A"
         }
       ],
@@ -908,6 +908,307 @@
     },
     {
       "type": "timeseries",
+      "title": "LLM call latency (p50 / p95)",
+      "description": "Per call; capped at 6 s, and at 7 s for the whole turn.",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le, provider) (rate(anvaya_llm_latency_seconds_bucket[5m])))",
+          "legendFormat": "p50 {{provider}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, provider) (rate(anvaya_llm_latency_seconds_bucket[5m])))",
+          "legendFormat": "p95 {{provider}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 18,
+            "lineWidth": 2,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 21,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 36,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Provider fallbacks",
+      "description": "to=deterministic: every provider failed; the turn used deterministic extraction only.",
+      "targets": [
+        {
+          "expr": "sum by (from, to) (increase(anvaya_llm_fallbacks_total[5m]))",
+          "legendFormat": "{{from}} → {{to}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 18,
+            "lineWidth": 2,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 22,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 36,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "LLM facts by merge outcome (since server start)",
+      "description": "agree = same as deterministic; llm_only = added as an unconfirmed candidate; disagree = held for the citizen to choose; dropped_* = evidence not in the utterance, invalid value, relative's age.",
+      "targets": [
+        {
+          "expr": "sum by (outcome) (anvaya_llm_merge_total)",
+          "legendFormat": "{{outcome}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "continuous-BlYlRd"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 23,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 12,
+        "h": 6
+      }
+    },
+    {
+      "type": "stat",
+      "title": "LLM answers served from cache",
+      "description": "",
+      "targets": [
+        {
+          "expr": "sum(anvaya_llm_calls_total{result=\"cache_hit\"})",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "id": 24,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 44,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Turns with all providers down",
+      "description": "",
+      "targets": [
+        {
+          "expr": "sum(anvaya_llm_fallbacks_total{to=\"deterministic\"})",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "id": 25,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 44,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "row",
+      "title": "Cases, idempotency & offline sync",
+      "id": 26,
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Cases by status",
+      "description": "",
+      "targets": [
+        {
+          "expr": "anvaya_cases",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 18,
+            "lineWidth": 2,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 27,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
       "title": "Case transitions",
       "description": "",
       "targets": [
@@ -940,14 +1241,14 @@
           "mode": "multi"
         }
       },
-      "id": 21,
+      "id": 28,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "x": 8,
-        "y": 36,
+        "y": 51,
         "w": 8,
         "h": 8
       }
@@ -991,14 +1292,14 @@
           "mode": "multi"
         }
       },
-      "id": 22,
+      "id": 29,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "x": 16,
-        "y": 36,
+        "y": 51,
         "w": 8,
         "h": 8
       }
@@ -1037,14 +1338,14 @@
           "mode": "multi"
         }
       },
-      "id": 23,
+      "id": 30,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "x": 0,
-        "y": 44,
+        "y": 59,
         "w": 12,
         "h": 8
       }
@@ -1083,14 +1384,14 @@
           "mode": "multi"
         }
       },
-      "id": 24,
+      "id": 31,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "x": 12,
-        "y": 44,
+        "y": 59,
         "w": 12,
         "h": 8
       }
@@ -1098,11 +1399,11 @@
     {
       "type": "row",
       "title": "API & security",
-      "id": 25,
+      "id": 32,
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 52,
+        "y": 67,
         "w": 24,
         "h": 1
       }
@@ -1141,14 +1442,14 @@
           "mode": "multi"
         }
       },
-      "id": 26,
+      "id": 33,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "x": 0,
-        "y": 53,
+        "y": 68,
         "w": 12,
         "h": 8
       }
@@ -1187,14 +1488,14 @@
           "mode": "multi"
         }
       },
-      "id": 27,
+      "id": 34,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "x": 12,
-        "y": 53,
+        "y": 68,
         "w": 12,
         "h": 8
       }
@@ -1238,14 +1539,14 @@
           "mode": "multi"
         }
       },
-      "id": 28,
+      "id": 35,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "x": 0,
-        "y": 61,
+        "y": 76,
         "w": 8,
         "h": 8
       }
@@ -1284,14 +1585,14 @@
           "mode": "multi"
         }
       },
-      "id": 29,
+      "id": 36,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "x": 8,
-        "y": 61,
+        "y": 76,
         "w": 8,
         "h": 8
       }
@@ -1330,14 +1631,14 @@
           "mode": "multi"
         }
       },
-      "id": 30,
+      "id": 37,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "x": 16,
-        "y": 61,
+        "y": 76,
         "w": 8,
         "h": 8
       }
@@ -1345,11 +1646,11 @@
     {
       "type": "row",
       "title": "Official scenarios",
-      "id": 31,
+      "id": 38,
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 69,
+        "y": 84,
         "w": 24,
         "h": 1
       }
@@ -1386,14 +1687,14 @@
           ]
         }
       },
-      "id": 32,
+      "id": 39,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "x": 0,
-        "y": 70,
+        "y": 85,
         "w": 24,
         "h": 6
       }

@@ -29,7 +29,10 @@ function SchemeCard({ r, lang, onDraft, onAnswer }: { r: SchemeResult; lang: Lan
     <article className="scheme">
       <div className="scheme-head">
         <div style={{ minWidth: 0 }}>
-          <h3>{r.scheme_name}</h3>
+          <h3>{r.scheme_name_localized ?? r.scheme_name}</h3>
+          {r.scheme_name_machine_translated && (
+            <div className="tiny">{r.scheme_name} · <span className="chip" title="Translated automatically by VerbX; the official scheme name is shown first in English">{t("machineTranslated", lang)}</span></div>
+          )}
           <div className="row tiny">
             <span>{r.jurisdiction.level === "Central" ? "Central" : r.jurisdiction.state}</span>·
             <span className="mono">{r.rule_id} v{r.rule_version}</span>·
@@ -134,8 +137,10 @@ export default function Passport() {
   };
   const listenSummary = async () => {
     if (!ev?.voice_summary) return;
-    const used = await speak(await voiceProvider(), sessionId, ev.voice_summary, lang);
-    setVoiceMsg(`Spoken via ${used}`);
+    setVoiceMsg("");
+    const used = await speak(await voiceProvider(), sessionId, ev.voice_summary_segments ?? ev.voice_summary, lang);
+    if (used === "unavailable") setVoiceMsg(`🔇 ${t("audioUnavailable", lang)}`);
+    else if (used !== "cancelled") setVoiceMsg(`Spoken via ${used}`);
   };
 
   const groups: [string, SchemeResult[]][] = ev ? [
@@ -166,7 +171,8 @@ export default function Passport() {
               </div>
             </div>
             <p className="notice small">{t("notApproval", lang)}</p>
-            <p className="small">{ev.voice_summary}</p>
+            <p className="small">{ev.voice_summary}
+              {ev.voice_summary_machine_translated && <> <span className="chip" title="Scheme names in this summary were translated automatically by VerbX">{t("machineTranslated", lang)}</span></>}</p>
             {voiceMsg && <p className="tiny">{voiceMsg}</p>}
             <div className="tiny">
               Jurisdiction: {ev.jurisdiction?.state ?? "—"} + central schemes · bundle {ev.bundle_version} · evaluation <span className="mono">{ev.eval_id}</span>

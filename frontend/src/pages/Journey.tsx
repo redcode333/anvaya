@@ -1,31 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Fact } from "../api";
-import { splitPending } from "../confirmation";
+import { choices, splitPending } from "../confirmation";
 import { ErrorNote, StaffLogin, ValueInput } from "../components";
 import { ATTR, attrLabel, showValue, t, type Lang } from "../i18n";
-import { listen, speak, voiceProvider, type Provider, type Recorder } from "../speech";
+import { listen, speak, stopSpeaking, verbxFailedOver, voiceProvider, type Provider, type Recorder } from "../speech";
 import { useApp } from "../state";
 import { getOutbox, refreshBundle } from "../offline/store";
 import OfflinePrescreen from "./OfflinePrescreen";
+import demoPhrases from "../../../backend/anvaya/data/demo_phrases.json";
 
 type Msg = { who: "bot" | "me"; text: string; meta?: string };
 type Profile = { session: { session_id: string; language: Lang; workflow_state: string }; facts: Fact[]; needs_confirmation: string[] };
 
-const SAMPLES: Record<Lang, { label: string; text: string }[]> = {
-  te: [
-    { label: "రైతు కుటుంబం (AP)", text: "నా వయస్సు 67 సంవత్సరాలు. నేను గుంటూరు, ఆంధ్రప్రదేశ్ లో ఒక గ్రామంలో ఉంటాను. 4 మంది సభ్యులు. మా ఆదాయం సంవత్సరానికి 60 వేలు. బీపీఎల్ కార్డు ఉంది. పెన్షన్ రావడం లేదు. నేను రైతు, 2 ఎకరాల భూమి ఉంది. బ్యాంక్ ఖాతా ఉంది." },
-    { label: "వయస్సు తప్పుగా విన్నది", text: "నా వయస్సు 26 సంవత్సరాలు. ఆంధ్రప్రదేశ్ గ్రామంలో ఉంటాను. బీపీఎల్ కార్డు ఉంది. పెన్షన్ రావడం లేదు." },
-  ],
-  hi: [
-    { label: "बिहार, उम्र गलत सुनी", text: "मेरी उम्र 26 साल है। मैं बिहार के गाँव में रहता हूँ। बीपीएल कार्ड है, कोई पेंशन नहीं मिलती। सालाना आय 40000 रुपये।" },
-    { label: "विधवा, बिहार", text: "मैं 52 साल की विधवा हूँ, बिहार के गाँव में रहती हूँ। परिवार में 3 लोग। आय 3000 रुपये महीना। बीपीएल कार्ड है।" },
-  ],
-  en: [
-    { label: "Farmer household (AP)", text: "I am 67 years old, a farmer in a village in Guntur, Andhra Pradesh. Family of 4, yearly income 60,000 rupees. We have a BPL card, I do not get any pension, I own 2 acres of land and have a bank account." },
-    { label: "Maharashtra, 62", text: "I am 62 years old, BPL household, I do not get any pension. I live in Maharashtra, in a city. Family of 2, income 90000 per year." },
-  ],
-};
+// Kiosk demo phrases: shared with the backend, which lets only these (and demo/test sessions) reach free-tier LLMs.
+const SAMPLES = demoPhrases as Record<Lang, { label: string; text: string }[]>;
 
 export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
   const app = useApp();
@@ -39,6 +28,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
   const [provider, setProvider] = useState<Provider>("none");
   const [rec, setRec] = useState<Recorder | null>(null);
   const [voiceNote, setVoiceNote] = useState<string>("");
+  const [audioNote, setAudioNote] = useState(false);
   const [editing, setEditing] = useState<{ fact_id?: string; attribute: string; value: any } | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
 
@@ -60,13 +50,19 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
       api(`/sessions/${sessionId}`, { method: "PATCH", body: { language: lang } }).then(() => loadProfile(sessionId)).catch(setErr);
   }, [lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Fire-and-forget: the text is already on screen; audio plays when (and if) it arrives.
+  const say = (sid: string, text: string | string[]) => {
+    setAudioNote(false);
+    speak(provider, sid, text, lang).then((used) => setAudioNote(used === "unavailable"));
+  };
+
   const begin = async () => {
     setErr(null);
     try {
       const s = await api<{ session_id: string; greeting: string }>("/sessions", { body: { mode, language: lang } });
       setSessionId(s.session_id);
       setMsgs([{ who: "bot", text: s.greeting }]);
-      if (mode === "kiosk") speak(provider, s.session_id, s.greeting, lang);
+      if (mode === "kiosk") say(s.session_id, s.greeting);
     } catch (e) { setErr(e); }
   };
 
@@ -79,7 +75,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
       const r = await api<any>(`/sessions/${sessionId}/turns`, { body: { utterance, channel, language: lang } });
       const gl = r.glossary?.length ? ` · glossary: ${r.glossary.map((g: any) => `“${g.term}” → ${g.meaning}`).join("; ")}` : "";
       setMsgs((m) => [...m, { who: "bot", text: r.reply, meta: r.extracted.length ? `${r.extracted.map((f: Fact) => f.fact_id).join(", ")}${gl}` : gl || undefined }]);
-      if (mode === "kiosk" || channel === "voice") speak(provider, sessionId, r.reply, lang);
+      if (mode === "kiosk" || channel === "voice") say(sessionId, r.reply_segments ?? r.reply);
       await loadProfile(sessionId);
     } catch (e) { setErr(e); }
     setBusy(false);
@@ -88,12 +84,17 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
   const mic = () => {
     if (rec) { rec.stop(); setRec(null); return; }
     setVoiceNote("");
-    const r = listen(provider, sessionId!, lang, (txt) => send(txt, "voice"), (m) => setVoiceNote(m), () => setRec(null));
+    const r = listen(provider, sessionId!, lang, (txt) => send(txt, "voice"), (m) => setVoiceNote(m),
+      () => { setRec(null); voiceProvider().then(setProvider); });
     setRec(r);
   };
 
   const confirmFact = async (f: Fact) => {
     await api(`/sessions/${sessionId}/profile/facts/${f.fact_id}`, { method: "PATCH", body: { confirmed: true } }).catch(setErr);
+    loadProfile(sessionId!);
+  };
+  const chooseValue = async (f: Fact, value: any) => {
+    await api(`/sessions/${sessionId}/profile/facts/${f.fact_id}`, { method: "PATCH", body: { value } }).catch(setErr);
     loadProfile(sessionId!);
   };
   const saveEdit = async () => {
@@ -108,13 +109,14 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
   const confirmAll = async () => { await api(`/sessions/${sessionId}/profile/confirm-all`, { body: {} }).catch(setErr); loadProfile(sessionId!); };
 
   const endSession = async () => {
+    stopSpeaking();
     if (sessionId) await api(`/sessions/${sessionId}/end`, { body: {} }).catch(() => undefined);
     resetCitizen(); setMsgs([]); setProfile(null); setText("");
   };
 
   if (mode === "kiosk" && !(staff && ["operator", "admin"].includes(staff.role)))
     return <StaffLogin roles={["operator", "admin"]} title="Kiosk operator sign-in"
-      hint="A kiosk operator starts each temporary citizen session. Demo account: operator / operator123." />;
+      hint="A kiosk operator starts each temporary citizen session." demo={["operator"]} />;
 
   if (mode === "kiosk" && !online) return <OfflinePrescreen />;
 
@@ -125,7 +127,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
         <p className="muted">{t("intro", lang)}</p>
         <ErrorNote error={err} />
         <button className="btn primary" onClick={begin}>{t("start", lang)}</button>
-        <p className="tiny">Voice: {provider === "verbx" ? "VerbX" : provider === "browser" ? "browser speech (VerbX not configured)" : "not available — text only"}.
+        <p className="tiny">Voice: {provider === "verbx" ? "VerbX" : provider === "browser" ? `browser speech (VerbX ${verbxFailedOver() ? "unavailable" : "not configured"})` : "not available — text only"}.
           Audio is not stored by Anvaya.</p>
       </div>
     );
@@ -156,6 +158,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
         </div>
         {rec && <p className="small" role="status">{t("listening", lang)}</p>}
         {voiceNote && <p className="notice small">{voiceNote}</p>}
+        {audioNote && <p className="tiny muted" role="status">🔇 {t("audioUnavailable", lang)}</p>}
         <details className="small" style={{ marginTop: ".75rem" }}>
           <summary>Demo phrases (simulated transcripts)</summary>
           <div className="row" style={{ marginTop: ".5rem" }}>
@@ -185,7 +188,8 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
                   <div className="k">{attrLabel(f.attribute, lang)} {f.high_impact && <span className="chip" title="High-impact: must be confirmed">!</span>} <span className="mono tiny">{f.fact_id}</span></div>
                   {isEditing ? <ValueInput attr={f.attribute} value={editing!.value} onChange={(v) => setEditing({ ...editing!, value: v })} lang={lang} />
                     : <div className="v">{showValue(f.attribute, f.value, lang)}</div>}
-                  {readBack && !isEditing && <div className="small" role="status"><strong>{t("isThisRight", lang)}</strong> <span className="mono">{f.readback}</span></div>}
+                  {readBack && !isEditing && !f.disputed && <div className="small" role="status"><strong>{t("isThisRight", lang)}</strong> <span className="mono">{f.readback}</span></div>}
+                  {f.disputed && !isEditing && <div className="small" role="status"><strong>{t("whichIsRight", lang)}</strong></div>}
                   <div className="tiny">
                     {f.raw_text && <>“{f.raw_text}” · </>}{f.source}{f.inferred && " · inferred"}{f.note && ` · ${f.note}`}
                   </div>
@@ -195,7 +199,9 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
                     <button className="btn small primary" onClick={saveEdit}>{t("save", lang)}</button>
                     <button className="btn small" onClick={() => setEditing(null)}>{t("cancel", lang)}</button>
                   </>) : (<>
-                    {isPending ? <button className="btn small primary" onClick={() => confirmFact(f)}>{t("confirm", lang)}</button>
+                    {choices(f).length > 0
+                      ? choices(f).map((v) => <button key={String(v)} className="btn small primary mono" onClick={() => chooseValue(f, v)}>{showValue(f.attribute, v, lang)}</button>)
+                      : isPending ? <button className="btn small primary" onClick={() => confirmFact(f)}>{t("confirm", lang)}</button>
                       : <span className="chip on">✓ {t("confirmed", lang)}</span>}
                     <button className="btn small" onClick={() => setEditing({ fact_id: f.fact_id, attribute: f.attribute, value: f.value })}>{t("correct", lang)}</button>
                   </>)}

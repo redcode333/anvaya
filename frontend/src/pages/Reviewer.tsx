@@ -21,7 +21,7 @@ export default function Reviewer() {
     api<{ cases: any[] }>(`/reviewer/cases${status ? `?status=${status}` : ""}`).then((r) => setCases(r.cases)).catch(setErr);
   }, [status, isReviewer]);
 
-  if (!isReviewer) return <StaffLogin roles={["reviewer", "admin"]} title="Reviewer sign-in" hint="Demo account: reviewer / reviewer123. Role is checked on the server for every request." />;
+  if (!isReviewer) return <StaffLogin roles={["reviewer", "admin"]} title="Reviewer sign-in" hint="Role is checked on the server for every request." demo={["reviewer"]} />;
 
   const lookup = async (e: React.FormEvent) => {
     e.preventDefault(); setErr(null);
