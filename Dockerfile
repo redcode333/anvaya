@@ -1,5 +1,5 @@
 # Single image: builds the React frontend, then serves it plus the Flask API with gunicorn.
-FROM node:20-alpine AS web
+FROM node:25-alpine AS web
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
