@@ -158,6 +158,16 @@ const S = {
   },
   uploadCaseClosed: { en: "This case has been reviewed; no more uploads.", hi: "इस केस की समीक्षा हो चुकी है; अब अपलोड नहीं।", te: "ఈ కేసు సమీక్ష పూర్తయింది; ఇక అప్‌లోడ్‌లు లేవు." },
   privacyTitle: { en: "Privacy and retention", hi: "गोपनीयता और डेटा रखने की अवधि", te: "గోప్యత మరియు డేటా నిల్వ కాలం" },
+  formHelper: { en: "Form Helper", hi: "फ़ॉर्म सहायक", te: "ఫారం సహాయకుడు" },
+  notSubmitted: {
+    en: "Nothing has been submitted. Take these details to the office or portal yourself.",
+    hi: "कुछ भी जमा नहीं किया गया है। ये जानकारी ख़ुद कार्यालय या पोर्टल पर ले जाएँ।",
+    te: "ఏదీ సమర్పించబడలేదు. ఈ వివరాలను మీరే కార్యాలయానికి లేదా పోర్టల్‌కు తీసుకెళ్లండి.",
+  },
+  copy: { en: "Copy", hi: "कॉपी करें", te: "కాపీ చేయండి" },
+  noSteps: { en: "No application steps in the catalogue; ask at the office.", hi: "सूची में आवेदन के चरण नहीं हैं; कार्यालय में पूछें।", te: "జాబితాలో దరఖాస్తు దశలు లేవు; కార్యాలయంలో అడగండి." },
+  readAloudSteps: { en: "Read the steps aloud", hi: "चरण पढ़कर सुनाएँ", te: "దశలను చదివి వినిపించండి" },
+  downloadPdf: { en: "Download PDF draft", hi: "PDF ड्राफ़्ट डाउनलोड करें", te: "PDF డ్రాఫ్ట్ డౌన్‌లోడ్ చేయండి" },
   consentNoticeTitle: { en: "Notice: what you agree to", hi: "सूचना: आप किस बात के लिए सहमत हो रहे हैं", te: "నోటీసు: మీరు దేనికి అంగీకరిస్తున్నారు" },
   downloadData: { en: "Download my data", hi: "मेरा डेटा डाउनलोड करें", te: "నా డేటాను డౌన్‌లోడ్ చేయండి" },
   downloadDataHint: {

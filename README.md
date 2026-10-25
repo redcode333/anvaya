@@ -284,6 +284,28 @@ The browser never talks to Storage; everything goes through the backend (`backen
    30) after the case is reviewed, and right away on *Request re-upload* — inside the hourly retention job. If Storage
    is unreachable, the rows stay and the next run retries; account deletion stops with nothing deleted.
 
+### Form Helper (prepared drafts)
+
+The draft page has a **Form Helper**. Anvaya never submits anything to a government portal; the status reads
+"Draft ready — submit at the office/portal" and the citizen takes the details there.
+
+* **Copy-ready view** (`GET /api/v1/drafts/<id>/helper?language=en|hi|te`): every field in the order official forms
+  usually follow, each with a copy button and a source tag (confirmed / inferred / citizen-entered / missing). Missing
+  fields are highlighted with what to bring. **Aadhaar and bank account numbers are never collected**: they are listed
+  as "provide at the office", and any run of 9+ digits typed into a draft field is masked in the view and the PDF.
+* **Steps:** the dataset's `application_process` as a numbered checklist. For hi / te the steps are VerbX machine
+  translations (cached in `translations`), labelled "machine translation"; without VerbX the English steps are shown
+  with a note. A read-aloud button uses the cached TTS. The official link comes from the dataset's source URLs
+  (http/https only) with a QR code (`GET /api/v1/schemes/<id>/portal-qr.svg`).
+* **PDF** (`GET /api/v1/drafts/<id>/pdf?language=…`): fields with source tags, the document checklist, the case code
+  (only if the citizen's browser sends it in `X-Case-Code` and it matches: codes are stored hashed), the steps, the
+  link + QR, and the watermark "Draft prepared by Anvaya AI — not submitted to any government office" on every page.
+  Noto Sans / Devanagari / Telugu (SIL OFL, `backend/anvaya/data/fonts/`) are embedded, shaped with HarfBuzz
+  (fpdf2 + uharfbuzz). Only the draft's owner (same session rules as the draft, including kiosk device + operator) or a
+  reviewer / admin once the draft has a case can read it (aal2 for staff); each download is audited without values.
+  Shaped Indic glyphs that have no Unicode value of their own are mapped to a zero-width space so the PDF's text layer
+  keeps the real letters; some viewers still show a space inside Telugu conjuncts.
+
 ### Privacy and retention
 
 | Data | Deleted |

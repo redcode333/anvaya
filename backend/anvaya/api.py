@@ -1,8 +1,8 @@
 from functools import wraps
 
-from flask import Blueprint, current_app, g, jsonify, request
+from flask import Blueprint, Response, current_app, g, jsonify, request
 
-from . import (accounts, auth, cases, catalogue, digilocker, documents, i18n, llm, migrations, profile, sync,
+from . import (accounts, auth, cases, catalogue, digilocker, documents, formhelper, i18n, llm, migrations, profile, sync,
                testrunner, translation, voice)
 from .common import ApiError, audit, current_user, idempotency_key, idempotent, rate_limit, require_role
 from .db import bump, get_db, iso
@@ -501,6 +501,36 @@ def edit_draft(draft_id):
     if if_match is None:
         raise ApiError("VERSION_REQUIRED", "Send the draft version (If-Match header or body.version).", 428)
     return cases.patch_draft(draft_id, session_header(), int(if_match), b.get("fields") or {})
+
+
+def _helper_for(draft_id):
+    row, staff = formhelper.load(draft_id, session_header())
+    lang = request.args.get("language") or row["session_language"]
+    code = formhelper._case_code(row, request.headers.get("X-Case-Code"))
+    return row, staff, formhelper.helper(row, lang, code)
+
+
+@bp.get("/drafts/<draft_id>/helper")
+def draft_helper(draft_id):
+    """Form Helper: copy-ready fields, application steps, official link + QR. Nothing is submitted anywhere."""
+    return _helper_for(draft_id)[2]
+
+
+@bp.get("/drafts/<draft_id>/pdf")
+def draft_pdf(draft_id):
+    """The draft as a PDF (en / hi / te) with a 'not submitted' watermark. Owner, or a reviewer / admin with a case."""
+    row, staff, h = _helper_for(draft_id)
+    data = formhelper.render_pdf(h)
+    formhelper.record_download(row, h["language"], staff)
+    return Response(data, mimetype="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="anvaya-draft-{row["draft_id"]}-{h["language"]}.pdf"',
+        "Cache-Control": "no-store"})
+
+
+@bp.get("/schemes/<scheme_id>/portal-qr.svg")
+def portal_qr(scheme_id):
+    return Response(formhelper.portal_qr_svg(scheme_id), mimetype="image/svg+xml",
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 @bp.post("/drafts/<draft_id>/handoff")

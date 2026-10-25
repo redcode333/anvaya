@@ -56,6 +56,38 @@ export async function api<T = any>(path: string, opts: Opts = {}): Promise<T> {
   return data as T;
 }
 
+/** A binary download (the draft PDF) with the same auth and session headers as api(). */
+export async function apiBlob(path: string, opts: { sessionId?: string; headers?: Record<string, string> } = {}): Promise<Blob> {
+  const headers: Record<string, string> = { ...(opts.headers || {}) };
+  if (opts.sessionId) headers["X-Session-Id"] = opts.sessionId;
+  path = sessionInHeader(path, headers);
+  const device = kioskDevice();
+  if (device) headers["X-Kiosk-Device"] = device;
+  const token = await tokenProvider().catch(() => null);
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  let res: Response;
+  try { res = await fetch(`/api/v1${path}`, { headers }); }
+  catch { throw new ApiError("NETWORK", "Cannot reach the Anvaya server.", 0); }
+  if (!res.ok) {
+    const e = (await res.json().catch(() => ({}))).error || {};
+    throw new ApiError(e.code || `HTTP_${res.status}`, e.message || res.statusText, res.status, e.details, e.request_id);
+  }
+  return res.blob();
+}
+
+// ---- Form Helper (draft page)
+export type HelperField = { key: string; label: string; value: string | null; copy_text: string | null; tag: "confirmed" | "inferred" | "citizen_entered" | "missing"; tag_label: string; bring: string | null };
+export type HelperStep = { text: string; text_en: string; heading: boolean; machine_translated: boolean };
+export type Helper = {
+  draft_id: string; scheme_id: string; scheme_name: string; language: string; status_label: string;
+  case: { case_id: string; status: string; status_label: string; code: string | null } | null;
+  fields: HelperField[]; office_only: { key: string; label: string; hint: string }[];
+  documents: { doc_key: string; label: string; status: string; status_label: string; ready: boolean }[];
+  steps: HelperStep[]; steps_machine_translated: boolean; steps_note: string | null;
+  official_link: { label: string; url: string } | null; links: { label: string; url: string }[]; qr_url: string | null;
+  watermark: string; watermark_local: string; labels: Record<string, string>;
+};
+
 // ---- shared types (mirror backend payloads)
 export type Fact = {
   fact_id: string; attribute: string; value: any; raw_text?: string; source: string; confidence: number;

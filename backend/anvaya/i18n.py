@@ -172,6 +172,7 @@ ATTRIBUTE_LABELS = {
     "has_bank_account": {"en": "Has bank account", "hi": "बैंक खाता है", "te": "బ్యాంక్ ఖాతా ఉంది"},
     "owns_pucca_house": {"en": "Owns pucca house", "hi": "पक्का मकान है", "te": "పక్కా ఇల్లు ఉంది"},
     "applicant_name": {"en": "Applicant name", "hi": "आवेदक का नाम", "te": "దరఖాస్తుదారుని పేరు"},
+    "date_of_birth": {"en": "Date of birth", "hi": "जन्मतिथि", "te": "పుట్టిన తేదీ"},
 }
 
 MESSAGES = {
@@ -251,7 +252,8 @@ REVIEW_OUTCOMES = {
 }
 
 CASE_STATUS = {
-    "DRAFT_SAVED": {"en": "Draft saved (not submitted to government)", "hi": "ड्राफ़्ट सहेजा गया (सरकार को जमा नहीं)", "te": "డ్రాఫ్ట్ సేవ్ అయింది (ప్రభుత్వానికి సమర్పించలేదు)"},
+    "DRAFT_SAVED": {"en": "Draft ready — submit at the office/portal", "hi": "ड्राफ़्ट तैयार — कार्यालय/पोर्टल पर जमा करें",
+                    "te": "డ్రాఫ్ట్ సిద్ధం — కార్యాలయంలో/పోర్టల్‌లో సమర్పించండి"},
     "PENDING_REVIEW": {"en": "Waiting for reviewer", "hi": "समीक्षक की प्रतीक्षा में", "te": "సమీక్షకుని కోసం వేచి ఉంది"},
     "CORRECTION_REQUESTED": {"en": "Reviewer asked for a correction", "hi": "समीक्षक ने सुधार माँगा है", "te": "సమీక్షకుడు సవరణ కోరారు"},
     "REVIEWED": {"en": "Reviewed by reviewer", "hi": "समीक्षक द्वारा समीक्षा की गई", "te": "సమీక్షకుడు సమీక్షించారు"},

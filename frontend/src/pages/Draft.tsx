@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, newKey, type Draft } from "../api";
 import { ErrorNote, OutcomeBadge, StatusBadge, ValueInput } from "../components";
+import { FormHelper } from "../FormHelper";
 import { showValue, t } from "../i18n";
 import { useApp } from "../state";
 
@@ -105,6 +106,7 @@ export default function DraftPage() {
         )}
         {locked && !handoff && <p className="small">This draft is with the reviewer ({d.case?.status}). Use your case code to follow its status.</p>}
       </section>
+      <div style={{ gridColumn: "1 / -1" }}><FormHelper draftId={d.draft_id} caseCode={handoff?.code ?? null} /></div>
     </div>
   );
 }
