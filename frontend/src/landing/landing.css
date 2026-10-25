@@ -32,6 +32,8 @@
 /* ---- hero */
 .l-hero { padding-top: 14px; display: flex; flex-direction: column; min-height: calc(100svh - 56px); }
 .l-hero-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap: 36px; align-items: center; }
+/* Wide screens: the headline gets the wider column (the demo card is capped at 440px anyway), so the Hinglish line fits two lines. */
+@media (min-width: 1000px) { .l-hero-grid { grid-template-columns: minmax(0, 1.3fr) minmax(0, .8fr); } .l-hero-demo { justify-content: flex-end; } }
 .l-hero-copy { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .l-eyebrow { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid var(--l-line); font-size: 14px; font-weight: 500; }
 .l-eyebrow i { width: 7px; height: 7px; border-radius: 50%; background: var(--l-accent); }
@@ -57,7 +59,7 @@
 .hl { display: flex; flex-direction: column; gap: 10px; }
 .hl-stage { display: grid; font-family: var(--l-display); font-weight: 600; }
 .hl-line { grid-area: 1 / 1; align-self: start; text-wrap: balance; }
-.hl-latin { font-size: clamp(36px, 4.3vw, 60px); line-height: 1.06; letter-spacing: -.03em; }
+.hl-latin { font-size: clamp(34px, 4vw, 56px); line-height: 1.06; letter-spacing: -.03em; }
 .hl-indic { font-size: clamp(26px, 2.7vw, 38px); line-height: 1.35; letter-spacing: 0; }
 .hl-latin .hl-unit { margin-right: .26em; }
 .hl-unit { display: inline-block; will-change: transform, opacity, filter; }
