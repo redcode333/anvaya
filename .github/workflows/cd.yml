@@ -25,7 +25,7 @@ jobs:
       image: ${{ steps.image.outputs.name }}
       sha_tag: ${{ steps.image.outputs.sha_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/dataset
       - name: Image name (GHCR requires lowercase)
         id: image
@@ -79,7 +79,7 @@ jobs:
           else
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.gate.outputs.enabled == 'true'
       - name: Configure kubectl
         if: steps.gate.outputs.enabled == 'true'
