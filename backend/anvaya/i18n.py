@@ -74,7 +74,9 @@ DOC_STATUS = {
     "missing": {"en": "Missing", "hi": "नहीं है", "te": "లేదు"},
     "expired": {"en": "Expired", "hi": "समाप्त", "te": "గడువు ముగిసింది"},
     "unknown": {"en": "Not sure", "hi": "पता नहीं", "te": "తెలియదు"},
+    "uploaded": {"en": "Uploaded — not verified yet", "hi": "अपलोड हुआ — अभी सत्यापित नहीं", "te": "అప్‌లోడ్ అయింది — ఇంకా ధృవీకరించలేదు"},
     "verified": {"en": "Verified by reviewer", "hi": "समीक्षक द्वारा सत्यापित", "te": "సమీక్షకుడు ధృవీకరించారు"},
+    "reupload_requested": {"en": "Reviewer asked for a new upload", "hi": "समीक्षक ने दोबारा अपलोड माँगा", "te": "సమీక్షకుడు మళ్ళీ అప్‌లోడ్ అడిగారు"},
 }
 
 OUTCOMES = {

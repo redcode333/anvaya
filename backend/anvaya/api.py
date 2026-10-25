@@ -2,7 +2,8 @@ from functools import wraps
 
 from flask import Blueprint, current_app, g, jsonify, request
 
-from . import accounts, auth, cases, catalogue, i18n, llm, migrations, profile, sync, testrunner, translation, voice
+from . import (accounts, auth, cases, catalogue, documents, i18n, llm, migrations, profile, sync, testrunner,
+               translation, voice)
 from .common import ApiError, audit, current_user, idempotency_key, idempotent, require_role
 from .db import bump, get_db, iso
 
@@ -310,6 +311,27 @@ def mark_document(sid, doc_key):
     return catalogue.document_guide(sid)
 
 
+@bp.post("/sessions/<sid>/documents/<doc_key>/upload-url")
+def document_upload_url(sid, doc_key):
+    return documents.create_upload_url(sid, doc_key, body()), 201
+
+
+@bp.put("/uploads/<token>")
+def document_upload(token):
+    """The signed upload URL: the file body goes through this backend (type + size checked) into private Storage."""
+    return documents.receive_upload(token, request.stream)
+
+
+@bp.get("/sessions/<sid>/documents/<doc_key>/view-url")
+def document_view_url(sid, doc_key):
+    return documents.create_view_url(sid, doc_key)
+
+
+@bp.get("/uploads/view/<token>")
+def document_view(token):
+    return documents.serve_view(token)
+
+
 @bp.get("/schemes")
 def list_schemes():
     a = request.args
@@ -399,6 +421,12 @@ def reviewer_case(case_id):
 @require_role("reviewer", "admin")
 def reviewer_decision(case_id):
     return cases.decide(case_id, body())
+
+
+@bp.post("/reviewer/cases/<case_id>/documents/<doc_key>")
+@require_role("reviewer", "admin")
+def reviewer_document(case_id, doc_key):
+    return documents.review_document(case_id, doc_key, body().get("action", ""))
 
 
 @bp.get("/cases/<case_id>/audit")

@@ -127,6 +127,29 @@ const S = {
     te: "ఈ సెషన్ ముగుస్తుంది, మీ సమాధానాలు తొలగించబడతాయి —",
   },
   imHere: { en: "I'm still here", hi: "मैं यहाँ हूँ", te: "నేను ఇక్కడే ఉన్నాను" },
+  uploadDoc: { en: "Upload a photo or PDF", hi: "फ़ोटो या PDF अपलोड करें", te: "ఫోటో లేదా PDF అప్‌లోడ్ చేయండి" },
+  maskedAadhaar: {
+    en: "Upload a masked Aadhaar — only the last 4 digits visible.",
+    hi: "मास्क्ड आधार अपलोड करें — केवल आख़िरी 4 अंक दिखें।",
+    te: "మాస్క్ చేసిన ఆధార్ అప్‌లోడ్ చేయండి — చివరి 4 అంకెలు మాత్రమే కనిపించాలి.",
+  },
+  uploadConsent: {
+    en: "I agree to upload this document so a reviewer can check it. It is not read by any AI and is deleted with my data.",
+    hi: "मैं यह दस्तावेज़ अपलोड करने के लिए सहमत हूँ ताकि समीक्षक इसे जाँच सके। इसे कोई AI नहीं पढ़ता और यह मेरे डेटा के साथ मिटा दिया जाता है।",
+    te: "సమీక్షకుడు తనిఖీ చేయడానికి ఈ పత్రాన్ని అప్‌లోడ్ చేయడానికి అంగీకరిస్తున్నాను. దీన్ని ఏ AI చదవదు, నా డేటాతో పాటు తొలగించబడుతుంది.",
+  },
+  uploadTypes: { en: "JPEG, PNG or PDF, up to 5 MB", hi: "JPEG, PNG या PDF, अधिकतम 5 MB", te: "JPEG, PNG లేదా PDF, గరిష్ఠంగా 5 MB" },
+  uploading: { en: "Uploading", hi: "अपलोड हो रहा है", te: "అప్‌లోడ్ అవుతోంది" },
+  notVerifiedYet: { en: "Uploaded — not verified yet", hi: "अपलोड हुआ — अभी सत्यापित नहीं", te: "అప్‌లోడ్ అయింది — ఇంకా ధృవీకరించలేదు" },
+  viewDoc: { en: "View", hi: "देखें", te: "చూడండి" },
+  fileTypeBad: { en: "Choose a JPEG, PNG or PDF file.", hi: "JPEG, PNG या PDF फ़ाइल चुनें।", te: "JPEG, PNG లేదా PDF ఫైల్ ఎంచుకోండి." },
+  fileTooLarge: { en: "The file is larger than 5 MB.", hi: "फ़ाइल 5 MB से बड़ी है।", te: "ఫైల్ 5 MB కంటే పెద్దది." },
+  uploadNeedsCase: {
+    en: "At a kiosk, documents can be uploaded after the draft is sent to a reviewer.",
+    hi: "कियोस्क पर, ड्राफ़्ट समीक्षक को भेजने के बाद दस्तावेज़ अपलोड किए जा सकते हैं।",
+    te: "కియోస్క్‌లో, డ్రాఫ్ట్‌ను సమీక్షకునికి పంపిన తర్వాత పత్రాలు అప్‌లోడ్ చేయవచ్చు.",
+  },
+  uploadCaseClosed: { en: "This case has been reviewed; no more uploads.", hi: "इस केस की समीक्षा हो चुकी है; अब अपलोड नहीं।", te: "ఈ కేసు సమీక్ష పూర్తయింది; ఇక అప్‌లోడ్‌లు లేవు." },
   privacyTitle: { en: "Privacy and retention", hi: "गोपनीयता और डेटा रखने की अवधि", te: "గోప్యత మరియు డేటా నిల్వ కాలం" },
 } as const;
 

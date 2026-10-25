@@ -37,6 +37,7 @@ LLM_MERGE = Counter("anvaya_llm_merge_total", "LLM facts by merge outcome agains
 
 VOICE = Counter("anvaya_voice_requests_total", "Voice adapter calls", ["op", "result"])
 AUTH = Counter("anvaya_auth_events_total", "Auth events", ["result"])
+UPLOADS = Counter("anvaya_document_uploads_total", "Document uploads by result", ["result"])
 RATE_LIMITED = Counter("anvaya_code_lookups_rate_limited_total", "Case-code lookups rejected by rate limit", ["bucket"])
 TEST_RUNS = Counter("anvaya_test_runs_total", "Official scenario runs", ["tc", "result"])
 

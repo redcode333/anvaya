@@ -43,6 +43,7 @@ configMapGenerator:
       - KIOSK_IDLE_SECONDS=180
       - PASSPORT_RETENTION_DAYS=365
       - GOOGLE_AUTH_ENABLED=false
+      - REVIEWED_UPLOAD_RETENTION_DAYS=30
       - VERBX_STT_PATH=/v1/stt
       - VERBX_TTS_PATH=/v1/tts
       - VERBX_TIMEOUT_S=15

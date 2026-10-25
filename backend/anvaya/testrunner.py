@@ -333,7 +333,8 @@ def latest_runs() -> dict:
 def reset() -> dict:
     db = get_db()
     sids = [r[0] for r in db.execute("SELECT session_id FROM sessions WHERE is_test=1")]
-    for table in ("facts", "turns", "doc_marks", "evaluations", "drafts", "cases", "audit_events", "passport_versions"):
+    for table in ("facts", "turns", "doc_marks", "evaluations", "drafts", "cases", "audit_events", "passport_versions",
+                  "document_uploads"):
         db.executemany(f"DELETE FROM {table} WHERE session_id=?", [(s,) for s in sids])
     db.execute("DELETE FROM sessions WHERE is_test=1")
     db.execute("DELETE FROM passport_attempts WHERE code_hash IN (SELECT code_hash FROM citizens WHERE is_test=1)")

@@ -322,7 +322,7 @@ def list_cases(status: str | None = None) -> list[dict]:
 def get_case(case_id: str) -> dict:
     db = get_db()
     by_case = "(SELECT session_id FROM cases WHERE case_id=?)"
-    row, draft_row, ev_row, fact_rows, marks_rows, scheme_row, audit_rows = db.query_many([
+    row, draft_row, ev_row, fact_rows, marks_rows, scheme_row, audit_rows, upload_rows = db.query_many([
         ("SELECT * FROM cases WHERE case_id=?", (case_id,)),
         (DRAFT_SQL + " WHERE d.draft_id=(SELECT draft_id FROM cases WHERE case_id=?)", (case_id,)),
         (f"SELECT * FROM evaluations WHERE session_id={by_case} ORDER BY created_at DESC, rowid DESC LIMIT 1", (case_id,)),
@@ -331,6 +331,8 @@ def get_case(case_id: str) -> dict:
         ("SELECT s.* FROM schemes s JOIN drafts d ON d.scheme_id = s.scheme_id JOIN cases c ON c.draft_id = d.draft_id"
          " WHERE c.case_id=?", (case_id,)),
         _audit_query(case_id),
+        (f"SELECT doc_key, upload_id, status, content_type, size_bytes, uploaded_at FROM document_uploads"
+         f" WHERE session_id={by_case} AND status IN ('uploaded', 'verified')", (case_id,)),
     ])
     row = row.fetchone()
     if not row:
@@ -351,6 +353,9 @@ def get_case(case_id: str) -> dict:
         "consent": consent, "recheck": json.loads(row["recheck_json"]) if row["recheck_json"] else None,
         "facts": profile.Facts(row["session_id"], fact_rows).history(),
         "documents": {r["doc_key"]: r["status"] for r in marks_rows},
+        "uploads": {r["doc_key"]: {k: r[k] for k in ("upload_id", "status", "content_type", "size_bytes", "uploaded_at")}
+                    for r in upload_rows},
+        "session_id": row["session_id"],
         "draft": draft,
         "evaluation": catalogue.localize_result(scheme_result, "en") if scheme_result else None,
         "scheme": catalogue.scheme_card(scheme_row.fetchone()),

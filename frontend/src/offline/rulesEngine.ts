@@ -64,7 +64,7 @@ export function evaluate(rule: Rule, facts: Record<string, Fact>, docs: Record<s
   return {
     scheme_id: rule.scheme_id, scheme_name: meta.scheme_name, rule_id: rule.rule_id, rule_version: rule.version,
     outcome, reasons, criteria, evidence, missing_facts: [...new Set(criteria.filter((c) => c.outcome === "UNKNOWN").map((c) => c.fact))],
-    document_gaps: evidence.filter((e) => ["missing", "expired", "unknown"].includes(e.status)).map((e) => e.doc_key),
+    document_gaps: evidence.filter((e) => ["missing", "expired", "unknown", "reupload_requested"].includes(e.status)).map((e) => e.doc_key),
     source_url: meta.source_url, bundle_version: meta.bundle_version,
   };
 }

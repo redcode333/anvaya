@@ -142,21 +142,29 @@ def end_session(session_id: str, reason: str = "user") -> None:
     """End a session (kiosk End session / idle timeout, or Start over). Data nobody consented to keep is deleted:
     a saved passport keeps its facts and versions, a consented hand-off keeps its case; utterances never stay."""
     db = get_db()
-    session, case, saved = db.query_many([
+    session, case, saved, uploads = db.query_many([
         (SESSION_SQL, (session_id,)), ("SELECT 1 FROM cases WHERE session_id=?", (session_id,)),
         ("SELECT c.saved FROM citizens c JOIN sessions s ON s.citizen_id = c.citizen_id WHERE s.session_id=?",
-         (session_id,))])
+         (session_id,)),
+        ("SELECT upload_id, storage_path FROM document_uploads WHERE session_id=?", (session_id,))])
     _checked_session(session.fetchone(), allow_ended=True)
     has_case, row = case.fetchone(), saved.fetchone()
     is_saved = bool(row and row[0])
+    removed_uploads = 0
     if not has_case and not is_saved:
         for table in ("facts", "turns", "doc_marks", "evaluations", "drafts", "passport_versions"):
             db.execute(f"DELETE FROM {table} WHERE session_id=?", (session_id,))
+        from . import documents
+        try:
+            removed_uploads = documents.delete_uploads(db, [(r[0], r[1]) for r in uploads])
+        except ApiError:
+            pass  # Storage unreachable: the rows stay and the hourly retention run deletes the files later
     else:
         db.execute("DELETE FROM turns WHERE session_id=?", (session_id,))
     db.execute("UPDATE sessions SET ended_at=? WHERE session_id=?", (iso(), session_id))
     audit("session.end", session_id=session_id,
-          details={"retained_case": bool(has_case), "saved_passport": is_saved, "reason": reason})
+          details={"retained_case": bool(has_case), "saved_passport": is_saved, "reason": reason,
+                   **({"uploads_deleted": removed_uploads} if removed_uploads else {})})
     db.commit()
 
 

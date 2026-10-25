@@ -293,7 +293,8 @@ def latest_evaluation(session_id: str, row=False) -> dict | None:
 
 def set_doc_mark(session_id: str, doc_key: str, status: str, by: str = "citizen", commit: bool = True) -> dict | None:
     """Upsert one document mark. With commit=False the write joins the caller's transaction and nothing is returned."""
-    allowed = {"available", "missing", "expired", "unknown"} | ({"verified"} if by == "reviewer" else set())
+    allowed = {"available", "missing", "expired", "unknown"} | (
+        {"verified", "reupload_requested"} if by == "reviewer" else {"uploaded"} if by == "upload" else set())
     if status not in allowed:
         raise ApiError("INVALID_DOC_STATUS", "Citizens can mark available, missing, expired or unknown; only a reviewer can verify.", 422)
     if doc_key not in i18n.DOCUMENTS:
@@ -304,6 +305,9 @@ def set_doc_mark(session_id: str, doc_key: str, status: str, by: str = "citizen"
         "ON CONFLICT(session_id, doc_key) DO UPDATE SET status=excluded.status, marked_by=excluded.marked_by, updated_at=excluded.updated_at",
         (session_id, doc_key, status, by, iso()),
     )
+    if status == "verified":  # a reviewer verifying a document also verifies its uploaded file
+        db.execute("UPDATE document_uploads SET status='verified', reviewed_at=? WHERE session_id=? AND doc_key=?"
+                   " AND status='uploaded'", (iso(), session_id, doc_key))
     audit("documents.mark", session_id=session_id, details={"doc_key": doc_key, "status": status, "by": by})
     if not commit:
         return None
@@ -313,8 +317,10 @@ def set_doc_mark(session_id: str, doc_key: str, status: str, by: str = "citizen"
 
 def document_guide(session_id: str) -> dict:
     """Union of evidence requirements across the latest non-mismatch results."""
-    session, ev_row, marks_rows = get_db().query_many([
-        (profile.SESSION_SQL, (session_id,)), (LATEST_EVAL_SQL, (session_id,)), (DOC_MARKS_SQL, (session_id,))])
+    from . import documents
+    session, ev_row, marks_rows, case_rows, upload_rows = get_db().query_many([
+        (profile.SESSION_SQL, (session_id,)), (LATEST_EVAL_SQL, (session_id,)), (DOC_MARKS_SQL, (session_id,)),
+        (documents.CASES_SQL, (session_id,)), (documents.SESSION_UPLOADS_SQL, (session_id,))])
     session = profile._checked_session(session.fetchone(), allow_ended=False)
     lang = session["language"]
     ev = latest_evaluation(session_id, ev_row.fetchone())
@@ -326,11 +332,14 @@ def document_guide(session_id: str) -> dict:
         for e in r["evidence"]:
             d = docs.setdefault(e["doc_key"], {"doc_key": e["doc_key"], "needed_for": []})
             d["needed_for"].append({"scheme_id": r["scheme_id"], "scheme_name": r["scheme_name"]})
+    uploads = {r["doc_key"]: {k: r[k] for k in ("upload_id", "status", "content_type", "size_bytes", "uploaded_at")}
+               for r in upload_rows}
     items = []
     for k, d in docs.items():
         label, purpose = i18n.doc_label(k, lang)
         status = marks.get(k, "unknown")
         items.append({**d, "label": label, "purpose": purpose, "status": status,
-                      "status_label": i18n.t(i18n.DOC_STATUS, status, lang)})
+                      "status_label": i18n.t(i18n.DOC_STATUS, status, lang), "upload": uploads.get(k)})
     items.sort(key=lambda x: (-len(x["needed_for"]), x["label"]))
-    return {"documents": items, "note": "Marking a document as available is your own declaration; it is not official verification."}
+    return {"documents": items, "upload": documents.policy_public(session, case_rows.fetchall()),
+            "note": "Marking a document as available is your own declaration; it is not official verification."}

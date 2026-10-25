@@ -321,7 +321,8 @@ def test_delete_account_removes_data_and_auth_user_but_keeps_consented_cases(app
     assert client.get(f"/api/v1/reviewer/cases/{case['case_id']}", headers=staff("reviewer")).status_code == 200
     ev_row = rows(app, "SELECT details_json FROM audit_events WHERE action='account.deleted' AND actor_id=?", (cid,))
     details = json.loads(ev_row[0][0])
-    assert details == {"sessions_deleted": 1, "cases_kept": 1, "passport_versions": 2, "auth_user_deleted": True}
+    assert details == {"sessions_deleted": 1, "cases_kept": 1, "passport_versions": 2, "uploads_deleted": 0,
+                       "auth_user_deleted": True}
 
 
 def test_delete_account_deletes_nothing_when_auth_delete_fails(app, client, consent, monkeypatch):

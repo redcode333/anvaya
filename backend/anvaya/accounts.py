@@ -427,11 +427,15 @@ def session_citizen(session_id: str) -> str:
 # ---------------------------------------------------------------- deletion and retention
 
 def _purge_sessions(db, sids_without_case: list[str], sids_with_case: list[str]) -> None:
-    for table in ("facts", "turns", "doc_marks", "evaluations", "drafts", "passport_versions"):
+    """Rows only: callers delete the sessions' stored files first (documents.delete_uploads)."""
+    for table in ("facts", "turns", "doc_marks", "evaluations", "drafts", "passport_versions", "document_uploads"):
         db.executemany(f"DELETE FROM {table} WHERE session_id=?", [(s,) for s in sids_without_case])
     db.executemany("DELETE FROM sessions WHERE session_id=?", [(s,) for s in sids_without_case])
     # Consented hand-off cases stay with the reviewer; the session is no longer tied to the person.
     db.executemany("DELETE FROM turns WHERE session_id=?", [(s,) for s in sids_with_case])
+    db.executemany("DELETE FROM document_uploads WHERE session_id=?", [(s,) for s in sids_with_case])
+    db.executemany("UPDATE doc_marks SET status='missing' WHERE session_id=? AND status='uploaded'",
+                   [(s,) for s in sids_with_case])
     db.executemany("UPDATE sessions SET citizen_id=NULL, auth_user_id=NULL WHERE session_id=?",
                    [(s,) for s in sids_with_case])
 
@@ -458,12 +462,19 @@ def _delete_citizen_rows(db, citizen_ids: list[str]) -> dict:
 def delete_account(claims: dict) -> dict:
     """Delete the signed-in citizen's data and their Supabase Auth user. The Auth user goes first: if that fails,
     nothing is deleted and the citizen can retry; then all data goes in one transaction."""
+    from . import documents
     cid = citizen_id_for(claims["sub"])
+    db = get_db()
+    # Uploaded files go first (a Storage failure stops here with nothing deleted), then the Auth user, then the rows.
+    uploads = documents.paths_for_sessions(db, [r[0] for r in db.execute(
+        "SELECT session_id FROM sessions WHERE citizen_id=?", (cid,))])
+    storage_paths = [p for _, p in uploads]
+    from . import storage
+    storage.delete(storage_paths)
     if not auth.delete_auth_user(claims["sub"]):
         raise ApiError("ACCOUNT_DELETE_FAILED", "Could not delete the account right now; nothing was deleted. Try again.", 502)
-    db = get_db()
     with db.transaction():
-        counts = _delete_citizen_rows(db, [cid])
+        counts = {**_delete_citizen_rows(db, [cid]), "uploads_deleted": len(uploads)}
         audit("account.deleted", details={**counts, "auth_user_deleted": True}, actor_id=cid, actor_role="citizen")
     metrics.AUTH.labels("account_deleted").inc()
     return {"deleted": True, **counts}
@@ -489,20 +500,31 @@ def purge_expired(db, cfg) -> dict:
          (unsaved_cutoff,)),
         ("SELECT citizen_id, auth_user_id FROM citizens WHERE saved=1 AND is_test=0 AND last_active_at < ?",
          (saved_cutoff,))])
+    from . import documents
     drop = [r[0] for r in sessions]
     unsaved, inactive = unsaved.fetchall(), inactive.fetchall()
+    gone_citizens = [r["citizen_id"] for r in unsaved + inactive]
+    if gone_citizens:
+        drop_more = [r[0] for r in db.execute(f"SELECT session_id FROM sessions WHERE citizen_id IN"
+                                               f" ({','.join('?' * len(gone_citizens))})", gone_citizens)]
+    else:
+        drop_more = []
+    uploads = documents.paths_for_sessions(db, sorted(set(drop) | set(drop_more)))
+    uploads += [u for u in documents.expired_uploads(db, cfg) if u not in uploads]
+    # Files first: if Storage cannot be reached this raises, nothing is deleted and the next run retries.
+    storage_removed = documents.delete_uploads(db, uploads)
     with db.transaction():
         _purge_sessions(db, drop, [])
         removed = _delete_citizen_rows(db, [r["citizen_id"] for r in unsaved + inactive])
         db.execute("DELETE FROM passport_attempts WHERE ts < ?", (iso(now() - timedelta(days=1)),))
-        if drop or unsaved or inactive:
+        if drop or unsaved or inactive or storage_removed:
             db.execute("INSERT INTO audit_events(event_id, actor_id, actor_role, action, ts, details_json)"
                        " VALUES (?,?,?,?,?,?)",
                        (new_id("AUD"), "system", "system", "retention.purge", iso(),
                         dumps({"unsaved_sessions": len(drop), "unsaved_citizens": len(unsaved),
-                               "inactive_passports": len(inactive), **removed})))
+                               "inactive_passports": len(inactive), "uploads_deleted": storage_removed, **removed})))
     auth_ids = [r["auth_user_id"] for r in unsaved if r["auth_user_id"] and r["is_anonymous"]] + \
                [r["auth_user_id"] for r in inactive if r["auth_user_id"]]
     deleted_auth = sum(auth.delete_auth_user(a, cfg) for a in auth_ids) if cfg["SUPABASE_SECRET_KEY"] else 0
     return {"unsaved_sessions": len(drop), "unsaved_citizens": len(unsaved), "inactive_passports": len(inactive),
-            "auth_users_deleted": deleted_auth}
+            "uploads_deleted": storage_removed, "auth_users_deleted": deleted_auth}

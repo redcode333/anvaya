@@ -365,11 +365,36 @@ def _m4_accounts(db: Database) -> None:
         "DROP TABLE IF EXISTS auth_tokens", "DROP TABLE IF EXISTS users"]])
 
 
+UPLOADS_TABLE = """CREATE TABLE IF NOT EXISTS document_uploads (
+    upload_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    citizen_id TEXT,
+    case_id TEXT,
+    doc_key TEXT NOT NULL,
+    storage_path TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    size_bytes INTEGER,
+    status TEXT NOT NULL,
+    consent_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    uploaded_at TEXT,
+    reviewed_at TEXT
+)"""
+
+
+def _m5_document_uploads(db: Database) -> None:
+    """Uploaded documents: where each file is in the private bucket, its checked type and size, and its state."""
+    db.query_many([(ddl(UPLOADS_TABLE, db.dialect), ()),
+                   ("CREATE INDEX IF NOT EXISTS idx_document_uploads_session ON document_uploads(session_id, doc_key)", ())])
+
+
 MIGRATIONS = [
     (1, "initial schema", _m1_initial_schema),
     (2, "late columns: facts.confusable, facts.alternatives_json, sessions.is_demo", _m2_late_columns),
     (3, "lookup indexes, unique case codes, cache versions", _m3_lookup_indexes_and_versions),
     (4, "citizen accounts, passport versions, passport code attempts; drop local staff passwords", _m4_accounts),
+    (5, "document uploads", _m5_document_uploads),
 ]
 
 ENABLE_RLS = """DO $$

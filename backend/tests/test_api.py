@@ -367,7 +367,7 @@ def test_schema_migration_adds_confusable_column(tmp_path):
     old.commit()
     old.close()
     db = connect(str(path))
-    assert migrate(db) == [1, 2, 3, 4]
+    assert migrate(db) == [1, 2, 3, 4, 5]
     assert migrate(db) == []  # idempotent
     assert db.execute("SELECT confusable FROM facts WHERE fact_id='F-1'").fetchone()[0] == 0
     db.close()

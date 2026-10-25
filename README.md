@@ -250,6 +250,28 @@ or `missing (missing VAR, …)`. It logs variable names, never values. Missing o
 * After `KIOSK_IDLE_SECONDS` (default 180) without input, a 30-second **"Still there?"** warning appears (and is read
   aloud). Without an answer the session ends exactly like *End session*: the server deletes everything not consented.
 
+### Document uploads
+
+Citizens can upload a photo or PDF of each required document into the private Supabase Storage bucket `documents`.
+The browser never talks to Storage; everything goes through the backend (`backend/anvaya/documents.py`, `storage.py`).
+
+1. `POST /api/v1/sessions/<sid>/documents/<doc_key>/upload-url` checks session ownership and the citizen's upload
+   consent (at a kiosk also a consented hand-off case) and returns the backend's own **signed, single-use upload link,
+   valid 5 minutes**. (Supabase's own signed upload URLs live a fixed 2 hours, so they are not used.) Stored at
+   `<user id or session id>/<case id or session id>/<doc_key>/<uuid>`.
+2. `PUT /api/v1/uploads/<token>`: JPEG, PNG or PDF, at most 5 MB. The type is checked by magic bytes, not by the
+   declared type; after storing, the object is read back (size + magic bytes) and deleted if anything differs.
+3. The document state becomes **uploaded** (between the citizen's "I have it" and **verified**). Only a reviewer can
+   verify it; until then outcomes stay PROVISIONAL (`EVIDENCE_NOT_VERIFIED`). *Request re-upload* deletes the file.
+4. `GET .../documents/<doc_key>/view-url` gives a **2-minute** link to the owner, or to a reviewer when the session has a
+   case the citizen consented to share. Every view is audited (who, when, which document; never the content). View
+   responses are `no-store`; kiosks keep no copy (the file is dropped from the page after upload and not previewed).
+5. Uploads are never read for content: no OCR, no ID-number extraction, never sent to an LLM. Before uploading, the page
+   asks (en/hi/te) for a masked Aadhaar with only the last 4 digits visible.
+6. Deleted with the account, with unsaved sessions (end of session / 24 h), `REVIEWED_UPLOAD_RETENTION_DAYS` (default
+   30) after the case is reviewed, and right away on *Request re-upload* — inside the hourly retention job. If Storage
+   is unreachable, the rows stay and the next run retries; account deletion stops with nothing deleted.
+
 ### Privacy and retention
 
 | Data | Deleted |
@@ -257,6 +279,7 @@ or `missing (missing VAR, …)`. It logs variable names, never values. Missing o
 | Unsaved session data (facts, turns, screenings, drafts) | when a kiosk session ends; otherwise **24 h** after the session started |
 | Unsaved anonymous Supabase users | with their data after 24 h (admin API) |
 | Saved passports | after `PASSPORT_RETENTION_DAYS` (default **365**) without use, Auth user included |
+| Uploaded documents | with the account; with unsaved sessions; `REVIEWED_UPLOAD_RETENTION_DAYS` (default **30**) after the case is reviewed; at once on *Request re-upload* |
 | Passport code attempts (hashes only) | after 1 day |
 | Consented hand-off cases | kept for the reviewer, also after account deletion |
 
@@ -307,6 +330,7 @@ read it, and `.env` is gitignored.
 | `ANVAYA_PASSPORT_PEPPER` | dev pepper, with a warning | pepper for Passport code hashes; set a long random value in production |
 | `PASSPORT_RETENTION_DAYS`, `ANVAYA_UNSAVED_RETENTION_HOURS`, `ANVAYA_RETENTION_INTERVAL_MIN` | `365`, `24`, `60` | retention of saved / unsaved data; how often retention runs in the app (0 = only `manage cleanup`) |
 | `KIOSK_IDLE_SECONDS` | `180` | kiosk idle timeout (a 30 s warning comes first) |
+| `SUPABASE_STORAGE_BUCKET`, `REVIEWED_UPLOAD_RETENTION_DAYS` | `documents`, `30` | private bucket for uploads; days uploads are kept after the case is reviewed |
 | `SUPABASE_JWKS_CACHE_S` | `600` | how long signing keys are cached |
 | `ANVAYA_ADMIN_EMAIL` / `_PASSWORD`, `ANVAYA_REVIEWER_EMAIL` / `_PASSWORD`, `ANVAYA_OPERATOR_EMAIL` / `_PASSWORD` | unset | read only by `manage seed-staff` (Supabase staff accounts; password ≥ 8 characters) |
 | `ANVAYA_METRICS_TOKEN` | unset | when set, `/metrics` needs `Authorization: Bearer <token>` |
@@ -579,6 +603,8 @@ Gunicorn runs one worker with threads so the in-process counters stay complete.
   [Accounts and modes](#accounts-and-modes)).
 * **Retry safety:** idempotency keys on draft, handoff and sync; optimistic concurrency on draft edits.
 * **Kiosk exit** (button or idle timeout) deletes unconsented facts, turns, evaluations, drafts and passport versions.
+* **Uploads:** private bucket reached only by the backend; 5-minute single-use upload links and 2-minute view links
+  signed by the backend; type checked by magic bytes; every view audited; never OCR'd or sent to an LLM.
 * **Logs:** audit logs hold IDs, never profile values. Request logs hold method, route, status and timing only. A
   full TC1–TC5 run leaves no utterances, names, ages or incomes in the logs.
 * **Errors:** responses are JSON (`code`, `message`, `request_id`) and never contain stack traces.

@@ -85,6 +85,14 @@ class Config:
     # Pepper for the sha256 of Passport codes (PSP-XXXX-XXXX). Unset = a public development pepper plus a warning.
     PASSPORT_PEPPER = os.environ.get("ANVAYA_PASSPORT_PEPPER", "")
     KIOSK_IDLE_SECONDS = _num("KIOSK_IDLE_SECONDS", 180, int)
+
+    # Document uploads (documents.py): private Supabase Storage bucket, reached only by this backend.
+    STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "documents")
+    MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+    UPLOAD_URL_TTL_S = 300  # capped at 5 minutes
+    VIEW_URL_TTL_S = 120    # capped at 2 minutes
+    UPLOAD_CONSENT_VERSION = "upload-2026-10"
+    REVIEWED_UPLOAD_RETENTION_DAYS = _num("REVIEWED_UPLOAD_RETENTION_DAYS", 30, int)
     # Retention runs inside the app this often (minutes; 0 = only via `manage cleanup`), so the policy holds without
     # an external scheduler. Concurrent runs from several processes are harmless (plain deletes).
     RETENTION_INTERVAL_MIN = _num("ANVAYA_RETENTION_INTERVAL_MIN", 60, int)
