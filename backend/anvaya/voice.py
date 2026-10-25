@@ -9,6 +9,7 @@ Logs carry only endpoint, status, latency and VerbX's correlation id — never t
 import base64
 import hashlib
 import logging
+import re
 import threading
 import time
 import uuid
@@ -20,7 +21,7 @@ from concurrent.futures import TimeoutError as FutureTimeout
 import requests
 from flask import current_app
 
-from . import i18n, metrics
+from . import extraction, i18n, metrics
 from .common import ApiError
 from .db import bump, cached, get_db, iso
 
@@ -90,24 +91,88 @@ def _json(r: requests.Response):
 
 # ---------------------------------------------------------------- speech
 
+# VerbX STT forces its output into the language it is told: English speech sent as "hi" comes back as Devanagari
+# transliteration ("आईम टवटी टू इयर्स"), as "te" in Telugu script, and some audio comes back as a stage direction such as
+# "(speaking in foreign language)". The browser only knows the site language, not what the person actually speaks, so
+# a transcript is checked and, when it is not believable, the other languages are tried.
+_PLACEHOLDER = re.compile(r"^\s*[(\[*<][^)\]*>]{0,80}[)\]*>]\s*$")  # (inaudible), [BLANK_AUDIO], *music*, ...
+_SCRIPT = {"hi": ("ऀ", "ॿ", 0.4), "te": ("ఀ", "౿", 0.4)}  # (first, last, minimum share of letters)
+
+
+def _plausible(text: str, lang: str) -> bool:
+    """Is `text` a believable transcript of speech in `lang`? Not a placeholder, not a repeated-token hallucination, and
+    written in the script that language uses."""
+    if not text or _PLACEHOLDER.match(text):
+        return False
+    words = text.split()
+    if len(words) >= 8 and len(set(words)) / len(words) < 0.3:
+        return False
+    letters = [c for c in text if c.isalpha()]
+    if not letters:
+        return any(c.isdigit() for c in text)  # a bare number is a fine answer ("22")
+    if lang in _SCRIPT:
+        lo, hi, share = _SCRIPT[lang]
+        return sum(lo <= c <= hi for c in letters) / len(letters) >= share
+    return sum(c.isascii() for c in letters) / len(letters) >= 0.8
+
+
+def _fact_count(text: str) -> int:
+    return len(extraction.extract(text).get("facts", []))
+
+
 def transcribe(audio: bytes, mimetype: str, language: str) -> dict:
-    """POST /v1/stt with base64 audio (wav/mp3/ogg/webm). An empty transcript counts as a failure:
-    VerbX answers 200 with empty text and degraded=true for unusable audio."""
-    lang = _lang(language)
-    try:
-        body = _json(_post("/v1/stt", {"audio_base64": base64.b64encode(audio).decode(), "language": lang}))
-    except VerbXError as e:
-        metrics.VOICE.labels("stt", "not_configured" if str(e) == "not_configured" else "error").inc()
-        raise ApiError("VOICE_UNAVAILABLE", f"Speech recognition is unavailable ({e}); please type instead.", 503,
-                       {"reason": str(e)})
-    text = (body.get("text") or "").strip() if isinstance(body, dict) else ""
-    if not text:
-        metrics.VOICE.labels("stt", "empty").inc()
-        raise ApiError("VOICE_UNAVAILABLE", "No speech was recognised in that recording; please try again or type.", 503,
-                       {"reason": "no_speech"})
-    metrics.VOICE.labels("stt", "ok").inc()
-    return {"transcript": text, "language": lang, "provider": "verbx", "confidence": body.get("confidence"),
-            "model": body.get("model")}
+    """POST /v1/stt with base64 audio (wav/mp3/ogg/webm), asking for the site language first. That answer is accepted
+    when it is believable (not a placeholder, not repeated-token noise, in the right script) and either yields two or
+    more facts or is a short reply ("yes", "Bihar"). Anything thinner is compared with what VerbX hears when told the
+    audio is English (and, if nothing is believable, with the third language), and the believable transcript with the
+    most facts wins. So English or Hinglish spoken on a Hindi or Telugu screen, or the reverse, still works. An empty
+    transcript counts as a failure: VerbX answers 200 with empty text and degraded=true for unusable audio, and that is
+    not retried."""
+    requested = _lang(language)
+    # English second: it is the usual mismatch (English or Hinglish spoken on a Hindi / Telugu screen), and it is also
+    # what VerbX returns for Hindi / Telugu speech it is told is English, so it doubles as a cross-check.
+    order = [requested] + [lang for lang in ("en", "hi", "te") if lang != requested]
+    max_calls = len(order)
+    tried, found = [], []  # found: (facts, lang, text, body) of believable transcripts, in the order tried
+    for i, lang in enumerate(order):
+        if len(tried) >= max_calls:
+            break
+        try:
+            body = _json(_post("/v1/stt", {"audio_base64": base64.b64encode(audio).decode(), "language": lang},
+                               attempts=2 if i == 0 else 1))
+        except VerbXError as e:
+            if i == 0:
+                metrics.VOICE.labels("stt", "not_configured" if str(e) == "not_configured" else "error").inc()
+                raise ApiError("VOICE_UNAVAILABLE", f"Speech recognition is unavailable ({e}); please type instead.", 503,
+                               {"reason": str(e)})
+            break  # an alternate failing must not turn a usable first answer into an error
+        text = (body.get("text") or "").strip() if isinstance(body, dict) else ""
+        tried.append(lang)
+        if not text:
+            if i == 0:
+                metrics.VOICE.labels("stt", "empty").inc()
+                raise ApiError("VOICE_UNAVAILABLE", "No speech was recognised in that recording; please try again or type.",
+                               503, {"reason": "no_speech"})
+            continue
+        if not _plausible(text, lang):
+            continue
+        facts = _fact_count(text)
+        found.append((facts, lang, text, body))
+        if facts >= 2 or len(text.split()) <= 2:
+            break  # convincing (several facts) or a short reply ("yes", "Bihar"): no more calls
+        if facts == 1:
+            max_calls = 2  # one fact in a longer sentence is thin (a transliteration can still contain "बिहार"): compare once
+    if not found:
+        metrics.VOICE.labels("stt", "unintelligible").inc()
+        raise ApiError("VOICE_UNAVAILABLE", "I could not make out that recording; please try again or type.", 503,
+                       {"reason": "unintelligible", "tried": tried})
+    facts, lang, text, body = max(found, key=lambda f: f[0])  # ties keep the earliest (the requested language)
+    metrics.VOICE.labels("stt", "ok" if lang == requested else "retried").inc()
+    out = {"transcript": text, "language": lang, "provider": "verbx", "confidence": body.get("confidence"),
+           "model": body.get("model")}
+    if len(tried) > 1:
+        out.update({"requested_language": requested, "tried": tried})
+    return out
 
 
 # Read-aloud audio is cached in the DB (tts_cache) keyed by sha256(text, language, voice). A request waits at most

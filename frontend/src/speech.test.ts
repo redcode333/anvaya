@@ -22,6 +22,11 @@ describe("VerbX speech falls back to browser speech", () => {
     expect(await speech.voiceProvider()).toBe("verbx");
   });
 
+  it("an unintelligible clip (noise, wrong language) keeps VerbX too", async () => {
+    expect(speech.noteVerbxError(new ApiError("VOICE_UNAVAILABLE", "unclear", 503, { reason: "unintelligible" }))).toBe(false);
+    expect(await speech.voiceProvider()).toBe("verbx");
+  });
+
   it("a VerbX outage switches to browser speech for the rest of the visit", async () => {
     expect(speech.noteVerbxError(new ApiError("VOICE_UNAVAILABLE", "down", 503, { reason: "http_500" }))).toBe(true);
     expect(speech.verbxFailedOver()).toBe(true);

@@ -13,7 +13,8 @@ export const verbxFailedOver = () => verbxDown;
 /** Records a VerbX STT failure; returns true when VerbX itself is down (not just an empty clip) and browser
  *  speech should take over. */
 export function noteVerbxError(e: unknown): boolean {
-  const down = !(e instanceof ApiError && e.details?.reason === "no_speech");
+  // An empty or unintelligible clip is the speaker's problem (try again), not a VerbX outage.
+  const down = !(e instanceof ApiError && (e.details?.reason === "no_speech" || e.details?.reason === "unintelligible"));
   if (down) verbxDown = true;
   return down;
 }

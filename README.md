@@ -17,7 +17,7 @@ working offline.
 | **Catalogue** | 3,534 schemes in 37 jurisdictions (searchable) · **17 curated, quoted rules** that are screened automatically |
 | **Surfaces** | Citizen (phone) · **Kiosk** (operator-assisted, offline-capable) · Reviewer · Admin (catalogue, security, background jobs) · Official scenarios TC1–TC5 |
 | **Stack** | React + Vite PWA · Flask API (gunicorn) · Supabase (Postgres with Row Level Security, Auth with TOTP for staff, private Storage) · VerbX speech · optional Groq → Gemini LLM · Langfuse tracing · Prometheus + Grafana · GitHub Actions |
-| **Verified by** | 375 backend tests on SQLite and 376 on Postgres 16 · 92 frontend tests · TC1–TC5 against the live Supabase project (checks 6/6, 6/6, 7/7, 7/7, 8/8) — re-run on 2026-10-25 against the merged code, all passing |
+| **Verified by** | 382 backend tests on SQLite and 383 on Postgres 16 · 93 frontend tests · TC1–TC5 against the live Supabase project (checks 6/6, 6/6, 7/7, 7/7, 8/8) — re-run on 2026-10-25 against the merged code, all passing |
 | **Runs on** | A sleeping free tier (Render) with no Redis, queue, gateway or separate worker — see [Scaling](#scaling) |
 
 **Contents:**
@@ -1273,6 +1273,16 @@ Grouped by area. Items marked **(planned)** are covered in [Integrations and roa
 Voice is the interface, so its limits are the product's limits.
 * **Push-to-talk, not a live conversation.** The browser records a clip and sends it for transcription; there are no
   streaming partial transcripts, no wake word and no **barge-in** (speaking over the read-aloud does not interrupt it).
+* **Speaking a different language than the screen is handled.** VerbX STT forces its output into the language it is
+  told: English spoken on a Hindi screen comes back as Devanagari gibberish ("आईम टवटी टू इयर्स"), or as a stage direction
+  such as "(speaking in foreign language)". So the backend asks for the screen language first and accepts the answer only
+  when it is believable (not a placeholder, not repeated-token noise, written in that language's script) and convincing
+  (two or more facts, or a short reply like "yes" or "Bihar"). Anything thinner is compared with what VerbX hears when
+  told the audio is English (and then the third language), and the believable transcript with the most extracted facts
+  wins. Typical cost is one call; a mismatch costs one or two more (about +1 s each). Measured live on 9 combinations
+  (English, Hindi and Telugu speech on each screen language): every one produced a usable transcript. English
+  spoken on a Hindi or Telugu screen is recovered from the English pass. The reported language of the transcript is not used to
+  change the screen language.
 * **STT can mishear numbers:** in testing VerbX heard "साठ" (60) as "सात" (7). The confirmation step handles this:
   high-impact facts (age, income, state, area, household size) are read back in digits, confirmed one by one, and
   never bulk-confirmed. Confusable number words (साठ/सत्तर, sixteen/sixty) are flagged. Speech-recognition

@@ -73,9 +73,9 @@ def ctx(app):
 # ---------------------------------------------------------------- request shape
 
 def test_headers_and_stt_payload(verbx, ctx):
-    verbx.queue = [Resp(body={"text": "मेरी उम्र सात साल है", "language": "hi", "confidence": 0.9, "model": "verbx-vocaline"})]
+    verbx.queue = [Resp(body={"text": "मेरी उम्र साठ साल है और मैं बिहार में रहता हूँ", "language": "hi", "confidence": 0.9, "model": "verbx-vocaline"})]
     r = voice.transcribe(b"RIFFfake", "audio/wav", "hi")
-    assert r == {"transcript": "मेरी उम्र सात साल है", "language": "hi", "provider": "verbx", "confidence": 0.9,
+    assert r == {"transcript": "मेरी उम्र साठ साल है और मैं बिहार में रहता हूँ", "language": "hi", "provider": "verbx", "confidence": 0.9,
                  "model": "verbx-vocaline"}
     call = verbx.calls[0]
     assert call["url"] == f"{BASE}/v1/stt" and call["timeout"] == 15
@@ -200,7 +200,7 @@ def test_unsupported_language_rejected_before_any_call(verbx, ctx):
 
 def test_logs_never_contain_key_text_or_audio(verbx, ctx, caplog):
     caplog.set_level(logging.DEBUG, logger="anvaya")
-    verbx.queue = [Resp(body={"text": "मेरी उम्र साठ साल है"}), Resp(500, {}), Resp(500, {})]
+    verbx.queue = [Resp(body={"text": "मेरी उम्र साठ साल है और मैं बिहार में रहता हूँ"}), Resp(500, {}), Resp(500, {})]
     voice.transcribe(b"SECRETAUDIO", "audio/wav", "hi")
     with pytest.raises(voice.VerbXError):
         voice.translate("private sentence", "en", "hi")
@@ -284,10 +284,10 @@ def test_english_session_never_calls_verbx_for_names(client, verbx):
 
 def test_transcribe_and_speak_endpoints(client, verbx):
     sid = client.post("/api/v1/sessions", json={"mode": "personal", "language": "te"}).json["session_id"]
-    verbx.queue = [Resp(body={"text": "నా వయసు అరవై అయిదు సంవత్సరాలు", "confidence": 0.9, "model": "verbx-vocaline"})]
+    verbx.queue = [Resp(body={"text": "నా వయసు అరవై అయిదు సంవత్సరాలు, నేను ఆంధ్రప్రదేశ్ లో ఉంటాను", "confidence": 0.9, "model": "verbx-vocaline"})]
     r = client.post(f"/api/v1/sessions/{sid}/voice/transcribe",
                     data={"audio": (io.BytesIO(b"RIFFclip"), "speech.webm", "audio/webm")}, content_type="multipart/form-data")
-    assert r.status_code == 200 and r.json["transcript"] == "నా వయసు అరవై అయిదు సంవత్సరాలు"
+    assert r.status_code == 200 and r.json["transcript"] == "నా వయసు అరవై అయిదు సంవత్సరాలు, నేను ఆంధ్రప్రదేశ్ లో ఉంటాను"
     assert verbx.calls[0]["json"]["language"] == "te"
     verbx.queue = [Resp(content=b"RIFFwav", ctype="audio/wav")]
     s = client.post(f"/api/v1/sessions/{sid}/voice/speak", json={"text": "నమస్కారం"}).json
@@ -389,3 +389,57 @@ def test_prerender_retries_after_rate_limit(verbx, ctx):
     assert rows[0]["result"] == "synthesized" and len(verbx.calls) == 3
     verbx.responder = lambda body: Resp(429, {"detail": "rate"})
     assert voice.prerender([("Again.", "hi")], per_minute=0, backoff=(0,))[0]["result"] == "error:http_429"
+
+
+# ---------------------------------------------------------------- the person speaks a different language than the screen
+
+EN = "I am 22 years old and I live in Bihar."
+HI_TRANSLITERATION = "आईम टवटी टू इयर्स ल् एंड आईिव इन बिहार"  # what VerbX returns for English audio when told "hi"
+
+
+def stt(text, lang="hi"):
+    return Resp(body={"text": text, "language": lang, "confidence": 0.9, "model": "verbx-vocaline"})
+
+
+def test_stage_direction_placeholder_is_retried_in_other_languages(verbx, ctx):
+    verbx.queue = [stt("(speaking in foreign language)"), stt(EN, "en")]
+    r = voice.transcribe(b"audio", "audio/webm", "hi")
+    assert r["transcript"] == EN and r["language"] == "en" and r["requested_language"] == "hi" and r["tried"] == ["hi", "en"]
+    assert [c["json"]["language"] for c in verbx.calls] == ["hi", "en"]
+
+
+def test_english_transliterated_into_devanagari_loses_to_the_real_english(verbx, ctx):
+    # The transliteration still contains "बिहार" (one fact); English gives age and state.
+    verbx.queue = [stt(HI_TRANSLITERATION), stt(EN, "en")]
+    r = voice.transcribe(b"audio", "audio/webm", "hi")
+    assert r["transcript"] == EN and r["language"] == "en"
+
+
+def test_a_convincing_first_answer_costs_one_call(verbx, ctx):
+    verbx.queue = [stt("मेरी उम्र साठ साल है और मैं बिहार में रहता हूँ")]
+    r = voice.transcribe(b"audio", "audio/webm", "hi")
+    assert r["language"] == "hi" and "tried" not in r and len(verbx.calls) == 1
+
+
+def test_a_short_reply_is_accepted_without_retries(verbx, ctx):
+    verbx.queue = [stt("हाँ")]
+    assert voice.transcribe(b"audio", "audio/webm", "hi")["transcript"] == "हाँ" and len(verbx.calls) == 1
+
+
+def test_noise_hallucination_and_wrong_script_are_not_believable(verbx, ctx):
+    verbx.queue = [stt("বো " * 12), stt("[BLANK_AUDIO]", "en"), stt(EN.replace("Bihar", "बिहार"), "te")]
+    with pytest.raises(Exception) as e:
+        voice.transcribe(b"audio", "audio/webm", "hi")
+    assert e.value.code == "VOICE_UNAVAILABLE" and e.value.details["reason"] == "unintelligible"
+
+
+def test_a_failing_alternate_keeps_the_first_usable_answer(verbx, ctx):
+    verbx.queue = [stt(HI_TRANSLITERATION), Resp(500, {}), ]
+    r = voice.transcribe(b"audio", "audio/webm", "hi")
+    assert r["transcript"] == HI_TRANSLITERATION and r["language"] == "hi"
+
+
+def test_site_language_is_not_the_only_one_tried_for_english_screens(verbx, ctx):
+    verbx.queue = [stt("(inaudible)", "en"), stt("मेरी उम्र साठ साल है और मैं बिहार में रहता हूँ")]
+    r = voice.transcribe(b"audio", "audio/webm", "en")
+    assert r["language"] == "hi" and [c["json"]["language"] for c in verbx.calls] == ["en", "hi"]
