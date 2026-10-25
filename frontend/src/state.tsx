@@ -60,7 +60,7 @@ export function initialSessionId(mode: Mode): string | null {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangS] = useState<Lang>((ss.get("anvaya.lang") as Lang) || "te");
+  const [lang, setLangS] = useState<Lang>((ss.get("anvaya.lang") as Lang) || "en");
   const [mode, setModeS] = useState<Mode>((ss.get("anvaya.mode") as Mode) || "personal");
   const [sessionId, setSid] = useState<string | null>(() => initialSessionId((ss.get("anvaya.mode") as Mode) || "personal"));
   const [sessionExpiresAt, setExpires] = useState<string | null>(null);

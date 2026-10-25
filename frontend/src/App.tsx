@@ -21,8 +21,10 @@ import SignIn from "./pages/SignIn";
 import TestRuns from "./pages/TestRuns";
 import { useApp } from "./state";
 
+/** Connection and offline-bundle details. Shown only where they matter: at a kiosk, when the connection is down, or
+ *  while kiosk events wait in the outbox. Public pages (the landing page above all) stay uncluttered. */
 function StatusBar() {
-  const { online, simulateOffline, setSimulateOffline, lang, setLang, mode, sessionId } = useApp();
+  const { online, simulateOffline, setSimulateOffline, lang, mode } = useApp();
   const loc = useLocation();
   const [tick, setTick] = useState(0);
   useEffect(() => { const i = setInterval(() => setTick((x) => x + 1), 2000); return () => clearInterval(i); }, []);
@@ -30,25 +32,34 @@ function StatusBar() {
   const pending = getOutbox().filter((e) => e.sync.state !== "SYNCED").length;
   void tick;
   const staffPage = /^\/(reviewer|admin|test-runs)/.test(loc.pathname);
+  const kioskPage = mode === "kiosk" && !staffPage && loc.pathname !== "/";
+  if (loc.pathname === "/" || (!kioskPage && online && pending === 0)) return null;
   return (
     <div className="statusbar" role="status" aria-live="polite">
       <span className={`chip dot ${online ? "on" : "off"}`}>{online ? t("online", lang) : t("offline", lang)}</span>
-      {mode === "kiosk" && !staffPage && (
-        <label className="row small" style={{ gap: ".3rem" }}>
-          <input type="checkbox" checked={simulateOffline} onChange={(e) => setSimulateOffline(e.target.checked)} /> simulate network loss
-        </label>
+      {kioskPage && (
+        <>
+          <label className="row small" style={{ gap: ".3rem" }}>
+            <input type="checkbox" checked={simulateOffline} onChange={(e) => setSimulateOffline(e.target.checked)} /> simulate network loss
+          </label>
+          <span className="chip">bundle {bundle ? `${bundle.bundle_version} · ${bundle.rules.length} rules · ${new Date(bundle.generated_at).toLocaleString()}` : "not cached"}</span>
+        </>
       )}
-      <span className="chip">bundle {bundle ? `${bundle.bundle_version} · ${bundle.rules.length} rules · ${new Date(bundle.generated_at).toLocaleString()}` : "not cached"}</span>
       {pending > 0 && <span className="chip s-SYNC_PENDING">outbox: {pending} SYNC_PENDING</span>}
-      {sessionId && !staffPage && mode !== "kiosk" && <span className="chip mono" title="Session">{sessionId.slice(0, 8)}…</span>}
-      {!staffPage && (
-        <span className="row" style={{ marginLeft: "auto", gap: ".25rem" }}>
-          {LANGS.map((l) => (
-            <button key={l.code} className="btn small ghost" aria-pressed={lang === l.code} onClick={() => setLang(l.code)}
-              style={lang === l.code ? { background: "var(--primary-soft)" } : undefined}>{l.name}</button>
-          ))}
-        </span>
-      )}
+    </div>
+  );
+}
+
+/** The site language: a segmented control whose highlight slides to the chosen language. */
+function LangSwitch() {
+  const { lang, setLang } = useApp();
+  const idx = Math.max(0, LANGS.findIndex((l) => l.code === lang));
+  return (
+    <div className="lang-switch" role="group" aria-label="Language" style={{ ["--i" as string]: idx, ["--n" as string]: LANGS.length }}>
+      <span className="lang-thumb" aria-hidden="true" />
+      {LANGS.map((l) => (
+        <button key={l.code} type="button" aria-pressed={lang === l.code} onClick={() => setLang(l.code)}>{l.name}</button>
+      ))}
     </div>
   );
 }
@@ -75,10 +86,12 @@ export default function App() {
             <NavLink to="/test-runs">TC1–TC5</NavLink>
             <NavLink to="/signin">Sign in</NavLink>
           </nav>
+          <LangSwitch />
         </div>
         <StatusBar />
       </header>
       <main className={loc.pathname === "/" ? "main-landing" : undefined}>
+        <div key={loc.pathname.startsWith("/reviewer/case") ? "/reviewer/case" : loc.pathname} className="page-enter">
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/citizen" element={<Journey mode="personal" />} />
@@ -100,6 +113,7 @@ export default function App() {
           <Route path="/profile" element={<Profile />} />
           <Route path="*" element={<div className="card">Page not found.</div>} />
         </Routes>
+        </div>
       </main>
       <KioskIdleGuard />
     </>
