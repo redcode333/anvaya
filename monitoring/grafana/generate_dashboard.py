@@ -151,6 +151,20 @@ ts("Rate-limited code lookups", [("sum by (bucket) (increase(anvaya_code_lookups
    16, w=8)
 state["y"] += 8
 
+row("Background jobs & database")
+stat("Hours since last successful retention", "(time() - anvaya_job_last_success_timestamp{job=\"retention\"}) / 3600", 0, w=6, unit="h",
+     desc="/api/v1/ready warns above 26 h. Rebuilt from the job_runs table, so it survives restarts.")
+stat("Hours since last successful cleanup", "(time() - anvaya_job_last_success_timestamp{job=\"cleanup\"}) / 3600", 6, w=6, unit="h")
+ts("Job runs by status", [("sum by (job, status) (increase(anvaya_job_runs_total[1h]))", "{{job}} {{status}}")], 12, w=12, h=4,
+   desc="skipped = another run of the same job held the lock.")
+state["y"] += 4
+ts("DB round trips per request (p95, by route)",
+   [("histogram_quantile(0.95, sum by (le, route) (rate(anvaya_db_roundtrips_per_request_bucket[5m])))", "{{route}}")], 0, w=12,
+   desc="Each round trip costs about 70 ms on the hosted database; budgets are asserted in tests/test_db.py.")
+ts("DB queries per request (p95, by route)",
+   [("histogram_quantile(0.95, sum by (le, route) (rate(anvaya_db_queries_per_request_bucket[5m])))", "{{route}}")], 12, w=12)
+state["y"] += 8
+
 row("Official scenarios")
 bars("TC1–TC4 runs (since server start)", f"sum by (tc, result) (anvaya_test_runs_total)", "{{tc}} {{result}}", 0,
      w=24, h=6)

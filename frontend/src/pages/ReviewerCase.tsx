@@ -102,7 +102,7 @@ export default function ReviewerCase() {
                   <td>{showValue(cr.fact, cr.observed, "en")}<div className="tiny mono">{cr.fact_id}</div></td><td className={`c-${cr.outcome}`}><strong>{cr.outcome}</strong></td></tr>
               ))}</tbody></table></div>
             {ev.manual_checks.length > 0 && <div className="small"><strong>Manual checks for you:</strong><ul style={{ margin: 0, paddingLeft: "1.1rem" }}>{ev.manual_checks.map((m: any) => <li key={m.id}>{m.text}</li>)}</ul></div>}
-            <div className="small"><strong>Source:</strong> <a href={ev.source.source_url} target="_blank" rel="noreferrer">{ev.source.source_url}</a></div>
+            <div className="small"><strong>Source:</strong> <a href={ev.source.source_url} target="_blank" rel="noreferrer" style={{ overflowWrap: "anywhere" }}>{ev.source.source_url}</a></div>
           </>) : <p className="muted">No evaluation found.</p>}
           <h2>Documents</h2>
           <p className="tiny">Citizen marks are self-declarations; an upload is not verified until you verify it. Uploads are never read by AI or OCR.</p>

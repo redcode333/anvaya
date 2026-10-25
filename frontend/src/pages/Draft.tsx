@@ -59,7 +59,7 @@ export default function DraftPage() {
           · {d.eligibility_snapshot.rule_id} v{d.eligibility_snapshot.rule_version}
         </div>
         <div className="table-wrap">
-          <table className="list">
+          <div style={{ overflowX: "auto" }}><table className="list">
             <thead><tr><th>Field</th><th>Value</th><th>Provenance</th></tr></thead>
             <tbody>
               {d.fields.map((f) => (
@@ -72,7 +72,7 @@ export default function DraftPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
         {Object.keys(edits).length > 0 && <button className="btn" onClick={save}>{t("save", lang)} (v{d.version} → v{d.version + 1})</button>}
         <div className="small"><strong>{t("documents", lang)}:</strong>{" "}
