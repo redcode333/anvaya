@@ -36,7 +36,7 @@ jobs:
           --health-cmd "pg_isready -U anvaya -d anvaya_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/dataset
       - uses: actions/setup-python@v5
         with:
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -84,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Dummy secrets for rendering
         run: cp k8s/secrets.env.example k8s/secrets.env
       - name: Render kustomization
@@ -104,7 +104,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/dataset
       - uses: docker/setup-buildx-action@v3
       - name: Build image
