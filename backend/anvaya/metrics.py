@@ -1,4 +1,6 @@
 """Prometheus metrics. Labels are low-cardinality enums only — never profile values or IDs."""
+from datetime import datetime
+
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
 HTTP_REQUESTS = Counter("anvaya_http_requests_total", "API requests", ["method", "route", "status"])
@@ -39,6 +41,8 @@ VOICE = Counter("anvaya_voice_requests_total", "Voice adapter calls", ["op", "re
 AUTH = Counter("anvaya_auth_events_total", "Auth events", ["result"])
 UPLOADS = Counter("anvaya_document_uploads_total", "Document uploads by result", ["result"])
 RATE_LIMITED = Counter("anvaya_code_lookups_rate_limited_total", "Case-code lookups rejected by rate limit", ["bucket"])
+JOB_RUNS = Counter("anvaya_job_runs_total", "Background job runs", ["job", "status"])
+JOB_LAST_SUCCESS = Gauge("anvaya_job_last_success_timestamp", "Unix time of the last successful run of a job", ["job"])
 TEST_RUNS = Counter("anvaya_test_runs_total", "Official scenario runs", ["tc", "result"])
 
 CASES_BY_STATUS = Gauge("anvaya_cases", "Cases by status (excludes test-runner cases)", ["status"])
@@ -47,7 +51,7 @@ ACTIVE_SESSIONS = Gauge("anvaya_active_sessions", "Sessions not ended or expired
 
 
 def refresh_gauges(db, now_iso: str) -> None:
-    cases, schemes, rules, verified, active = db.query_many([
+    cases, schemes, rules, verified, active, last_ok = db.query_many([
         ("SELECT c.status, COUNT(*) FROM cases c JOIN sessions s ON s.session_id=c.session_id WHERE s.is_test=0"
          " GROUP BY c.status", ()),
         ("SELECT COUNT(*) FROM schemes", ()),
@@ -55,7 +59,11 @@ def refresh_gauges(db, now_iso: str) -> None:
         ("SELECT COUNT(*) FROM rules WHERE active=1 AND source_verified_at IS NOT NULL", ()),
         ("SELECT mode, COUNT(*) FROM sessions WHERE is_test=0 AND ended_at IS NULL AND expires_at > ? GROUP BY mode",
          (now_iso,)),
+        # The server sleeps and restarts, so the gauge is rebuilt from the job_runs table rather than kept in memory.
+        ("SELECT job, MAX(finished_at) FROM job_runs WHERE status='success' GROUP BY job", ()),
     ])
+    for job, finished in last_ok.fetchall():
+        JOB_LAST_SUCCESS.labels(job).set(datetime.fromisoformat(finished).timestamp())
     for status in ("PENDING_REVIEW", "CORRECTION_REQUESTED", "REVIEWED"):
         CASES_BY_STATUS.labels(status).set(0)
     for status, n in cases:

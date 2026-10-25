@@ -221,7 +221,7 @@ def test_queries_per_request_stay_within_budget(app, client, caplog, monkeypatch
 
     r, q, rt = _counts(caplog, lambda: client.post("/api/v1/sessions", json={"mode": "personal", "language": "en"}))
     sid = r.json["session_id"]
-    assert (q, rt) == (2, 1)
+    assert (q, rt) == (3, 2)  # the session insert + audit, plus the rate-limit counter (a database round trip of its own)
     r, q, rt = _counts(caplog, lambda: client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": TC1}))
     assert r.status_code == 200 and q <= 6 and rt <= 2, (q, rt)
     pending = client.post(f"/api/v1/sessions/{sid}/profile/confirm-all").json["needs_confirmation"]

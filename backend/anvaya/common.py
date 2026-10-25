@@ -1,17 +1,11 @@
 import hashlib
 import json
-import threading
-import time
-from collections import defaultdict, deque
 from functools import wraps
 
 from flask import current_app, g, request
 
 from . import metrics
 from .db import dumps, get_db, iso, new_id
-
-_hits: dict[str, deque] = defaultdict(deque)
-_hits_lock = threading.Lock()
 
 
 class ApiError(Exception):
@@ -68,16 +62,10 @@ def current_user(require_mfa: bool = True) -> dict | None:
 
 
 def rate_limit(bucket: str, limit: int, message: str = "Too many requests. Wait a minute and try again.") -> None:
-    """At most `limit` requests per minute per client IP in `bucket` (in memory, per process)."""
-    key = f"{id(current_app._get_current_object())}:{bucket}:{request.remote_addr}"
-    with _hits_lock:
-        q, t = _hits[key], time.monotonic()
-        while q and t - q[0] > 60:
-            q.popleft()
-        if len(q) >= limit:
-            metrics.RATE_LIMITED.labels(bucket).inc()
-            raise ApiError("RATE_LIMITED", message, 429)
-        q.append(t)
+    """At most `limit` requests per minute per client IP in `bucket` (counted in the database: shared by every
+    instance and kept across restarts)."""
+    from . import ratelimit
+    ratelimit.limit_per_minute(bucket, limit, message)
 
 
 def require_role(*roles):

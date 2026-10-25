@@ -1,0 +1,57 @@
+name: Scheduled jobs
+
+# Hourly: runs the retention and cleanup jobs on the deployed app (POST /internal/jobs/run). The call also wakes a
+# server that sleeps on a free tier, which is what keeps the schedule alive. In the 03:xx UTC run it also calls
+# /api/v1/ready, whose database queries stop Supabase from pausing a free project after a week without activity.
+# Repository secrets: APP_URL (public base URL, e.g. https://anvaya.example.org) and INTERNAL_JOBS_TOKEN (the same value
+# as the app's INTERNAL_JOBS_TOKEN).
+
+on:
+  schedule:
+    - cron: "17 * * * *"   # hourly, at minute 17
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Job to run"
+        type: choice
+        options: [all, retention, cleanup]
+        default: all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduled-jobs
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Run jobs
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          INTERNAL_JOBS_TOKEN: ${{ secrets.INTERNAL_JOBS_TOKEN }}
+          JOB: ${{ inputs.job || 'all' }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$INTERNAL_JOBS_TOKEN" ]; then
+            echo "::error::Repository secrets APP_URL and INTERNAL_JOBS_TOKEN must both be set"
+            exit 1
+          fi
+          # Retries cover a cold start (the first request wakes the server); the URL and token are masked in the log.
+          curl --fail-with-body --silent --show-error --retry 5 --retry-delay 20 --retry-all-errors --max-time 120 \
+            -X POST -H "X-Internal-Token: $INTERNAL_JOBS_TOKEN" -H "Content-Type: application/json" \
+            -d "{\"job\": \"$JOB\"}" -o jobs.json "${APP_URL%/}/internal/jobs/run"
+          python3 -c "import json; [print(r['job'], r['status'], r['counts']) for r in json.load(open('jobs.json'))['runs']]"
+
+      - name: Keep the database awake (daily, 03:xx UTC, or on a manual run)
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          if [ "$(date -u +%H)" != "03" ] && [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
+            echo "not the daily slot; skipped"
+            exit 0
+          fi
+          curl --fail --silent --show-error --retry 4 --retry-delay 20 --retry-all-errors --max-time 60             -o ready.json "${APP_URL%/}/api/v1/ready"
+          python3 -c "import json; r = json.load(open('ready.json')); print('ready:', r['ready'], '| db:', r['db']['backend'], r['db']['status'], '| schemes:', r['schemes'], '| warnings:', len(r['warnings']))"

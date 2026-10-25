@@ -10,6 +10,9 @@ argon2-cffi>=23.1
 pytest>=8
 # Optional Langfuse tracing of LLM extraction; imported only when LANGFUSE_* keys are set.
 langfuse>=5.0.4,<6
+# gzip / brotli responses
+Flask-Compress>=1.15
+brotli>=1.1
 gunicorn>=22; sys_platform != "win32"
 fpdf2==2.8.9
 uharfbuzz>=0.50

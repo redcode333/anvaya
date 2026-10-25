@@ -4,6 +4,7 @@ import { ErrorNote, StaffBar, StaffLogin } from "../components";
 import { useApp } from "../state";
 
 type StaffRow = { user_id: string; email: string | null; role: string; mfa_enrolled: boolean; last_sign_in_at: string | null };
+type JobRun = { run_id: string; job: string; trigger: string; started_at: string; finished_at: string | null; status: string; counts: Record<string, unknown> };
 type AuthEventRow = { ts: string; event: string; actor_id: string; actor_role: string; ip_prefix: string | null; details: Record<string, unknown> };
 
 /** Admin: staff accounts with their two-step sign-in state (reset when a phone is lost) and the last 500 auth events
@@ -12,6 +13,7 @@ export default function AdminSecurity() {
   const { staff } = useApp();
   const [rows, setRows] = useState<StaffRow[] | null>(null);
   const [events, setEvents] = useState<AuthEventRow[] | null>(null);
+  const [runs, setRuns] = useState<JobRun[] | null>(null);
   const [filter, setFilter] = useState("");
   const [err, setErr] = useState<unknown>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -20,8 +22,9 @@ export default function AdminSecurity() {
   const load = useCallback(async () => {
     setErr(null);
     try {
-      const [s, e] = await Promise.all([api<{ staff: StaffRow[] }>("/admin/staff"), api<{ events: AuthEventRow[] }>("/admin/auth-events")]);
-      setRows(s.staff); setEvents(e.events);
+      const [s, e, j] = await Promise.all([api<{ staff: StaffRow[] }>("/admin/staff"), api<{ events: AuthEventRow[] }>("/admin/auth-events"),
+        api<{ runs: JobRun[] }>("/admin/jobs")]);
+      setRows(s.staff); setEvents(e.events); setRuns(j.runs);
     } catch (x) { setErr(x); }
   }, []);
   useEffect(() => { if (isAdmin) load(); }, [isAdmin, load]);
@@ -53,6 +56,23 @@ export default function AdminSecurity() {
                 <td>{r.mfa_enrolled ? "✓ enrolled" : "not set up (asked at next sign-in)"}</td>
                 <td className="tiny">{r.last_sign_in_at?.replace("T", " ").slice(0, 16) ?? "—"}</td>
                 <td>{r.mfa_enrolled && <button className="btn small danger" onClick={() => reset(r)}>Reset</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <section className="card stack">
+        <h2>Background jobs <span className="chip">{runs?.length ?? 0}</span></h2>
+        <p className="tiny">Retention and cleanup run hourly (scheduled call, which also wakes the server) and are recorded here: counts only.</p>
+        <table className="events">
+          <thead><tr><th>Started (UTC)</th><th>Job</th><th>Trigger</th><th>Status</th><th>Finished</th><th>Counts</th></tr></thead>
+          <tbody>
+            {runs?.map((r) => (
+              <tr key={r.run_id}>
+                <td className="tiny mono">{r.started_at.replace("T", " ").slice(0, 19)}</td><td>{r.job}</td><td>{r.trigger}</td>
+                <td>{r.status === "success" ? "✓ success" : r.status}</td>
+                <td className="tiny mono">{r.finished_at?.replace("T", " ").slice(11, 19) ?? "—"}</td>
+                <td className="tiny mono">{Object.keys(r.counts).length ? JSON.stringify(r.counts) : ""}</td>
               </tr>
             ))}
           </tbody>

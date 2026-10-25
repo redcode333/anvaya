@@ -23,7 +23,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 from flask import current_app, request
 
-from . import auth, i18n, metrics, profile
+from . import auth, i18n, metrics, profile, ratelimit
 from .common import ApiError, audit, sha256
 from .db import dumps, get_db, iso, new_id, now, parse_iso
 
@@ -68,6 +68,10 @@ def citizen_id_for(auth_user_id: str) -> str:
 
 def pepper() -> str:
     return current_app.config["PASSPORT_PEPPER"] or DEV_PEPPER
+
+
+def ip_key() -> str:
+    return sha256(pepper() + (request.remote_addr or "unknown"))
 
 
 # ---------------------------------------------------------------- codes and PINs
@@ -260,15 +264,12 @@ def _check_code(code: str, pin) -> dict:
     code for LOCK_FOR."""
     db = get_db()
     h = code_hash(code)
-    ip = sha256(pepper() + (request.remote_addr or "unknown"))
-    since = iso(now() - ATTEMPT_WINDOW)
-    by_code, by_ip, row = db.query_many([
-        ("SELECT COUNT(*) FROM passport_attempts WHERE code_hash=? AND ok=0 AND ts>?", (h, since)),
-        ("SELECT COUNT(*) FROM passport_attempts WHERE ip_hash=? AND ok=0 AND ts>?", (ip, since)),
-        ("SELECT * FROM citizens WHERE code_hash=?", (h,))])
-    row = row.fetchone()
+    ip = ip_key()
+    win = int(ATTEMPT_WINDOW.total_seconds())
+    row = db.execute("SELECT * FROM citizens WHERE code_hash=?", (h,)).fetchone()
     locked = row and row["locked_until"] and parse_iso(row["locked_until"]) > now()
-    if by_code.fetchone()[0] >= MAX_FAILURES_PER_WINDOW or by_ip.fetchone()[0] >= MAX_FAILURES_PER_WINDOW or locked:
+    if (ratelimit.exceeded("passport_code", h, MAX_FAILURES_PER_WINDOW, win)
+            or ratelimit.exceeded("passport_ip", ip, MAX_FAILURES_PER_WINDOW, win) or locked):
         metrics.RATE_LIMITED.labels("passport_code").inc()
         audit("passport.rate_limited", details={"locked": bool(locked)}, actor_id="anonymous", actor_role="anonymous")
         db.commit()
@@ -278,8 +279,9 @@ def _check_code(code: str, pin) -> dict:
         ok = _ph.verify(row["pin_hash"] if row and row["pin_hash"] else _DUMMY_HASH, str(pin or "")) and bool(row)
     except (VerificationError, InvalidHashError):
         ok = False
-    db.execute("INSERT INTO passport_attempts(code_hash, ip_hash, ok, ts) VALUES (?,?,?,?)", (h, ip, int(ok), iso()))
     if not ok:
+        ratelimit.fail("passport_code", h, win)  # only failed attempts count
+        ratelimit.fail("passport_ip", ip, win)
         if row:
             failures = row["failed_attempts"] + 1
             lock = iso(now() + LOCK_FOR) if failures >= LOCK_AFTER_FAILURES else None
@@ -471,7 +473,8 @@ def _delete_citizen_rows(db, citizen_ids: list[str]) -> dict:
     drop = [r["session_id"] for r in rows if not r["has_case"]]
     _purge_sessions(db, drop, keep)
     db.execute(f"DELETE FROM passport_versions WHERE citizen_id IN ({marks})", citizen_ids)
-    db.executemany("DELETE FROM passport_attempts WHERE code_hash=?", [(r[0],) for r in codes])
+    for r in codes:
+        ratelimit.forget("passport_code", r[0])
     db.execute(f"DELETE FROM citizens WHERE citizen_id IN ({marks})", citizen_ids)
     return {"sessions_deleted": len(drop), "cases_kept": len(keep), "passport_versions": versions.fetchone()[0]}
 
@@ -619,7 +622,7 @@ def purge_expired(db, cfg) -> dict:
     with db.transaction():
         _purge_sessions(db, drop, [])
         removed = _delete_citizen_rows(db, [r["citizen_id"] for r in unsaved + inactive])
-        db.execute("DELETE FROM passport_attempts WHERE ts < ?", (iso(now() - timedelta(days=1)),))
+        ratelimit.purge_expired(db)
         if drop or unsaved or inactive or storage_removed:
             db.execute("INSERT INTO audit_events(event_id, actor_id, actor_role, action, ts, details_json)"
                        " VALUES (?,?,?,?,?,?)",

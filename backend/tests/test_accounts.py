@@ -426,14 +426,14 @@ def test_code_locks_for_an_hour_after_ten_failures(app, client, consent):
     for i in range(10):
         if i == 5:  # the 15-minute window has passed
             db = connect(app.config)
-            db.execute("UPDATE passport_attempts SET ts=? WHERE code_hash=?", (iso(now() - timedelta(minutes=16)), h))
+            db.execute("DELETE FROM rate_limits WHERE bucket=?", (f"passport_code:{h}",))
             db.commit()
             db.close()
         r = client.post("/api/v1/passport/resume", json={"code": code, "pin": "0000"},
                         environ_base={"REMOTE_ADDR": f"10.5.0.{i}"})
         assert r.status_code == 401, (i, r.json)
     db = connect(app.config)
-    db.execute("DELETE FROM passport_attempts WHERE code_hash=?", (h,))  # even with a fresh window...
+    db.execute("DELETE FROM rate_limits WHERE bucket=?", (f"passport_code:{h}",))  # even with a fresh window...
     db.commit()
     db.close()
     r = client.post("/api/v1/passport/resume", json={"code": code, "pin": "4826"}, environ_base={"REMOTE_ADDR": "10.5.1.1"})
@@ -526,7 +526,8 @@ def test_account_sessions_stay_within_the_query_budget(app, client, caplog, monk
     user = bearer(token(anonymous=True))
     r, q, rt = _counts(caplog, lambda: client.post("/api/v1/sessions", json={"mode": "personal", "language": "en"},
                                                    headers=user))
-    assert r.status_code == 201 and q <= 6 and rt <= 2, (q, rt)  # + citizen upsert and the saved-profile read
+    # + citizen upsert, the saved-profile read, and the database-backed rate-limit counter (one query, one round trip)
+    assert r.status_code == 201 and q <= 8 and rt <= 4, (q, rt)
     sid = r.json["session_id"]
     client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": TC1}, headers=user)
     for fid in client.post(f"/api/v1/sessions/{sid}/profile/confirm-all", headers=user).json["needs_confirmation"]:

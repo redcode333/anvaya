@@ -127,6 +127,19 @@ def client(app):
 
 
 @pytest.fixture()
+def config(app):
+    """Change app.config for one test and put it back afterwards."""
+    saved = {}
+
+    def set_(**kw):
+        for k, v in kw.items():
+            saved.setdefault(k, app.config.get(k))
+            app.config[k] = v
+    yield set_
+    app.config.update(saved)
+
+
+@pytest.fixture()
 def reviewer():
     return staff("reviewer")
 

@@ -1,12 +1,10 @@
 """Draft preparation, consent + handoff, case-code status lookup and reviewer decisions."""
 import json
 import secrets
-import time
-from collections import defaultdict, deque
 
 from flask import current_app, request
 
-from . import catalogue, i18n, metrics, profile, rules_engine
+from . import catalogue, i18n, metrics, profile, ratelimit, rules_engine
 from .common import ApiError, audit, sha256
 from .db import dumps, get_db, iso, iso_in, new_id, now, parse_iso
 
@@ -16,21 +14,12 @@ CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O/1/I/L
 CASE_STATES = {"PENDING_REVIEW", "CORRECTION_REQUESTED", "REVIEWED"}
 REVIEW_OUTCOMES = {"appears_eligible", "not_eligible", "needs_more_documents"}
 
-_lookup_hits: dict[str, deque] = defaultdict(deque)
-
-
 def rate_limit(bucket: str) -> None:
-    limit = current_app.config["CODE_LOOKUP_LIMIT_PER_MIN"]
-    key = f"{bucket}:{request.remote_addr}"
-    q, t = _lookup_hits[key], time.monotonic()
-    while q and t - q[0] > 60:
-        q.popleft()
-    if len(q) >= limit:
-        metrics.RATE_LIMITED.labels(bucket).inc()
+    def audited():
         audit("case.lookup_rate_limited", details={"bucket": bucket})
         get_db().commit()
-        raise ApiError("RATE_LIMITED", "Too many code lookups. Wait a minute and try again.", 429)
-    q.append(t)
+    ratelimit.limit_per_minute(bucket, current_app.config["CODE_LOOKUP_LIMIT_PER_MIN"],
+                               "Too many code lookups. Wait a minute and try again.", on_limited=audited)
 
 
 def new_code() -> str:

@@ -44,19 +44,6 @@ def write(app, sql, params=()):
         db.close()
 
 
-@pytest.fixture()
-def config(app):
-    """Change app.config for one test and put it back afterwards."""
-    saved = {}
-
-    def set_(**kw):
-        for k, v in kw.items():
-            saved.setdefault(k, app.config.get(k))
-            app.config[k] = v
-    yield set_
-    app.config.update(saved)
-
-
 def citizen_headers(uid=None, **kw):
     return bearer(token(uid or str(uuid.uuid4()), **kw))
 

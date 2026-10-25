@@ -125,6 +125,9 @@ class Config:
     # Retention runs inside the app this often (minutes; 0 = only via `manage cleanup`), so the policy holds without
     # an external scheduler. Concurrent runs from several processes are harmless (plain deletes).
     RETENTION_INTERVAL_MIN = _num("ANVAYA_RETENTION_INTERVAL_MIN", 60, int)
+    # POST /internal/jobs/run (the scheduled GitHub Actions call, which also wakes a sleeping server) needs this token in
+    # the X-Internal-Token header. Unset = the endpoint answers 404. Separate from user and metrics auth.
+    INTERNAL_JOBS_TOKEN = os.environ.get("INTERNAL_JOBS_TOKEN", "")
 
     # Running or resetting the official scenarios (POST /test-runs/*) needs an admin token unless demo mode is on.
     DEMO_TEST_RUNS = os.environ.get("ANVAYA_DEMO_TEST_RUNS", "off").lower() == "on"

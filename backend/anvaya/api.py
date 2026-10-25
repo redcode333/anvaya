@@ -2,8 +2,8 @@ from functools import wraps
 
 from flask import Blueprint, Response, current_app, g, jsonify, request
 
-from . import (accounts, auth, cases, catalogue, digilocker, documents, formhelper, i18n, llm, migrations, profile, sync,
-               testrunner, translation, voice)
+from . import (accounts, auth, cases, catalogue, digilocker, documents, formhelper, i18n, jobs, llm, migrations, profile,
+               sync, testrunner, translation, voice)
 from .common import ApiError, audit, current_user, idempotency_key, idempotent, rate_limit, require_role
 from .db import bump, get_db, iso
 
@@ -65,12 +65,20 @@ def ready():
         database["status"] = "error"
     ok = schemes > 0 and rules > 0 and database["status"] == "ok" and database.get("rls", "ok") == "ok"
     boot = current_app.extensions["anvaya.startup"]
+    warnings, last_runs = list(boot["warnings"]), {}
+    if database["status"] == "ok":
+        try:
+            last_runs = jobs.last_success(db)
+            if (w := jobs.retention_warning(db)):
+                warnings.append(w)  # a warning only: readiness never depends on the schedule
+        except Exception:  # noqa: BLE001 - e.g. a migration still pending
+            pass
     # Readiness depends on the database and catalogue only: every integration is optional and reported, never required.
     return jsonify({"ready": ok, "db": database, "schemes": schemes, "rules": rules,
                     "bundle_version": current_app.config["RULE_BUNDLE_VERSION"],
                     "integrations": {k: {"status": v["status"], "missing": v["missing"]}
                                      for k, v in boot["integrations"].items()},
-                    "warnings": boot["warnings"],
+                    "warnings": warnings, "jobs_last_success": last_runs,
                     "tts_cache": voice.cache_stats() if database["status"] == "ok" else None,
                     "voice": voice.status(),
                     "llm_extraction": llm.status() if database["status"] == "ok" else None}), (200 if ok else 503)
@@ -668,6 +676,14 @@ def admin_reset_mfa(user_id):
 @require_role("admin")
 def admin_auth_events():
     return {"events": auth.recent_events(500)}
+
+
+@bp.get("/admin/jobs")
+@require_role("admin")
+def admin_jobs():
+    """The last background job runs (retention, cleanup): when, trigger, status and counts."""
+    return {"runs": jobs.recent_runs(get_db(), 30), "last_success": jobs.last_success(get_db()),
+            "interval_min": current_app.config["RETENTION_INTERVAL_MIN"]}
 
 
 @bp.post("/admin/schemes/import")
