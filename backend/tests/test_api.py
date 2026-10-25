@@ -154,11 +154,11 @@ def test_citizen_cannot_set_verified(client):
 
 
 def test_code_lookup_rate_limited(app, client):
-    from anvaya import cases
-    cases._lookup_hits.clear()
+    ip = {"REMOTE_ADDR": "192.0.2.77"}  # counters live in the database, so this test uses its own client address
     app.config["CODE_LOOKUP_LIMIT_PER_MIN"] = 3
     try:
-        codes = [client.post("/api/v1/cases/status", json={"code": "ANV-ZZZZ-ZZZZ"}).status_code for _ in range(5)]
+        codes = [client.post("/api/v1/cases/status", json={"code": "ANV-ZZZZ-ZZZZ"}, environ_base=ip).status_code
+                 for _ in range(5)]
     finally:
         app.config["CODE_LOOKUP_LIMIT_PER_MIN"] = 1000
     assert codes[:3] == [404, 404, 404] and 429 in codes[3:]
@@ -367,7 +367,7 @@ def test_schema_migration_adds_confusable_column(tmp_path):
     old.commit()
     old.close()
     db = connect(str(path))
-    assert migrate(db) == [1, 2, 3, 4, 5, 6]
+    assert migrate(db) == [1, 2, 3, 4, 5, 6, 7]
     assert migrate(db) == []  # idempotent
     assert db.execute("SELECT confusable FROM facts WHERE fact_id='F-1'").fetchone()[0] == 0
     db.close()

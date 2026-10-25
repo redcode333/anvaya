@@ -335,8 +335,9 @@ cleanup`. The policy is shown in English, Hindi and Telugu wherever something ca
    on sign-in requests (anonymous, email OTP, password), which the app sends. (Enabled on the live project.)
 7. Put the keys in `.env` (names below), then create staff accounts:
    `set -a && source .env && set +a && cd backend && python -m anvaya.manage seed-staff`.
-8. For the free tier: `.github/workflows/keepalive.yml` calls `APP_URL/api/v1/ready` daily (repository secret
-   `APP_URL`), which runs cheap database queries so the project is not paused.
+8. For the free tier: `.github/workflows/scheduled-jobs.yml` runs hourly. It calls `POST APP_URL/internal/jobs/run`
+   (which also wakes a sleeping server) and, in the 03:xx UTC run, `APP_URL/api/v1/ready`, whose cheap database queries
+   keep the project from being paused. Repository secrets: `APP_URL` and `INTERNAL_JOBS_TOKEN` (see *Scaling*).
 
 ### Auth hardening
 
@@ -433,6 +434,7 @@ read it, and `.env` is gitignored.
 | `GOOGLE_AUTH_ENABLED` | `false` | show "Continue with Google" |
 | `ANVAYA_PASSPORT_PEPPER` | dev pepper, with a warning | pepper for Passport code hashes; set a long random value in production |
 | `PASSPORT_RETENTION_DAYS`, `ANVAYA_UNSAVED_RETENTION_HOURS`, `ANVAYA_RETENTION_INTERVAL_MIN` | `365`, `24`, `60` | retention of saved / unsaved data; how often retention runs in the app (0 = only `manage cleanup`) |
+| `INTERNAL_JOBS_TOKEN` | unset (endpoint answers 404) | secret for `POST /internal/jobs/run`, sent in the `X-Internal-Token` header; also a GitHub secret of the same name |
 | `KIOSK_IDLE_SECONDS` | `180` | kiosk idle timeout (a 30 s warning comes first) |
 | `KIOSK_MAX_SESSION_MINUTES` | `30` | absolute length of a kiosk citizen session |
 | `VITE_TURNSTILE_SITE_KEY` | unset | Cloudflare Turnstile site key (public). Unset: no CAPTCHA widget, startup warning |
@@ -502,7 +504,7 @@ which RLS does not restrict. `/ready` is not ready (503) on Postgres if any tabl
 do not use the publishable key for app data.
 
 **Free plan pause.** A free Supabase project pauses after 7 days without activity, and the app then reports
-`db.status: "error"` until the project is resumed in the dashboard. A keep-alive is planned as the next step.
+`db.status: "error"` until the project is resumed in the dashboard. The scheduled workflow (`scheduled-jobs.yml`) calls `/api/v1/ready` daily to prevent that.
 
 **Latency.** The hosted database is in Seoul and the app runs on Render Singapore, about 70 ms per round trip.
 Requests are written to need as few round trips as possible:
@@ -653,6 +655,57 @@ Run of 2026-10-23:
 | rules-only | 40 | 0 | 0.958 |
 | rules + groq `openai/gpt-oss-120b` | 40 | 0 | 0.988 |
 | rules + gemini `gemini-3.5-flash-lite` | 40 | 0 | 0.970 |
+
+## Scaling
+
+Written for a sleeping free-tier server (Render free) with one app instance, Supabase Postgres, and **no Redis, Kafka,
+API gateway or separate worker**. Background work and limits live in the database and in one scheduled HTTP call.
+
+**Capacity estimate.** A 50-kiosk pilot at about 6 citizen sessions per kiosk per day and about 50 API requests per
+session (turns, confirmations, documents, status polls) is ≈ 15,000 requests/day, i.e. ≈ 0.2 requests/s on average
+(a few requests/s in a busy hour). One gunicorn process with 8 threads handles tens of requests/s, so the web tier is
+not the limit; the database round trips per request are (budgets are enforced in `tests/test_db.py`).
+
+**Scheduled jobs (`backend/anvaya/jobs.py`).**
+- `retention` (expired unsaved sessions and citizens, passports inactive past `PASSPORT_RETENTION_DAYS`, document
+  uploads and their Storage files, expired rate-limit counters) and `cleanup` (ended sessions, cached audio, stale
+  sign-in state, job records older than 90 days). Both are idempotent deletes.
+- They run from the in-app hourly timer (`ANVAYA_RETENTION_INTERVAL_MIN`), from `POST /internal/jobs/run` with body
+  `{"job": "retention" | "cleanup" | "all"}`, and from `python -m anvaya.manage cleanup`. The endpoint needs the
+  `X-Internal-Token` header (compared in constant time, separate from user sign-in) and answers 404 while
+  `INTERNAL_JOBS_TOKEN` is unset.
+- Two runs of a job never overlap: a Postgres advisory lock, or on SQLite a lock row that expires after 15 minutes. A
+  run that finds the lock taken is recorded as `skipped`.
+- Every run is stored in `job_runs` (job, trigger, start, finish, status, counts; Row Level Security on) and shown to
+  admins on the **Security** page (`GET /api/v1/admin/jobs`). Prometheus: `anvaya_job_runs_total{job,status}` and
+  `anvaya_job_last_success_timestamp{job}` (rebuilt from `job_runs`, so it survives restarts). `/api/v1/ready` adds a
+  warning when retention has not succeeded in 26 hours; readiness itself never depends on it.
+- `.github/workflows/scheduled-jobs.yml` calls the endpoint hourly. A sleeping server starts on that request, which is
+  what keeps the schedule alive when the in-app timer is asleep.
+
+**Rate limits are in the database** (`rate_limits`: fixed-window counters with an expiry, client IPs only as peppered
+hashes): Passport code/PIN attempts (failed attempts only), case-code lookups, session creation, Passport resume and
+sign-in event reports. A restart never resets them and several instances share one count; the retention job deletes
+expired counters. Cost: one extra database round trip on the rate-limited endpoints. A fixed window allows up to twice
+the limit across a window boundary.
+
+**Caching.** Hashed Vite files under `/assets/` are served `Cache-Control: public, max-age=31536000, immutable`;
+`index.html`, `sw.js` and the manifest are `no-cache` (revalidated with an ETag); `/api/`, `/internal/` and `/metrics`
+responses are `no-store` unless an endpoint sets its own policy. Text responses are compressed with brotli or gzip. The
+service worker only caches same-origin app files: it never sees API calls or document links, and skips any response
+marked `no-store`.
+
+**When to add more (and why not now).**
+
+| Add | Trigger | Why not now |
+|---|---|---|
+| Redis | more than one app instance that needs shared in-memory state (today: rate limits, the job lock and the caches are in Postgres or safe to rebuild per process) | the only shared state is already in the database, at about 0.2 req/s |
+| A queue (and a worker) | sustained background work: jobs that regularly run longer than the schedule interval, or per-request work (speech, LLM calls) that must be retried and cannot run inside the request | retention takes about a second and runs hourly; per-request calls are synchronous with fallbacks |
+| An API gateway | a public partner API: per-key quotas, key issue and revocation, versioned contracts | the only clients are the app's own frontend and staff; limits are per IP in the app |
+
+**New configuration.** Environment variable `INTERNAL_JOBS_TOKEN` (app and `.env`; generate with
+`python3 -c "import secrets; print(secrets.token_urlsafe(32))"`). GitHub repository secrets: `APP_URL` (public base
+URL of the deployment) and `INTERNAL_JOBS_TOKEN` (the same value).
 
 ## Observability (Prometheus + Grafana)
 

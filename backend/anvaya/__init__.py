@@ -7,6 +7,8 @@ from pathlib import Path
 
 from flask import Flask, Response, g, jsonify, request, send_from_directory
 
+from flask_compress import Compress
+
 from . import metrics
 from .config import PROJECT_DIR, Config
 from .db import close_db, connect
@@ -20,6 +22,9 @@ def create_app(overrides: dict | None = None) -> Flask:
         app.config.update(overrides)
     app.json.ensure_ascii = False
     app.json.sort_keys = False
+    # gzip / brotli for text responses (HTML, JS, CSS, JSON, SVG) when the browser accepts them.
+    app.config.setdefault("COMPRESS_ALGORITHM", ["br", "gzip"])
+    Compress(app)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     log = logging.getLogger("anvaya.http")
@@ -61,6 +66,8 @@ def create_app(overrides: dict | None = None) -> Flask:
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("Referrer-Policy", "no-referrer")
         resp.headers.setdefault("Permissions-Policy", "camera=(), geolocation=(), microphone=(self)")
+        if request.path.startswith(NO_STORE_PREFIXES):  # API answers, document links and job calls are never cached
+            resp.headers.setdefault("Cache-Control", "no-store")
         if request.path.startswith("/api/"):
             elapsed = time.perf_counter() - g.get("t0", time.perf_counter())
             route = request.url_rule.rule if request.url_rule else "unmatched"
@@ -111,9 +118,33 @@ def create_app(overrides: dict | None = None) -> Flask:
         if not dist.exists():
             return jsonify({"message": "Frontend not built. Run `npm run build` in frontend/ or use the Vite dev server."}), 404
         target = dist / path
-        if path and target.is_file():
-            return send_from_directory(dist, path)
-        return send_from_directory(dist, "index.html")
+        if path.startswith("assets/") and not target.is_file():
+            return "Not found", 404  # a missing hashed file is a 404, never the app shell
+        resp = send_from_directory(dist, path if path and target.is_file() else "index.html")
+        resp.direct_passthrough = False
+        resp.set_data(resp.get_data())  # in memory (small files), so gzip as well as brotli applies, not only streaming codecs
+        # Vite names bundles by content hash, so they never change under the same URL. Everything else (index.html,
+        # sw.js, the manifest) is revalidated on each load (ETag, so usually a 304) and a new release shows up at once.
+        resp.headers["Cache-Control"] = ("public, max-age=31536000, immutable" if path.startswith("assets/")
+                                         else "no-cache")
+        return resp
+
+    @app.post("/internal/jobs/run")
+    def run_jobs():
+        """Run background jobs on demand ({"job": "retention" | "cleanup" | "all"}). Called hourly by the scheduled
+        GitHub Actions workflow, which also wakes a sleeping server. Own token, compared in constant time."""
+        from . import jobs
+        token = app.config["INTERNAL_JOBS_TOKEN"]
+        if not token:
+            return jsonify({"error": {"code": "NOT_FOUND", "message": "No such endpoint."}}), 404
+        if not hmac.compare_digest(request.headers.get("X-Internal-Token", "").encode(), token.encode()):
+            return jsonify({"error": {"code": "UNAUTHENTICATED", "message": "Invalid job token."}}), 401
+        job = (request.get_json(silent=True) or {}).get("job", "all")
+        if job not in (*jobs.JOBS, "all"):
+            return jsonify({"error": {"code": "VALIDATION", "message": "job must be retention, cleanup or all."}}), 422
+        results = jobs.run_all(app, job, "http")
+        failed = any(r["status"] == "failed" for r in results)
+        return jsonify({"runs": results}), (500 if failed else 200)
 
     @app.get("/")
     @app.get("/<path:path>")
@@ -125,6 +156,7 @@ def create_app(overrides: dict | None = None) -> Flask:
     return app
 
 
+NO_STORE_PREFIXES = ("/api/", "/internal/", "/metrics")
 TURNSTILE_ORIGIN = "https://challenges.cloudflare.com"
 
 
@@ -152,22 +184,17 @@ def content_security_policy(cfg) -> str:
 
 
 def _start_retention(app: Flask, log: logging.Logger) -> None:
-    """Delete expired data (accounts.purge_expired) shortly after start and then every RETENTION_INTERVAL_MIN."""
+    """Run the jobs (retention + cleanup, see jobs.py) shortly after start and then every RETENTION_INTERVAL_MIN. On a
+    server that sleeps this timer stops too; the scheduled POST /internal/jobs/run is what keeps the schedule."""
     import threading
 
-    from .accounts import purge_expired
+    from . import jobs
 
     def run():
-        db = connect(app.config)
         try:
-            with app.app_context():
-                r = purge_expired(db, app.config)
-            if any(r.values()):
-                log.info("retention: %s", r)  # counts only
+            jobs.run_all(app, "all", "timer")  # outcome (success / failed / skipped) is recorded in job_runs
         except Exception as e:  # noqa: BLE001 - retry at the next interval
-            log.warning("retention: run failed (%s)", type(e).__name__)
-        finally:
-            db.close()
+            log.warning("jobs: timer run failed (%s)", type(e).__name__)
         schedule(app.config["RETENTION_INTERVAL_MIN"] * 60)
 
     def schedule(delay: float):

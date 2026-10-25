@@ -5,7 +5,7 @@ import sys
 import time
 
 from . import create_app, ingest
-from .db import connect, dispose, iso
+from .db import connect, dispose
 
 
 def _opt(argv: list[str], name: str, default: int) -> int:
@@ -56,18 +56,11 @@ def _run(argv: list[str], app, conn) -> int:
         print(json.dumps(json.loads(row[0]), indent=2, ensure_ascii=False) if row else "no import yet")
         return 0
     if cmd == "cleanup":
-        n = conn.execute("UPDATE sessions SET ended_at=? WHERE ended_at IS NULL AND expires_at < ?", (iso(), iso())).rowcount
-        conn.commit()
-        from .accounts import purge_expired
-        from .voice import purge_audio
-        a = purge_audio(conn, cfg["SESSION_TTL_HOURS"])
-        print(f"expired {n} sessions; removed {a} cached audio clips older than {cfg['SESSION_TTL_HOURS']} h")
-        with app.app_context():
-            r = purge_expired(conn, cfg)
-        print(f"retention: deleted {r['unsaved_sessions']} unsaved sessions older than {cfg['UNSAVED_RETENTION_HOURS']} h,"
-              f" {r['unsaved_citizens']} unsaved citizens, {r['inactive_passports']} passports inactive for"
-              f" {cfg['PASSPORT_RETENTION_DAYS']} days, {r['auth_users_deleted']} Supabase Auth users")
-        return 0
+        from . import jobs
+        results = jobs.run_all(app, "all", "cli")
+        for r in results:
+            print(f"{r['job']}: {r['status']} {json.dumps(r['counts'])}")
+        return 1 if any(r["status"] == "failed" for r in results) else 0
     if cmd == "seed-staff":
         # Staff roles live in Supabase app_metadata, which only the server (secret key) can set. Prints emails'
         # roles and actions only, never passwords.

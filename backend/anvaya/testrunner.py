@@ -4,7 +4,7 @@ import re
 
 from flask import current_app
 
-from . import accounts, cases, catalogue, metrics, profile, rules_engine, voice
+from . import accounts, cases, catalogue, metrics, profile, ratelimit, rules_engine, voice
 from .common import ApiError
 from .db import dumps, get_db, iso, new_id
 
@@ -271,7 +271,9 @@ def run_tc5(d):
     age_reason = indiramma and next((r for r in indiramma["reasons"] if r["kind"] == "fact_changed"
                                      and r["attribute"] == "age"), None)
     # The scenario's own attempt rows (hashes only) go away so a re-run starts with clean limits.
-    db.executemany("DELETE FROM passport_attempts WHERE code_hash=?", [(accounts.code_hash(c),) for c in (code, other)])
+    for c in (code, other):
+        ratelimit.forget("passport_code", accounts.code_hash(c))
+    ratelimit.forget("passport_ip", accounts.ip_key())
     db.commit()
     checks = [
         _check("Passport code is PSP-XXXX-XXXX from a 32-symbol alphabet (40 random bits)",
@@ -337,7 +339,8 @@ def reset() -> dict:
                   "document_uploads"):
         db.executemany(f"DELETE FROM {table} WHERE session_id=?", [(s,) for s in sids])
     db.execute("DELETE FROM sessions WHERE is_test=1")
-    db.execute("DELETE FROM passport_attempts WHERE code_hash IN (SELECT code_hash FROM citizens WHERE is_test=1)")
+    for (h,) in db.execute("SELECT code_hash FROM citizens WHERE is_test=1 AND code_hash IS NOT NULL").fetchall():
+        ratelimit.forget("passport_code", h)
     db.execute("DELETE FROM citizens WHERE is_test=1")
     db.execute("DELETE FROM test_runs")
     db.commit()

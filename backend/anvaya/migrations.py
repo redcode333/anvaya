@@ -444,6 +444,38 @@ def _m6_auth_hardening(db: Database) -> None:
     db.execute("INSERT INTO data_versions(name, version) VALUES ('auth', 1) ON CONFLICT DO NOTHING")
 
 
+# Background work and limits that survive a sleeping server: fixed-window rate-limit counters, a record of every job
+# run, and (SQLite only) a lock row so two runs never overlap. Postgres uses an advisory lock instead.
+JOBS_AND_LIMITS_TABLES = [
+    """CREATE TABLE IF NOT EXISTS rate_limits (
+        bucket TEXT NOT NULL,
+        window_start BIGINT NOT NULL,
+        hits INTEGER NOT NULL,
+        expires_at BIGINT NOT NULL,
+        PRIMARY KEY (bucket, window_start)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_rate_limits_expires ON rate_limits(expires_at)",
+    """CREATE TABLE IF NOT EXISTS job_runs (
+        run_id TEXT PRIMARY KEY,
+        job TEXT NOT NULL,
+        trigger TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        status TEXT NOT NULL,
+        counts_json TEXT NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_job_runs_job ON job_runs(job, started_at)",
+    """CREATE TABLE IF NOT EXISTS job_locks (
+        name TEXT PRIMARY KEY,
+        locked_until TEXT NOT NULL
+    )""",
+]
+
+
+def _m7_jobs_and_rate_limits(db: Database) -> None:
+    db.query_many([(ddl(s, db.dialect), ()) for s in JOBS_AND_LIMITS_TABLES])
+
+
 MIGRATIONS = [
     (1, "initial schema", _m1_initial_schema),
     (2, "late columns: facts.confusable, facts.alternatives_json, sessions.is_demo", _m2_late_columns),
@@ -451,6 +483,7 @@ MIGRATIONS = [
     (4, "citizen accounts, passport versions, passport code attempts; drop local staff passwords", _m4_accounts),
     (5, "document uploads", _m5_document_uploads),
     (6, "auth events, sign-out revocations, OIDC state, linked identities, facts.verified", _m6_auth_hardening),
+    (7, "rate-limit counters, job runs, job locks", _m7_jobs_and_rate_limits),
 ]
 
 ENABLE_RLS = """DO $$
