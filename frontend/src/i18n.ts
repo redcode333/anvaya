@@ -72,9 +72,156 @@ const S = {
   missingInfo: { en: "Missing information", hi: "छूटी जानकारी", te: "లేని సమాచారం" },
   changed: { en: "What changed after your correction", hi: "सुधार के बाद क्या बदला", te: "సవరణ తర్వాత ఏమి మారింది" },
   addDetail: { en: "Add a detail", hi: "जानकारी जोड़ें", te: "వివరం జోడించండి" },
+  myPassports: { en: "My Passports", hi: "मेरे पासपोर्ट", te: "నా పాస్‌పోర్ట్‌లు" },
+  savePassports: { en: "Save my passports", hi: "मेरे पासपोर्ट सहेजें", te: "నా పాస్‌పోర్ట్‌లను సేవ్ చేయండి" },
+  saveIntro: {
+    en: "Right now nothing is kept after this session. To come back later, save with your email or with a Passport code and PIN.",
+    hi: "अभी इस सत्र के बाद कुछ भी नहीं रखा जाता। बाद में लौटने के लिए अपने ईमेल से या पासपोर्ट कोड और पिन से सहेजें।",
+    te: "ప్రస్తుతం ఈ సెషన్ తర్వాత ఏదీ ఉంచబడదు. తర్వాత తిరిగి రావడానికి మీ ఈమెయిల్‌తో లేదా పాస్‌పోర్ట్ కోడ్ మరియు పిన్‌తో సేవ్ చేయండి.",
+  },
+  consentSave: {
+    en: "I agree that Anvaya keeps my details, screening results and their history so I can come back to them. I can delete everything at any time.",
+    hi: "मैं सहमत हूँ कि Anvaya मेरी जानकारी, जाँच के परिणाम और उनका इतिहास रखे ताकि मैं बाद में लौट सकूँ। मैं कभी भी सब कुछ मिटा सकता/सकती हूँ।",
+    te: "నేను తిరిగి రాగలిగేలా Anvaya నా వివరాలు, పరిశీలన ఫలితాలు మరియు వాటి చరిత్రను ఉంచడానికి అంగీకరిస్తున్నాను. నేను ఎప్పుడైనా అన్నింటినీ తొలగించగలను.",
+  },
+  email: { en: "Email", hi: "ईमेल", te: "ఈమెయిల్" },
+  sendCode: { en: "Send code", hi: "कोड भेजें", te: "కోడ్ పంపండి" },
+  enterCode: { en: "6-digit code from the email", hi: "ईमेल में आया 6 अंकों का कोड", te: "ఈమెయిల్‌లో వచ్చిన 6 అంకెల కోడ్" },
+  verifySave: { en: "Verify and save", hi: "पुष्टि करें और सहेजें", te: "ధృవీకరించి సేవ్ చేయండి" },
+  google: { en: "Continue with Google", hi: "Google से जारी रखें", te: "Googleతో కొనసాగండి" },
+  orCode: { en: "No email? Save with a Passport code and PIN", hi: "ईमेल नहीं है? पासपोर्ट कोड और पिन से सहेजें", te: "ఈమెయిల్ లేదా? పాస్‌పోర్ట్ కోడ్ మరియు పిన్‌తో సేవ్ చేయండి" },
+  choosePin: { en: "Choose a 4-digit PIN", hi: "4 अंकों का पिन चुनें", te: "4 అంకెల పిన్ ఎంచుకోండి" },
+  pinFormat: { en: "The PIN must be exactly 4 digits.", hi: "पिन ठीक 4 अंकों का होना चाहिए।", te: "పిన్ సరిగ్గా 4 అంకెలు ఉండాలి." },
+  pinWeak: { en: "This PIN is too easy to guess. Choose another.", hi: "यह पिन आसानी से अनुमान लगाया जा सकता है। दूसरा चुनें।", te: "ఈ పిన్ సులభంగా ఊహించవచ్చు. వేరొకటి ఎంచుకోండి." },
+  saveWithCode: { en: "Save with code + PIN", hi: "कोड + पिन से सहेजें", te: "కోడ్ + పిన్‌తో సేవ్ చేయండి" },
+  yourPassportCode: { en: "Your Passport code", hi: "आपका पासपोर्ट कोड", te: "మీ పాస్‌పోర్ట్ కోడ్" },
+  readAgain: { en: "Read it again", hi: "फिर से सुनाएँ", te: "మళ్ళీ చదవండి" },
+  saved: { en: "Saved", hi: "सहेजा गया", te: "సేవ్ అయింది" },
+  savedAccount: { en: "Your passports are saved to your account.", hi: "आपके पासपोर्ट आपके खाते में सहेजे गए हैं।", te: "మీ పాస్‌పోర్ట్‌లు మీ ఖాతాలో సేవ్ అయ్యాయి." },
+  resume: { en: "Resume with Passport code", hi: "पासपोर्ट कोड से फिर शुरू करें", te: "పాస్‌పోర్ట్ కోడ్‌తో కొనసాగించండి" },
+  passportCode: { en: "Passport code", hi: "पासपोर्ट कोड", te: "పాస్‌పోర్ట్ కోడ్" },
+  pin: { en: "PIN", hi: "पिन", te: "పిన్" },
+  open: { en: "Open", hi: "खोलें", te: "తెరవండి" },
+  signInEmail: { en: "Already saved? Sign in with your email", hi: "पहले सहेजा है? अपने ईमेल से साइन इन करें", te: "ఇప్పటికే సేవ్ చేశారా? మీ ఈమెయిల్‌తో సైన్ ఇన్ చేయండి" },
+  signOut: { en: "Sign out", hi: "साइन आउट", te: "సైన్ అవుట్" },
+  savedProfile: { en: "Saved details", hi: "सहेजी गई जानकारी", te: "సేవ్ చేసిన వివరాలు" },
+  reconfirm: { en: "Older than 90 days — confirm again", hi: "90 दिन से पुराना — फिर से पुष्टि करें", te: "90 రోజుల కంటే పాతది — మళ్ళీ నిర్ధారించండి" },
+  history: { en: "Passport history", hi: "पासपोर्ट इतिहास", te: "పాస్‌పోర్ట్ చరిత్ర" },
+  whatChangedSince: { en: "What changed since", hi: "तब से क्या बदला", te: "అప్పటి నుండి ఏమి మారింది" },
+  noChanges: { en: "No results changed.", hi: "कोई परिणाम नहीं बदला।", te: "ఏ ఫలితమూ మారలేదు." },
+  factChanged: { en: "your detail changed", hi: "आपकी जानकारी बदली", te: "మీ వివరం మారింది" },
+  ruleChanged: { en: "the scheme rule was updated", hi: "योजना का नियम बदला गया", te: "పథకం నియమం నవీకరించబడింది" },
+  documentChanged: { en: "a document status changed", hi: "एक दस्तावेज़ की स्थिति बदली", te: "ఒక పత్రం స్థితి మారింది" },
+  attachCode: { en: "Add a Passport code to this account", hi: "इस खाते में पासपोर्ट कोड जोड़ें", te: "ఈ ఖాతాకు పాస్‌పోర్ట్ కోడ్ జోడించండి" },
+  deleteAccount: { en: "Delete my account and data", hi: "मेरा खाता और डेटा मिटाएँ", te: "నా ఖాతా మరియు డేటాను తొలగించండి" },
+  deleteConfirm: {
+    en: "This deletes your details, every saved passport and your sign-in. Cases you already sent to a reviewer stay with the reviewer. Type DELETE to confirm.",
+    hi: "इससे आपकी जानकारी, हर सहेजा पासपोर्ट और आपका साइन-इन मिट जाएगा। समीक्षक को भेजे गए केस समीक्षक के पास रहेंगे। पुष्टि के लिए DELETE लिखें।",
+    te: "ఇది మీ వివరాలు, సేవ్ చేసిన ప్రతి పాస్‌పోర్ట్ మరియు మీ సైన్-ఇన్‌ను తొలగిస్తుంది. సమీక్షకునికి పంపిన కేసులు సమీక్షకుని వద్దే ఉంటాయి. నిర్ధారించడానికి DELETE అని టైప్ చేయండి.",
+  },
+  pendingCaseWarning: {
+    en: "You have a case waiting for a reviewer. Deleting your account also removes the documents you uploaded from that case, and the reviewer will not be able to check them. Do you still want to delete everything?",
+    hi: "आपका एक केस समीक्षक की प्रतीक्षा में है। खाता मिटाने से आपके अपलोड किए गए दस्तावेज़ भी उस केस से हट जाएँगे, और समीक्षक उन्हें जाँच नहीं पाएँगे। क्या आप फिर भी सब कुछ मिटाना चाहते हैं?",
+    te: "మీ కేసు ఒకటి సమీక్షకుని కోసం వేచి ఉంది. ఖాతాను తొలగిస్తే మీరు అప్‌లోడ్ చేసిన పత్రాలు కూడా ఆ కేసు నుండి తొలగించబడతాయి, సమీక్షకుడు వాటిని తనిఖీ చేయలేరు. అయినా మీరు అన్నింటినీ తొలగించాలనుకుంటున్నారా?",
+  },
+  deleteAnyway: { en: "Yes, delete everything", hi: "हाँ, सब कुछ मिटाएँ", te: "అవును, అన్నింటినీ తొలగించండి" },
+  keepAccount: { en: "No, keep my account", hi: "नहीं, मेरा खाता रखें", te: "వద్దు, నా ఖాతాను ఉంచండి" },
+  deleted: { en: "Your account and data were deleted.", hi: "आपका खाता और डेटा मिटा दिया गया।", te: "మీ ఖాతా మరియు డేటా తొలగించబడ్డాయి." },
+  stillThere: { en: "Still there?", hi: "क्या आप अभी भी यहाँ हैं?", te: "ఇంకా ఉన్నారా?" },
+  stillThereBody: {
+    en: "This session will end and your answers will be cleared in",
+    hi: "यह सत्र समाप्त होगा और आपके जवाब मिटा दिए जाएँगे —",
+    te: "ఈ సెషన్ ముగుస్తుంది, మీ సమాధానాలు తొలగించబడతాయి —",
+  },
+  imHere: { en: "I'm still here", hi: "मैं यहाँ हूँ", te: "నేను ఇక్కడే ఉన్నాను" },
+  uploadDoc: { en: "Upload a photo or PDF", hi: "फ़ोटो या PDF अपलोड करें", te: "ఫోటో లేదా PDF అప్‌లోడ్ చేయండి" },
+  maskedAadhaar: {
+    en: "Upload a masked Aadhaar — only the last 4 digits visible.",
+    hi: "मास्क्ड आधार अपलोड करें — केवल आख़िरी 4 अंक दिखें।",
+    te: "మాస్క్ చేసిన ఆధార్ అప్‌లోడ్ చేయండి — చివరి 4 అంకెలు మాత్రమే కనిపించాలి.",
+  },
+  uploadConsent: {
+    en: "I agree to upload this document so a reviewer can check it. It is not read by any AI and is deleted with my data.",
+    hi: "मैं यह दस्तावेज़ अपलोड करने के लिए सहमत हूँ ताकि समीक्षक इसे जाँच सके। इसे कोई AI नहीं पढ़ता और यह मेरे डेटा के साथ मिटा दिया जाता है।",
+    te: "సమీక్షకుడు తనిఖీ చేయడానికి ఈ పత్రాన్ని అప్‌లోడ్ చేయడానికి అంగీకరిస్తున్నాను. దీన్ని ఏ AI చదవదు, నా డేటాతో పాటు తొలగించబడుతుంది.",
+  },
+  uploadTypes: { en: "JPEG, PNG or PDF, up to 5 MB", hi: "JPEG, PNG या PDF, अधिकतम 5 MB", te: "JPEG, PNG లేదా PDF, గరిష్ఠంగా 5 MB" },
+  uploading: { en: "Uploading", hi: "अपलोड हो रहा है", te: "అప్‌లోడ్ అవుతోంది" },
+  notVerifiedYet: { en: "Uploaded — not verified yet", hi: "अपलोड हुआ — अभी सत्यापित नहीं", te: "అప్‌లోడ్ అయింది — ఇంకా ధృవీకరించలేదు" },
+  viewDoc: { en: "View", hi: "देखें", te: "చూడండి" },
+  fileTypeBad: { en: "Choose a JPEG, PNG or PDF file.", hi: "JPEG, PNG या PDF फ़ाइल चुनें।", te: "JPEG, PNG లేదా PDF ఫైల్ ఎంచుకోండి." },
+  fileTooLarge: { en: "The file is larger than 5 MB.", hi: "फ़ाइल 5 MB से बड़ी है।", te: "ఫైల్ 5 MB కంటే పెద్దది." },
+  uploadNeedsCase: {
+    en: "At a kiosk, documents can be uploaded after the draft is sent to a reviewer.",
+    hi: "कियोस्क पर, ड्राफ़्ट समीक्षक को भेजने के बाद दस्तावेज़ अपलोड किए जा सकते हैं।",
+    te: "కియోస్క్‌లో, డ్రాఫ్ట్‌ను సమీక్షకునికి పంపిన తర్వాత పత్రాలు అప్‌లోడ్ చేయవచ్చు.",
+  },
+  uploadCaseClosed: { en: "This case has been reviewed; no more uploads.", hi: "इस केस की समीक्षा हो चुकी है; अब अपलोड नहीं।", te: "ఈ కేసు సమీక్ష పూర్తయింది; ఇక అప్‌లోడ్‌లు లేవు." },
+  privacyTitle: { en: "Privacy and retention", hi: "गोपनीयता और डेटा रखने की अवधि", te: "గోప్యత మరియు డేటా నిల్వ కాలం" },
+  formHelper: { en: "Form Helper", hi: "फ़ॉर्म सहायक", te: "ఫారం సహాయకుడు" },
+  notSubmitted: {
+    en: "Nothing has been submitted. Take these details to the office or portal yourself.",
+    hi: "कुछ भी जमा नहीं किया गया है। ये जानकारी ख़ुद कार्यालय या पोर्टल पर ले जाएँ।",
+    te: "ఏదీ సమర్పించబడలేదు. ఈ వివరాలను మీరే కార్యాలయానికి లేదా పోర్టల్‌కు తీసుకెళ్లండి.",
+  },
+  copy: { en: "Copy", hi: "कॉपी करें", te: "కాపీ చేయండి" },
+  noSteps: { en: "No application steps in the catalogue; ask at the office.", hi: "सूची में आवेदन के चरण नहीं हैं; कार्यालय में पूछें।", te: "జాబితాలో దరఖాస్తు దశలు లేవు; కార్యాలయంలో అడగండి." },
+  readAloudSteps: { en: "Read the steps aloud", hi: "चरण पढ़कर सुनाएँ", te: "దశలను చదివి వినిపించండి" },
+  downloadPdf: { en: "Download PDF draft", hi: "PDF ड्राफ़्ट डाउनलोड करें", te: "PDF డ్రాఫ్ట్ డౌన్‌లోడ్ చేయండి" },
+  consentNoticeTitle: { en: "Notice: what you agree to", hi: "सूचना: आप किस बात के लिए सहमत हो रहे हैं", te: "నోటీసు: మీరు దేనికి అంగీకరిస్తున్నారు" },
+  downloadData: { en: "Download my data", hi: "मेरा डेटा डाउनलोड करें", te: "నా డేటాను డౌన్‌లోడ్ చేయండి" },
+  downloadDataHint: {
+    en: "A JSON file with your details, saved passports, consents, document list (names and states, not the files) and case statuses.",
+    hi: "एक JSON फ़ाइल जिसमें आपकी जानकारी, सहेजे पासपोर्ट, सहमतियाँ, दस्तावेज़ों की सूची (नाम और स्थिति, फ़ाइलें नहीं) और केस की स्थिति है।",
+    te: "మీ వివరాలు, సేవ్ చేసిన పాస్‌పోర్ట్‌లు, సమ్మతులు, పత్రాల జాబితా (పేర్లు మరియు స్థితి, ఫైళ్లు కాదు) మరియు కేసు స్థితితో ఒక JSON ఫైల్.",
+  },
+  signOutAll: { en: "Sign out of all devices", hi: "सभी डिवाइस से साइन आउट करें", te: "అన్ని పరికరాల నుండి సైన్ అవుట్ చేయండి" },
+  signedOutAll: { en: "You are signed out on every device.", hi: "आप हर डिवाइस से साइन आउट हो गए हैं।", te: "మీరు అన్ని పరికరాల నుండి సైన్ అవుట్ అయ్యారు." },
+  withdrawConsent: { en: "Withdraw consent", hi: "सहमति वापस लें", te: "సమ్మతిని ఉపసంహరించుకోండి" },
+  digilocker: { en: "Fill name, date of birth and gender from DigiLocker", hi: "नाम, जन्मतिथि और लिंग DigiLocker से भरें", te: "పేరు, పుట్టిన తేదీ మరియు లింగాన్ని DigiLocker నుండి నింపండి" },
+  verifiedDigiLocker: { en: "Verified · DigiLocker", hi: "सत्यापित · DigiLocker", te: "ధృవీకరించబడింది · DigiLocker" },
+  phone: { en: "Mobile number", hi: "मोबाइल नंबर", te: "మొబైల్ నంబర్" },
+  smsCode: { en: "6-digit code from the SMS", hi: "SMS में आया 6 अंकों का कोड", te: "SMSలో వచ్చిన 6 అంకెల కోడ్" },
+  timeLimit: { en: "Kiosk sessions end after", hi: "कियोस्क सत्र इतने समय बाद समाप्त होते हैं:", te: "కియోస్క్ సెషన్‌లు ఇంత సమయం తర్వాత ముగుస్తాయి:" },
 } as const;
 
+/** The consent notice (DPDP Act 2023, section 5): purpose, what is stored, how long, and how to withdraw. Shown next
+ *  to every "save" consent; its version is CONSENT_VERSION. */
+export function consentNotice(lang: Lang, r: { unsaved_hours: number; passport_days: number; stale_fact_days: number }) {
+  const { unsaved_hours: h, passport_days: d, stale_fact_days: s } = r;
+  return {
+    en: [
+      ["Purpose", "To check which government schemes you may be eligible for, keep your Scheme Passport so you can come back to it, and show what changed since your last check. Nothing is used for advertising, sold or shared, except a case you yourself choose to send to a reviewer."],
+      ["What is stored", "The details you give or confirm (for example state, age, income, household), your screening results with the rule versions used, your consent records, the list and status of documents you upload (the files stay in private storage), and your sign-in (email, phone or Passport code + PIN). We never ask for or store your Aadhaar number."],
+      ["How long", `Without saving: deleted ${h} hours after the session starts (kiosk sessions as soon as they end). Saved passports: deleted after ${d} days without use. Saved age and income older than ${s} days must be confirmed again.`],
+      ["How to withdraw", "Open My Passports → \"Delete my account and data\" at any time. That withdraws this consent and deletes your data; only cases you sent to a reviewer stay with the reviewer. \"Download my data\" gives you a copy first. Questions or complaints: contact the office running this service; you may also approach the Data Protection Board of India."],
+    ],
+    hi: [
+      ["उद्देश्य", "यह जाँचना कि आप किन सरकारी योजनाओं के पात्र हो सकते हैं, आपका योजना पासपोर्ट रखना ताकि आप बाद में लौट सकें, और पिछली जाँच के बाद क्या बदला यह दिखाना। कुछ भी विज्ञापन के लिए इस्तेमाल, बेचा या साझा नहीं किया जाता, सिवाय उस केस के जिसे आप ख़ुद समीक्षक को भेजना चुनते हैं।"],
+      ["क्या रखा जाता है", "आपके द्वारा दी या पुष्टि की गई जानकारी (जैसे राज्य, उम्र, आय, परिवार), इस्तेमाल हुए नियम संस्करणों के साथ जाँच के परिणाम, आपकी सहमति के रिकॉर्ड, अपलोड किए दस्तावेज़ों की सूची और स्थिति (फ़ाइलें निजी स्टोरेज में रहती हैं), और आपका साइन-इन (ईमेल, फ़ोन या पासपोर्ट कोड + पिन)। हम आपका आधार नंबर कभी नहीं माँगते या रखते।"],
+      ["कितने समय तक", `बिना सहेजे: सत्र शुरू होने के ${h} घंटे बाद मिटा दिया जाता है (कियोस्क सत्र समाप्त होते ही)। सहेजे पासपोर्ट: ${d} दिन उपयोग न होने पर मिटा दिए जाते हैं। ${s} दिन से पुरानी सहेजी उम्र और आय की फिर से पुष्टि करनी होगी।`],
+      ["सहमति कैसे वापस लें", "कभी भी मेरे पासपोर्ट → \"मेरा खाता और डेटा मिटाएँ\" खोलें। इससे यह सहमति वापस हो जाती है और आपका डेटा मिट जाता है; केवल समीक्षक को भेजे गए केस समीक्षक के पास रहते हैं। पहले \"मेरा डेटा डाउनलोड करें\" से एक प्रति ले सकते हैं। प्रश्न या शिकायत: यह सेवा चलाने वाले कार्यालय से संपर्क करें; आप भारतीय डेटा संरक्षण बोर्ड से भी संपर्क कर सकते हैं।"],
+    ],
+    te: [
+      ["ఉద్దేశ్యం", "మీరు ఏ ప్రభుత్వ పథకాలకు అర్హులు కావచ్చో తనిఖీ చేయడం, మీరు తిరిగి రాగలిగేలా మీ పథకం పాస్‌పోర్ట్‌ను ఉంచడం, మరియు గత తనిఖీ తర్వాత ఏమి మారిందో చూపించడం. మీరే సమీక్షకునికి పంపాలని ఎంచుకున్న కేసు తప్ప, ఏదీ ప్రకటనల కోసం ఉపయోగించబడదు, అమ్మబడదు లేదా పంచుకోబడదు."],
+      ["ఏమి నిల్వ చేయబడుతుంది", "మీరు ఇచ్చిన లేదా నిర్ధారించిన వివరాలు (ఉదా. రాష్ట్రం, వయస్సు, ఆదాయం, కుటుంబం), ఉపయోగించిన నియమ వెర్షన్లతో పరిశీలన ఫలితాలు, మీ సమ్మతి రికార్డులు, మీరు అప్‌లోడ్ చేసిన పత్రాల జాబితా మరియు స్థితి (ఫైళ్లు ప్రైవేట్ నిల్వలో ఉంటాయి), మరియు మీ సైన్-ఇన్ (ఈమెయిల్, ఫోన్ లేదా పాస్‌పోర్ట్ కోడ్ + పిన్). మేము మీ ఆధార్ నంబర్‌ను ఎప్పుడూ అడగము, నిల్వ చేయము."],
+      ["ఎంత కాలం", `సేవ్ చేయకపోతే: సెషన్ ప్రారంభమైన ${h} గంటల తర్వాత తొలగించబడుతుంది (కియోస్క్ సెషన్‌లు ముగిసిన వెంటనే). సేవ్ చేసిన పాస్‌పోర్ట్‌లు: ${d} రోజులు ఉపయోగించకపోతే తొలగించబడతాయి. ${s} రోజుల కంటే పాత వయస్సు, ఆదాయాన్ని మళ్ళీ నిర్ధారించాలి.`],
+      ["సమ్మతిని ఎలా ఉపసంహరించుకోవాలి", "ఎప్పుడైనా నా పాస్‌పోర్ట్‌లు → \"నా ఖాతా మరియు డేటాను తొలగించండి\" తెరవండి. అది ఈ సమ్మతిని ఉపసంహరించి మీ డేటాను తొలగిస్తుంది; సమీక్షకునికి పంపిన కేసులు మాత్రమే సమీక్షకుని వద్ద ఉంటాయి. ముందుగా \"నా డేటాను డౌన్‌లోడ్ చేయండి\"తో ఒక కాపీ తీసుకోవచ్చు. ప్రశ్నలు లేదా ఫిర్యాదులు: ఈ సేవను నడిపే కార్యాలయాన్ని సంప్రదించండి; భారత డేటా రక్షణ బోర్డును కూడా సంప్రదించవచ్చు."],
+    ],
+  }[lang] as [string, string][];
+}
+
 export type Key = keyof typeof S;
+
+/** The retention policy, shown wherever something can be saved. */
+export function retentionText(lang: Lang, r: { unsaved_hours: number; passport_days: number; stale_fact_days: number }): string {
+  const { unsaved_hours: h, passport_days: d, stale_fact_days: s } = r;
+  return {
+    en: `Unsaved answers are deleted ${h} hours after the session starts (kiosk sessions as soon as they end). Saved passports are deleted after ${d} days without use. Saved age and income older than ${s} days must be confirmed again. You can delete your account and data at any time; only cases you chose to send to a reviewer are kept.`,
+    hi: `बिना सहेजे जवाब सत्र शुरू होने के ${h} घंटे बाद मिटा दिए जाते हैं (कियोस्क सत्र समाप्त होते ही)। सहेजे गए पासपोर्ट ${d} दिन तक उपयोग न होने पर मिटा दिए जाते हैं। ${s} दिन से पुरानी सहेजी उम्र और आय की फिर से पुष्टि करनी होगी। आप कभी भी अपना खाता और डेटा मिटा सकते हैं; केवल वे केस रखे जाते हैं जिन्हें आपने समीक्षक को भेजा।`,
+    te: `సేవ్ చేయని సమాధానాలు సెషన్ ప్రారంభమైన ${h} గంటల తర్వాత తొలగించబడతాయి (కియోస్క్ సెషన్‌లు ముగిసిన వెంటనే). సేవ్ చేసిన పాస్‌పోర్ట్‌లు ${d} రోజులు ఉపయోగించకపోతే తొలగించబడతాయి. ${s} రోజుల కంటే పాత సేవ్ చేసిన వయస్సు, ఆదాయాన్ని మళ్ళీ నిర్ధారించాలి. మీరు ఎప్పుడైనా మీ ఖాతా మరియు డేటాను తొలగించవచ్చు; మీరు సమీక్షకునికి పంపిన కేసులు మాత్రమే ఉంచబడతాయి.`,
+  }[lang];
+}
 export const t = (k: Key, lang: Lang) => S[k][lang] ?? S[k].en;
 
 export const ATTR: Record<string, Record<Lang, string>> = {
@@ -93,6 +240,7 @@ export const ATTR: Record<string, Record<Lang, string>> = {
   has_bank_account: { en: "Has bank account", hi: "बैंक खाता है", te: "బ్యాంక్ ఖాతా ఉంది" },
   owns_pucca_house: { en: "Owns pucca house", hi: "पक्का मकान है", te: "పక్కా ఇల్లు ఉంది" },
   applicant_name: { en: "Applicant name", hi: "आवेदक का नाम", te: "దరఖాస్తుదారుని పేరు" },
+  date_of_birth: { en: "Date of birth", hi: "जन्मतिथि", te: "పుట్టిన తేదీ" },
 };
 export const attrLabel = (a: string, lang: Lang) => ATTR[a]?.[lang] ?? a;
 

@@ -30,7 +30,7 @@ export default function TestRuns() {
     <div className="stack">
       <StaffBar />
       <div className="row spread">
-        <h1>Official scenarios TC1–TC4</h1>
+        <h1>Official scenarios TC1–TC5</h1>
         {canRun && <div className="row">
           {Object.keys(defs).map((tc) => <button key={tc} className="btn" disabled={!!busy} onClick={() => run(tc)}>{busy === tc ? "…" : `Run ${tc}`}</button>)}
           <button className="btn primary" disabled={!!busy} onClick={runAll}>Run all</button>
@@ -38,7 +38,7 @@ export default function TestRuns() {
         </div>}
       </div>
       {!canRun && Object.keys(defs).length > 0 && <StaffLogin roles={["admin"]} title="Admin sign-in to run scenarios"
-        hint="Running or resetting TC1–TC4 writes test data, so it needs an admin account. The latest saved runs are shown below." demo={["admin"]} />}
+        hint="Running or resetting TC1–TC5 writes test data, so it needs an admin account. The latest saved runs are shown below." />}
       <p className="small muted">Each scenario creates an isolated test session and runs the real pipeline (extraction → confirmation → deterministic rules → drafts). Evidence is saved with every run.</p>
       <ErrorNote error={err} />
       {Object.entries(defs).map(([tc, d]) => {

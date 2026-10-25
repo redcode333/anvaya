@@ -6,6 +6,11 @@ RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
 COPY backend/tests/fixtures /app/backend/tests/fixtures
 COPY backend/anvaya/data /app/backend/anvaya/data
+# Supabase sign-in in the browser: the project URL and the *publishable* key only (never the secret key).
+ARG VITE_SUPABASE_URL=""
+ARG VITE_SUPABASE_PUBLISHABLE_KEY=""
+ARG VITE_TURNSTILE_SITE_KEY=""
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL VITE_SUPABASE_PUBLISHABLE_KEY=$VITE_SUPABASE_PUBLISHABLE_KEY VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY
 RUN npm run build
 
 FROM python:3.12-slim

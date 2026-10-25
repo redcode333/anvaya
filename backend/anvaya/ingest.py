@@ -1,6 +1,9 @@
 """Dataset import: immutable source artifact + normalized catalogue + graph edges + rules.
 
-Run via `python -m anvaya.manage init` (see manage.py).
+Run via `python -m anvaya.manage init` (see manage.py). Idempotent: an unchanged dataset (same sha256) is not imported
+again, rules are upserted (keeping who verified them against the source). Staff accounts live in Supabase Auth
+(`manage seed-staff`). Rows go to the database in batches, so an import over a remote connection takes a few round trips, not one
+per row.
 """
 import csv
 import hashlib
@@ -8,14 +11,12 @@ import html
 import json
 import os
 import re
-import sqlite3
 import sys
 from pathlib import Path
 
-from werkzeug.security import check_password_hash, generate_password_hash
 
-from .config import STAFF_ACCOUNTS
-from .db import dumps, init_schema, iso, new_id
+from .db import Database, bump, dumps, iso, new_id
+from .migrations import migrate
 
 csv.field_size_limit(min(sys.maxsize, 2**31 - 1))
 
@@ -96,18 +97,33 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _node(conn, node_id, node_type, label):
-    conn.execute(
-        "INSERT OR IGNORE INTO kg_nodes(node_id, node_type, label) VALUES (?,?,?)",
-        (node_id, node_type, label),
-    )
+class Graph:
+    """Knowledge-graph nodes and edges collected in memory and written in two batches (first label wins)."""
+
+    def __init__(self):
+        self.nodes: dict[str, tuple[str, str]] = {}
+        self.edges: dict[tuple[str, str, str], None] = {}
+
+    def node(self, node_id, node_type, label):
+        self.nodes.setdefault(node_id, (node_type, label))
+
+    def edge(self, src, rel, dst):
+        self.edges[(src, rel, dst)] = None
+
+    def write(self, conn: Database) -> None:
+        conn.executemany("INSERT INTO kg_nodes(node_id, node_type, label) VALUES (?,?,?) ON CONFLICT DO NOTHING",
+                         [(n, t, label) for n, (t, label) in self.nodes.items()])
+        conn.executemany("INSERT INTO kg_edges(src, rel, dst) VALUES (?,?,?) ON CONFLICT DO NOTHING", list(self.edges))
 
 
-def _edge(conn, src, rel, dst):
-    conn.execute("INSERT OR IGNORE INTO kg_edges(src, rel, dst) VALUES (?,?,?)", (src, rel, dst))
+SCHEME_COLUMNS = ("scheme_id", "slug", "name", "short_title", "state_raw", "state", "level_raw", "level", "department",
+                  "categories", "subcategories", "tags", "beneficiaries", "brief_description", "description",
+                  "benefits", "eligibility_text", "application_process", "documents_text", "source_urls_json",
+                  "source_url", "faqs", "source_artifact_id", "imported_at", "retrieved_at", "verified_at",
+                  "review_status", "confidence", "quality_flags_json", "search_text")
 
 
-def import_catalogue(conn: sqlite3.Connection, csv_path: str) -> dict:
+def import_catalogue(conn: Database, csv_path: str) -> dict:
     path = Path(csv_path)
     digest = sha256_file(path)
     existing = conn.execute(
@@ -131,6 +147,7 @@ def import_catalogue(conn: sqlite3.Connection, csv_path: str) -> dict:
         "duplicate_names": [],
     }
     seen_ids = set()
+    scheme_rows, graph = [], Graph()
 
     with open(path, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
@@ -159,13 +176,7 @@ def import_catalogue(conn: sqlite3.Connection, csv_path: str) -> dict:
                 clean_text(row.get(k, "")) for k in ("scheme_name", "short_title", "tags", "categories", "subcategories", "brief_description")
             ).lower()
 
-            conn.execute(
-                """INSERT INTO schemes(scheme_id, slug, name, short_title, state_raw, state, level_raw, level,
-                    department, categories, subcategories, tags, beneficiaries, brief_description, description,
-                    benefits, eligibility_text, application_process, documents_text, source_urls_json, source_url,
-                    faqs, source_artifact_id, imported_at, retrieved_at, verified_at, review_status, confidence,
-                    quality_flags_json, search_text)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            scheme_rows.append(
                 (
                     sid, row.get("slug"), name, clean_text(row.get("short_title")),
                     row.get("state"), state, row.get("level"), level,
@@ -181,43 +192,52 @@ def import_catalogue(conn: sqlite3.Connection, csv_path: str) -> dict:
             )
 
             scheme_node = f"scheme:{sid}"
-            _node(conn, scheme_node, "Scheme", name)
+            graph.node(scheme_node, "Scheme", name)
             state_node = f"state:{state or 'India'}"
-            _node(conn, state_node, "State" if state else "Country", state or "India (Central)")
-            _edge(conn, scheme_node, "APPLIES_IN", state_node)
+            graph.node(state_node, "State" if state else "Country", state or "India (Central)")
+            graph.edge(scheme_node, "APPLIES_IN", state_node)
             dept = clean_text(row.get("department"))
             if dept:
-                _node(conn, f"dept:{dept}", "Department", dept)
-                _edge(conn, scheme_node, "ADMINISTERED_BY", f"dept:{dept}")
+                graph.node(f"dept:{dept}", "Department", dept)
+                graph.edge(scheme_node, "ADMINISTERED_BY", f"dept:{dept}")
             for cat in filter(None, (c.strip() for c in clean_text(row.get("categories")).split(","))):
-                _node(conn, f"category:{cat}", "Category", cat)
-                _edge(conn, scheme_node, "IN_CATEGORY", f"category:{cat}")
+                graph.node(f"category:{cat}", "Category", cat)
+                graph.edge(scheme_node, "IN_CATEGORY", f"category:{cat}")
             for ben in filter(None, (b.strip() for b in clean_text(row.get("target_beneficiaries")).split(","))):
-                _node(conn, f"beneficiary:{ben}", "BeneficiaryGroup", ben)
-                _edge(conn, scheme_node, "TARGETS", f"beneficiary:{ben}")
+                graph.node(f"beneficiary:{ben}", "BeneficiaryGroup", ben)
+                graph.edge(scheme_node, "TARGETS", f"beneficiary:{ben}")
             for u in urls:
                 if u["url"]:
-                    _node(conn, f"source:{u['url']}", "Source", u["label"])
-                    _edge(conn, scheme_node, "SUPPORTED_BY", f"source:{u['url']}")
+                    graph.node(f"source:{u['url']}", "Source", u["label"])
+                    graph.edge(scheme_node, "SUPPORTED_BY", f"source:{u['url']}")
 
     report["distinct_names"] = len(seen_names)
-    conn.execute(
-        "INSERT INTO source_artifacts(artifact_id, filename, sha256, row_count, imported_at, report_json) VALUES (?,?,?,?,?,?)",
-        (artifact_id, path.name, digest, report["rows"], imported_at, dumps(report)),
-    )
-    conn.commit()
+    with conn.transaction():
+        # A changed dataset (new sha256) replaces existing records; load_rules() then re-applies rule review status.
+        conn.executemany(
+            f"INSERT INTO schemes({', '.join(SCHEME_COLUMNS)}) VALUES ({','.join('?' * len(SCHEME_COLUMNS))})"
+            f" ON CONFLICT (scheme_id) DO UPDATE SET {', '.join(f'{c}=excluded.{c}' for c in SCHEME_COLUMNS[1:])}",
+            scheme_rows)
+        graph.write(conn)
+        conn.execute(
+            "INSERT INTO source_artifacts(artifact_id, filename, sha256, row_count, imported_at, report_json) VALUES (?,?,?,?,?,?)",
+            (artifact_id, path.name, digest, report["rows"], imported_at, dumps(report)),
+        )
+        bump(conn, "catalogue")
     return {"artifact_id": artifact_id, "skipped": False, **report}
 
 
-def load_rules(conn: sqlite3.Connection, rules_path: str, bundle_version: str) -> dict:
+def load_rules(conn: Database, rules_path: str, bundle_version: str) -> dict:
     with open(rules_path, encoding="utf-8") as f:
         bundle = json.load(f)
     reviewed_at = bundle.get("reviewed_at")
-    results = []
+    results, graph = [], Graph()
+    ids = sorted({r["scheme_id"] for r in bundle["rules"]})
+    schemes = {r["scheme_id"]: r for r in conn.execute(
+        f"SELECT scheme_id, name, eligibility_text FROM schemes WHERE scheme_id IN ({','.join('?' * len(ids))})", ids)}
+    rule_rows, scheme_updates = [], []
     for rule in bundle["rules"]:
-        scheme = conn.execute(
-            "SELECT scheme_id, name, eligibility_text FROM schemes WHERE scheme_id=?", (rule["scheme_id"],)
-        ).fetchone()
+        scheme = schemes.get(rule["scheme_id"])
         problems = []
         if scheme is None:
             problems.append("scheme_id not found in catalogue")
@@ -232,63 +252,39 @@ def load_rules(conn: sqlite3.Connection, rules_path: str, bundle_version: str) -
             review_status = "needs_review"
             rule["review_note"] = "; ".join([rule.get("review_note", "")] + problems).strip("; ")
 
-        prev = conn.execute(
-            "SELECT source_verified_at, source_verified_by FROM rules WHERE rule_id=?", (rule["rule_id"],)
-        ).fetchone()
-        conn.execute(
-            """INSERT OR REPLACE INTO rules(rule_id, scheme_id, version, bundle_version, rule_json, review_status,
-                reviewed_at, source_verified_at, source_verified_by, active) VALUES (?,?,?,?,?,?,?,?,?,1)""",
-            (
-                rule["rule_id"], rule["scheme_id"], rule["version"], bundle_version, dumps(rule), review_status,
-                reviewed_at, prev["source_verified_at"] if prev else None, prev["source_verified_by"] if prev else None,
-            ),
-        )
+        # Upsert: the rule text and status come from the bundle; source_verified_at/_by (an admin's check against
+        # the official source) are kept.
+        rule_rows.append((rule["rule_id"], rule["scheme_id"], rule["version"], bundle_version, dumps(rule),
+                          review_status, reviewed_at))
         if scheme is not None:
-            conn.execute(
-                "UPDATE schemes SET review_status=?, confidence=? WHERE scheme_id=?",
-                ("rule_" + review_status, "medium" if review_status == "team_reviewed" else "low", rule["scheme_id"]),
-            )
+            scheme_updates.append(("rule_" + review_status, "medium" if review_status == "team_reviewed" else "low",
+                                   rule["scheme_id"]))
             scheme_node = f"scheme:{rule['scheme_id']}"
             for crit in rule["all"]:
                 cnode = f"criterion:{rule['rule_id']}:{crit['id']}"
-                _node(conn, cnode, "Criterion", f"{crit['fact']} {crit['op']} {crit.get('value', '')}".strip())
-                _edge(conn, scheme_node, "HAS_CRITERION", cnode)
+                graph.node(cnode, "Criterion", f"{crit['fact']} {crit['op']} {crit.get('value', '')}".strip())
+                graph.edge(scheme_node, "HAS_CRITERION", cnode)
             for doc in rule.get("evidence_requirements", []):
-                _node(conn, f"document:{doc}", "Document", doc)
-                _edge(conn, scheme_node, "REQUIRES", f"document:{doc}")
-            _node(conn, f"rule:{rule['rule_id']}", "RuleVersion", f"{rule['rule_id']} v{rule['version']}")
-            _edge(conn, f"rule:{rule['rule_id']}", "EVALUATES", scheme_node)
+                graph.node(f"document:{doc}", "Document", doc)
+                graph.edge(scheme_node, "REQUIRES", f"document:{doc}")
+            graph.node(f"rule:{rule['rule_id']}", "RuleVersion", f"{rule['rule_id']} v{rule['version']}")
+            graph.edge(f"rule:{rule['rule_id']}", "EVALUATES", scheme_node)
         results.append({"rule_id": rule["rule_id"], "review_status": review_status, "problems": problems})
-    conn.commit()
+    with conn.transaction():
+        conn.executemany(
+            """INSERT INTO rules(rule_id, scheme_id, version, bundle_version, rule_json, review_status, reviewed_at,
+                active) VALUES (?,?,?,?,?,?,?,1)
+               ON CONFLICT (rule_id) DO UPDATE SET scheme_id=excluded.scheme_id, version=excluded.version,
+                 bundle_version=excluded.bundle_version, rule_json=excluded.rule_json,
+                 review_status=excluded.review_status, reviewed_at=excluded.reviewed_at, active=1""", rule_rows)
+        conn.executemany("UPDATE schemes SET review_status=?, confidence=? WHERE scheme_id=?", scheme_updates)
+        graph.write(conn)
+        bump(conn, "catalogue")
     return {"bundle_version": bundle_version, "rules": results}
 
 
-def seed_users(conn: sqlite3.Connection, env=None) -> list[str]:
-    """Create the reviewer / operator / admin accounts. A password set in ANVAYA_<ROLE>_PASSWORD is applied on every
-    start (so changing it in .env takes effect, and an old demo password stops working); when unset, a new account
-    gets the public demo password. Returns the usernames whose password variable is unset."""
-    env = os.environ if env is None else env
-    on_demo = []
-    for username, (var, role, display, demo_password) in STAFF_ACCOUNTS.items():
-        password = env.get(var, "")
-        row = conn.execute("SELECT password_hash FROM users WHERE username=?", (username,)).fetchone()
-        if not password:
-            on_demo.append(username)
-            password = demo_password
-            if row:
-                continue  # keep whatever the account has; never reset it to the demo password
-        if row is None:
-            conn.execute("INSERT INTO users(user_id, username, password_hash, role, display_name) VALUES (?,?,?,?,?)",
-                         (new_id("USR"), username, generate_password_hash(password), role, display))
-        elif not check_password_hash(row[0], password):
-            conn.execute("UPDATE users SET password_hash=? WHERE username=?", (generate_password_hash(password), username))
-    conn.commit()
-    return on_demo
-
-
-def bootstrap(conn: sqlite3.Connection, csv_path: str, rules_path: str, bundle_version: str) -> dict:
-    init_schema(conn)
+def bootstrap(conn: Database, csv_path: str, rules_path: str, bundle_version: str) -> dict:
+    migrate(conn)
     cat = import_catalogue(conn, csv_path)
     rules = load_rules(conn, rules_path, bundle_version)
-    seed_users(conn)
     return {"catalogue": cat, "rules": rules}

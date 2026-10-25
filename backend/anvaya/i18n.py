@@ -74,7 +74,9 @@ DOC_STATUS = {
     "missing": {"en": "Missing", "hi": "नहीं है", "te": "లేదు"},
     "expired": {"en": "Expired", "hi": "समाप्त", "te": "గడువు ముగిసింది"},
     "unknown": {"en": "Not sure", "hi": "पता नहीं", "te": "తెలియదు"},
+    "uploaded": {"en": "Uploaded — not verified yet", "hi": "अपलोड हुआ — अभी सत्यापित नहीं", "te": "అప్‌లోడ్ అయింది — ఇంకా ధృవీకరించలేదు"},
     "verified": {"en": "Verified by reviewer", "hi": "समीक्षक द्वारा सत्यापित", "te": "సమీక్షకుడు ధృవీకరించారు"},
+    "reupload_requested": {"en": "Reviewer asked for a new upload", "hi": "समीक्षक ने दोबारा अपलोड माँगा", "te": "సమీక్షకుడు మళ్ళీ అప్‌లోడ్ అడిగారు"},
 }
 
 OUTCOMES = {
@@ -170,6 +172,7 @@ ATTRIBUTE_LABELS = {
     "has_bank_account": {"en": "Has bank account", "hi": "बैंक खाता है", "te": "బ్యాంక్ ఖాతా ఉంది"},
     "owns_pucca_house": {"en": "Owns pucca house", "hi": "पक्का मकान है", "te": "పక్కా ఇల్లు ఉంది"},
     "applicant_name": {"en": "Applicant name", "hi": "आवेदक का नाम", "te": "దరఖాస్తుదారుని పేరు"},
+    "date_of_birth": {"en": "Date of birth", "hi": "जन्मतिथि", "te": "పుట్టిన తేదీ"},
 }
 
 MESSAGES = {
@@ -177,6 +180,12 @@ MESSAGES = {
         "en": "Namaste! Tell me about your household — your state, age, income and work. You can speak or type.",
         "hi": "नमस्ते! अपने परिवार के बारे में बताइए — राज्य, उम्र, आय और काम। आप बोल या लिख सकते हैं।",
         "te": "నమస్తే! మీ కుటుంబం గురించి చెప్పండి — రాష్ట్రం, వయస్సు, ఆదాయం మరియు పని. మీరు మాట్లాడవచ్చు లేదా టైప్ చేయవచ్చు.",
+    },
+    "passport_code_is": {"en": "Your Passport code is", "hi": "आपका पासपोर्ट कोड है", "te": "మీ పాస్‌పోర్ట్ కోడ్"},
+    "passport_code_notice": {
+        "en": "Write down this code and remember your PIN. Together they open your saved passport; staff never need them.",
+        "hi": "यह कोड लिख लें और अपना पिन याद रखें। दोनों से आपका सहेजा पासपोर्ट खुलता है; कर्मचारियों को इनकी ज़रूरत नहीं होती।",
+        "te": "ఈ కోడ్‌ను రాసుకోండి, మీ పిన్ గుర్తుంచుకోండి. రెండూ కలిసి మీ సేవ్ చేసిన పాస్‌పోర్ట్‌ను తెరుస్తాయి; సిబ్బందికి ఇవి అవసరం లేదు.",
     },
     "heard": {"en": "I understood:", "hi": "मैंने समझा:", "te": "నేను అర్థం చేసుకున్నది:"},
     "nothing_heard": {
@@ -243,7 +252,8 @@ REVIEW_OUTCOMES = {
 }
 
 CASE_STATUS = {
-    "DRAFT_SAVED": {"en": "Draft saved (not submitted to government)", "hi": "ड्राफ़्ट सहेजा गया (सरकार को जमा नहीं)", "te": "డ్రాఫ్ట్ సేవ్ అయింది (ప్రభుత్వానికి సమర్పించలేదు)"},
+    "DRAFT_SAVED": {"en": "Draft ready — submit at the office/portal", "hi": "ड्राफ़्ट तैयार — कार्यालय/पोर्टल पर जमा करें",
+                    "te": "డ్రాఫ్ట్ సిద్ధం — కార్యాలయంలో/పోర్టల్‌లో సమర్పించండి"},
     "PENDING_REVIEW": {"en": "Waiting for reviewer", "hi": "समीक्षक की प्रतीक्षा में", "te": "సమీక్షకుని కోసం వేచి ఉంది"},
     "CORRECTION_REQUESTED": {"en": "Reviewer asked for a correction", "hi": "समीक्षक ने सुधार माँगा है", "te": "సమీక్షకుడు సవరణ కోరారు"},
     "REVIEWED": {"en": "Reviewed by reviewer", "hi": "समीक्षक द्वारा समीक्षा की गई", "te": "సమీక్షకుడు సమీక్షించారు"},

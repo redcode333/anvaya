@@ -10,7 +10,7 @@ import requests
 
 from anvaya import translation, voice
 from anvaya.common import ApiError
-from anvaya.db import get_db
+from anvaya.db import get_db, reset_caches
 from conftest import start
 
 KEY = "vx_test_key_never_logged"
@@ -59,6 +59,7 @@ def verbx(app, monkeypatch):
         get_db().execute("DELETE FROM translations")
         get_db().execute("DELETE FROM tts_cache")
         get_db().commit()
+        reset_caches(get_db())
     yield fake
     app.config.update(VERBX_BASE_URL="", VERBX_API_KEY="")
 
@@ -373,8 +374,9 @@ def test_turn_reply_and_summary_come_in_speakable_sentences(client):
 
 def test_cleanup_keeps_prerendered_audio(verbx, ctx):
     db = get_db()
-    db.execute("INSERT INTO tts_cache VALUES ('old', 'en', 'v', 'audio/wav', x'00', 1, 0, '2000-01-01T00:00:00+00:00')")
-    db.execute("INSERT INTO tts_cache VALUES ('pin', 'en', 'v', 'audio/wav', x'00', 1, 1, '2000-01-01T00:00:00+00:00')")
+    db.executemany("INSERT INTO tts_cache(cache_key, language, voice, mime_type, audio, synth_ms, pinned, created_at)"
+                   " VALUES (?,?,?,?,?,?,?,?)", [(key, "en", "v", "audio/wav", b"\x00", 1, pinned, "2000-01-01T00:00:00+00:00")
+                                                 for key, pinned in (("old", 0), ("pin", 1))])
     db.commit()
     assert voice.purge_audio(db, older_than_hours=12) == 1
     assert {r[0] for r in get_db().execute("SELECT cache_key FROM tts_cache")} == {"pin"}

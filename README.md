@@ -181,22 +181,228 @@ cd ../frontend && npm install && npm run dev    # http://localhost:5173, proxies
 **Tests**
 
 ```bash
-cd backend  && python -m pytest -q                     # rules engine, extraction, API, VerbX + LLM (mocked), TC1–TC4
+cd backend  && python -m pytest -q                     # rules engine, extraction, API, accounts (mock JWKS), TC1–TC5
 cd backend  && python -m pytest -m live -s             # real VerbX + Groq/Gemini calls (keys from .env), demo sentences
 cd backend  && python -m anvaya.manage eval-extraction # extraction precision/recall, deterministic vs + LLM
-cd frontend && npm test && npm run build               # offline engine vs shared fixtures, confirmation, speech
+cd frontend && npm test && npm run build               # offline engine, confirmation, speech, sign-in/save/history/delete, kiosk idle
 ```
 
-**Staff accounts:** `reviewer`, `operator` (kiosk) and `admin` (data steward).
-* Passwords come from `ANVAYA_REVIEWER_PASSWORD`, `ANVAYA_OPERATOR_PASSWORD` and `ANVAYA_ADMIN_PASSWORD`. They are
-  re-applied on every start, so changing one in `.env` also retires the old one.
-* An account whose variable is unset falls back to its public demo password (`reviewer123`, `operator123`,
-  `admin123`). The app then logs a startup warning, `/api/v1/ready` lists it, and the sign-in pages show credentials
-  only for those accounts.
+**Staff accounts** (operator = kiosk, reviewer, admin = data steward) are Supabase Auth users who sign in with email +
+password. Their role lives in `app_metadata`, which only the server can set: `python -m anvaya.manage seed-staff`
+creates or updates them from `ANVAYA_<ROLE>_EMAIL` + `ANVAYA_<ROLE>_PASSWORD`. There are no demo passwords. See
+[Accounts and modes](#accounts-and-modes).
 
 **Startup check.** On boot the app logs one line per integration (VerbX, each LLM provider, metrics) as `configured`
 or `missing (missing VAR, …)`. It logs variable names, never values. Missing optional keys never stop the app, and
 `/api/v1/ready` stays 200 as long as the catalogue and rules are loaded.
+
+---
+
+## Accounts and modes
+
+| Who | How they sign in | What is kept |
+|---|---|---|
+| Citizen, personal phone | Automatically an **anonymous Supabase session**. "Save my passports" links an email (6-digit code) to the same user id, or Google when `GOOGLE_AUTH_ENABLED=true` | Nothing beyond the session until the citizen ticks the consent (text version + time are recorded) and links an email / Google identity or sets a Passport code + PIN |
+| Citizen without email | **Passport code + PIN** (`PSP-XXXX-XXXX` + 4 digits), on a phone or at a kiosk | The saved passport; the code can later be attached to an account |
+| Kiosk | The **operator** signs in; citizens never get an account on a kiosk | Nothing. Saving is possible only with a Passport code + PIN, shown large and read aloud. Idle sessions end on their own |
+| Operator / reviewer / admin | Supabase email + password **+ TOTP** (authenticator app, enrolled on first sign-in); role from `app_metadata.role` | — |
+
+**How it fits together**
+
+* The browser uses `@supabase/supabase-js` **for sign-in only** (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`).
+  It never queries tables or storage; every data call goes to Flask with the access token.
+* Flask verifies the token on **every request** (`backend/anvaya/auth.py`): ES256/RS256 signature against the
+  project's JWKS (`/auth/v1/.well-known/jwks.json`, cached 10 minutes, re-read at most every 30 s for an unknown key
+  id), issuer `<SUPABASE_URL>/auth/v1`, audience `authenticated`, expiry. Invalid tokens get `401`; symmetric (HS256)
+  tokens are never accepted. The auth user id maps to the app's citizen (`citizen_id = CIT_<user id>`, no lookup), and
+  a signed-in citizen's sessions answer only to that user's token.
+* `SUPABASE_SECRET_KEY` is used only server-side, for the Auth admin API (delete an account, seed staff). It is sent in
+  the `apikey` header, never logged, never returned and never in the browser bundle.
+* Row Level Security stays on with no policies for every table, including `citizens`, `passport_versions` and
+  `passport_attempts`.
+
+**Saved passports**
+
+* Every screening of a saved citizen is a **passport version**: rule ids + versions, the fact ids (and values compared),
+  document marks and outcomes. *My Passports* lists them.
+* **What changed since <date>** compares the passport as it was then with the latest one and gives, per scheme, the
+  outcome before → after and the reason: a fact the rule reads changed (e.g. age 67 → 52), the rule's version changed,
+  or a document status changed.
+* A new session of a saved citizen starts from the **saved profile**. Age and income confirmed more than 90 days ago
+  come back unconfirmed and block screening until confirmed again; eligibility and confirmation rules are unchanged.
+* **Delete my account and data** removes facts, passport versions, sessions and the Supabase Auth user (admin API,
+  done first: if it fails nothing is deleted). Only cases the citizen consented to hand to a reviewer stay. The audit
+  event records counts, never values. (Audio is never stored and citizens cannot upload files, so there are no uploads
+  to delete.)
+
+**Passport code + PIN**
+
+* Code: 8 symbols from Crockford base32 (no I/L/O/U) = 40 random bits, stored as `sha256(ANVAYA_PASSPORT_PEPPER +
+  code)`. PIN: 4 digits, argon2-hashed; repeated, sequential, paired and year-like PINs (1111, 1234, 1212, 1122,
+  1990 …) are refused.
+* At most 5 failed attempts per code and per IP address in 15 minutes; after 10 failures a code is locked for 1 hour.
+  A wrong code and a wrong PIN get the same answer (`401 PASSPORT_CODE_OR_PIN_WRONG`); limits give `429`.
+* Signed-in citizens can attach a code to their account (*My Passports → Add a Passport code*).
+
+**Kiosk temporary sessions**
+
+* The operator's sign-in is kept **in memory only** at a kiosk (supabase-js storage adapter, `frontend/src/authStorage.ts`):
+  never `localStorage` or `sessionStorage`, so a reload or a new tab finds nothing and the operator signs in again.
+  Switching a browser to kiosk mode also drops any personal sign-in stored on it.
+* Session ids are **128-bit random** (`SES_` + 32 hex). The browser never puts one in a URL: every
+  `/sessions/<id>/...` call is sent as `/sessions/current/...` with the id in the `X-Session-Id` header, and request
+  logs hold the route pattern only. The kiosk keeps the id in memory only and never shows it on screen.
+* A kiosk session is **bound to the kiosk device id** (random, `X-Kiosk-Device`) **and the operator** who started it:
+  any other device, operator or citizen token gets `403 SESSION_FORBIDDEN`.
+* After `KIOSK_IDLE_SECONDS` (default 180) without input, a 30-second **"Still there?"** warning appears (and is read
+  aloud). Without an answer the session ends exactly like *End session*: the server deletes everything not consented.
+* Absolute limit: a kiosk session ends after `KIOSK_MAX_SESSION_MINUTES` (default **30**) whatever the activity
+  (server `expires_at`; the page ends it at that moment too).
+* **Operator sign-out** (`POST /api/v1/kiosk/sign-out`) ends every citizen session still open on that device, with the
+  same deletion as *End session*. After *End session*, refreshing the browser cannot restore anything: the id is gone
+  from memory, the server answers `410` for it, and its unconsented data is already deleted.
+
+### Document uploads
+
+Citizens can upload a photo or PDF of each required document into the private Supabase Storage bucket `documents`.
+The browser never talks to Storage; everything goes through the backend (`backend/anvaya/documents.py`, `storage.py`).
+
+1. `POST /api/v1/sessions/<sid>/documents/<doc_key>/upload-url` checks session ownership and the citizen's upload
+   consent (at a kiosk also a consented hand-off case) and returns the backend's own **signed, single-use upload link,
+   valid 5 minutes**. (Supabase's own signed upload URLs live a fixed 2 hours, so they are not used.) Stored at
+   `<user id or session id>/<case id or session id>/<doc_key>/<uuid>`.
+2. `PUT /api/v1/uploads/<token>`: JPEG, PNG or PDF, at most 5 MB. The type is checked by magic bytes, not by the
+   declared type; after storing, the object is read back (size + magic bytes) and deleted if anything differs.
+3. The document state becomes **uploaded** (between the citizen's "I have it" and **verified**). Only a reviewer can
+   verify it; until then outcomes stay PROVISIONAL (`EVIDENCE_NOT_VERIFIED`). *Request re-upload* deletes the file.
+4. `GET .../documents/<doc_key>/view-url` gives a **2-minute** link to the owner, or to a reviewer when the session has a
+   case the citizen consented to share. Every view is audited (who, when, which document; never the content). View
+   responses are `no-store`; kiosks keep no copy (the file is dropped from the page after upload and not previewed).
+5. Uploads are never read for content: no OCR, no ID-number extraction, never sent to an LLM. Before uploading, the page
+   asks (en/hi/te) for a masked Aadhaar with only the last 4 digits visible.
+6. Deleted with the account, with unsaved sessions (end of session / 24 h), `REVIEWED_UPLOAD_RETENTION_DAYS` (default
+   30) after the case is reviewed, and right away on *Request re-upload* — inside the hourly retention job. If Storage
+   is unreachable, the rows stay and the next run retries; account deletion stops with nothing deleted.
+
+### Form Helper (prepared drafts)
+
+The draft page has a **Form Helper**. Anvaya never submits anything to a government portal; the status reads
+"Draft ready — submit at the office/portal" and the citizen takes the details there.
+
+* **Copy-ready view** (`GET /api/v1/drafts/<id>/helper?language=en|hi|te`): every field in the order official forms
+  usually follow, each with a copy button and a source tag (confirmed / inferred / citizen-entered / missing). Missing
+  fields are highlighted with what to bring. **Aadhaar and bank account numbers are never collected**: they are listed
+  as "provide at the office", and any run of 9+ digits typed into a draft field is masked in the view and the PDF.
+* **Steps:** the dataset's `application_process` as a numbered checklist. For hi / te the steps are VerbX machine
+  translations (cached in `translations`), labelled "machine translation"; without VerbX the English steps are shown
+  with a note. A read-aloud button uses the cached TTS. The official link comes from the dataset's source URLs
+  (http/https only) with a QR code (`GET /api/v1/schemes/<id>/portal-qr.svg`).
+* **PDF** (`GET /api/v1/drafts/<id>/pdf?language=…`): fields with source tags, the document checklist, the case code
+  (only if the citizen's browser sends it in `X-Case-Code` and it matches: codes are stored hashed), the steps, the
+  link + QR, and the watermark "Draft prepared by Anvaya AI — not submitted to any government office" on every page.
+  Noto Sans / Devanagari / Telugu (SIL OFL, `backend/anvaya/data/fonts/`) are embedded, shaped with HarfBuzz
+  (fpdf2 + uharfbuzz). Only the draft's owner (same session rules as the draft, including kiosk device + operator) or a
+  reviewer / admin once the draft has a case can read it (aal2 for staff); each download is audited without values.
+  Shaped Indic glyphs that have no Unicode value of their own are mapped to a zero-width space so the PDF's text layer
+  keeps the real letters; some viewers still show a space inside Telugu conjuncts.
+
+### Privacy and retention
+
+| Data | Deleted |
+|---|---|
+| Unsaved session data (facts, turns, screenings, drafts) | when a kiosk session ends; otherwise **24 h** after the session started |
+| Unsaved anonymous Supabase users | with their data after 24 h (admin API) |
+| Saved passports | after `PASSPORT_RETENTION_DAYS` (default **365**) without use, Auth user included |
+| Uploaded documents | with the account; with unsaved sessions; `REVIEWED_UPLOAD_RETENTION_DAYS` (default **30**) after the case is reviewed; at once on *Request re-upload* |
+| Passport code attempts (hashes only) | after 1 day |
+| Consented hand-off cases | kept for the reviewer, also after account deletion |
+
+Retention runs inside the app every `ANVAYA_RETENTION_INTERVAL_MIN` (default 60) and with `python -m anvaya.manage
+cleanup`. The policy is shown in English, Hindi and Telugu wherever something can be saved.
+
+### Supabase Auth setup
+
+1. **Authentication → Sign In / Providers:** enable *Allow anonymous sign-ins*, *Email*, and (optional) *Google*.
+   Turn on *Allow manual linking* if Google linking is used. Keep CAPTCHA in mind for anonymous sign-ins (Supabase
+   allows 30 per hour per IP by default).
+2. **JWT signing keys:** use asymmetric keys (ES256 or RS256; new projects have them). The backend refuses HS256.
+3. **Email templates:** put `{{ .Token }}` in *Magic Link* (returning sign-in) and *Change Email Address* (linking an
+   email to an anonymous user) so citizens receive a 6-digit code rather than a link.
+4. **URL configuration:** add the app's URL to the redirect allow-list (needed for Google).
+5. **MFA:** keep *TOTP (App Authenticator)* enabled (it is by default). The backend refuses staff tokens below `aal2`.
+6. **CAPTCHA:** *Authentication → Attack Protection → Enable CAPTCHA protection*, provider *Cloudflare Turnstile*, with
+   the Turnstile **secret** key; put the **site** key in `VITE_TURNSTILE_SITE_KEY`. Supabase then requires a valid token
+   on sign-in requests (anonymous, email OTP, password), which the app sends. (Enabled on the live project.)
+7. Put the keys in `.env` (names below), then create staff accounts:
+   `set -a && source .env && set +a && cd backend && python -m anvaya.manage seed-staff`.
+8. For the free tier: `.github/workflows/keepalive.yml` calls `APP_URL/api/v1/ready` daily (repository secret
+   `APP_URL`), which runs cheap database queries so the project is not paused.
+
+### Auth hardening
+
+**Staff MFA (TOTP).** Operators, reviewers and admins enrol an authenticator app at their first sign-in (QR code, or
+the setup key typed in by hand) and enter its 6-digit code on every sign-in after that. The backend enforces it, not
+only the UI: `common.current_user()` / `require_role()` refuse a staff token whose `aal` claim is not `aal2` with
+`403 MFA_REQUIRED` on **every** staff call (reviewer, admin, kiosk session creation, Passport-code resume at a kiosk,
+reviewer document views). Only `GET /auth/me` answers at `aal1`, with `mfa_required: true`, so the page can ask for
+the code. *Security → Reset* (admin) removes a staff member's factors through the Auth admin API and signs their
+sessions out; they enrol again at the next sign-in. `ANVAYA_STAFF_MFA_REQUIRED=false` exists for a local demo only.
+
+**Bot protection.** A Cloudflare Turnstile widget (`VITE_TURNSTILE_SITE_KEY`) guards anonymous sign-in, email OTP and
+staff password sign-in; its token goes to supabase-js as `captchaToken` and Supabase verifies it. Tokens are single
+use: the widget resets after every attempt. Without a site key (local dev) the widget is skipped and both the browser
+console and the backend startup report warn. Our own session-creating endpoints are rate-limited per IP
+(`POST /sessions`, `POST /passport/resume`: `ANVAYA_SESSION_CREATE_LIMIT`, default 20/min; `POST /auth/events`:
+`ANVAYA_AUTH_EVENT_LIMIT`, 30/min), on top of the Passport-code attempt limits.
+
+**Sign out of all devices.** *My Passports* (citizens) and the staff bar have *Sign out of all devices*:
+`POST /api/v1/auth/sign-out-all` calls Supabase's global sign-out (all refresh tokens revoked) **and** records the
+time in `auth_revocations`. Supabase leaves already-issued access tokens valid until they expire, so the backend also
+refuses every token whose sign-in began before that time (the earliest `amr` timestamp, which a token refresh does
+not change) with `401 SESSION_REVOKED`. A staff password change (*Change password*) and `manage seed-staff` (which
+sets the password again) force the same global sign-out.
+
+**Citizen rights (DPDP Act 2023).** *Download my data* (`GET /api/v1/account/export`, or `/sessions/current/export`
+for a Passport-code holder or an unsaved session) returns JSON with the citizen's current facts and their source,
+passport versions, consents, the document list (names and states, never the files), document marks, case statuses
+and linked identities — nothing about other people (utterances and reviewer notes are left out because they can
+describe others). The consent notice (en/hi/te, version `save-2026-10-dpdp`) states the purpose, what is stored, how
+long, and how to withdraw. *Withdraw consent* is the existing *Delete my account and data*. Both are audited without
+values.
+
+**Auth audit.** `auth_events` records sign-in success/failure, OTP requested, MFA enrolled/verified/failed/required/
+reset, role changes, password changes, global and kiosk sign-outs, data exports, deletions and DigiLocker links:
+actor id, event, time and the **IP prefix only** (/24 or /48), with enums and counts as details — never emails, phone
+numbers, codes or tokens. Sign-in itself happens between the browser and Supabase, so those events are reported by
+the browser (`POST /auth/events`; the actor is the verified token's user when there is one). *Security* (admin) shows
+the last 500.
+
+**DigiLocker / Meri Pehchaan (disabled).** `backend/anvaya/digilocker.py` is a generic OAuth 2.0 / OpenID Connect
+authorization-code flow with **PKCE (S256)**, a single-use `state` (10 minutes, bound to the signed-in user) and a
+`nonce`; the ID token's signature is checked against `DIGILOCKER_JWKS_URL` (asymmetric algorithms only), with
+audience = client id, expiry and the optional `DIGILOCKER_ISSUER`. On success the provider subject is linked to the
+citizen (peppered hash; no tokens kept — Supabase's own identity linking supports only its built-in OAuth providers)
+and name, date of birth and gender become facts with `source="digilocker"`, confirmed and verified. Scopes naming
+Aadhaar are dropped and no Aadhaar number is ever read or stored. Everything comes from the environment
+(`DIGILOCKER_ENABLED=false`, `DIGILOCKER_CLIENT_ID`, `DIGILOCKER_CLIENT_SECRET`, `DIGILOCKER_AUTH_URL`,
+`DIGILOCKER_TOKEN_URL`, `DIGILOCKER_JWKS_URL`, `DIGILOCKER_REDIRECT_URI` → the app's `/auth/digilocker/callback`,
+`DIGILOCKER_SCOPES`); no real endpoint is in the code. The button is hidden unless `DIGILOCKER_ENABLED=true` and every
+value is set. It is tested end to end against a local mock OIDC provider (`tests/test_auth_hardening.py`: code
+exchange, PKCE, invalid / replayed state, expired code, bad signature, wrong nonce). **Not enabled in this build:**
+DigiLocker / Meri Pehchaan access requires partner onboarding — a registered Indian entity, an official domain, a
+digital signature, and approval by the onboarding committee.
+
+**Phone OTP (disabled).** `PHONE_OTP_ENABLED=false`. The sign-in UI (Indian mobile numbers, `+91`) and the backend
+paths (a phone-verified Supabase user is a linked citizen like an email one) are ready for Supabase phone auth. Indian
+SMS needs **DLT registration** (TRAI: the entity, sender ID and message templates) and a paid SMS provider configured
+in Supabase, so it is off here.
+
+**Browser security.** Flask sends a strict `Content-Security-Policy`: scripts only from this origin and
+`challenges.cloudflare.com`, network calls only to this origin and `SUPABASE_URL`, frames only for Turnstile and our
+own document previews, `data:` images for the MFA QR code, no inline scripts, no `eval`, `object-src 'none'` (plus
+`nosniff` and `Referrer-Policy: no-referrer`). supabase-js uses the PKCE flow, so an OAuth redirect carries a one-time
+code in the URL, never tokens; tokens are never logged. Sign-in storage per mode: kiosk memory only, personal device
+`localStorage`. (The Vite dev server does not send the CSP; the built app served by Flask does.)
 
 ---
 
@@ -222,18 +428,114 @@ read it, and `.env` is gitignored.
 | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | unset | all three set → LLM turns traced to Langfuse (`LANGFUSE_HOST` also accepted). Any unset → SDK never imported |
 | `LANGFUSE_TIMEOUT_S`, `LANGFUSE_TRACING_ENVIRONMENT` | `2`, `default` | export HTTP timeout (export runs in the background); Langfuse environment label |
 | `LANGFUSE_TRACE_EVAL` | unset | `1`: `eval-extraction` also pushes a Langfuse dataset and one experiment per configuration |
-| `ANVAYA_ADMIN_PASSWORD`, `ANVAYA_REVIEWER_PASSWORD`, `ANVAYA_OPERATOR_PASSWORD` | demo passwords, with a warning | staff passwords, re-applied on every start |
+| `SUPABASE_URL`, `SUPABASE_SECRET_KEY` | unset | server: token verification (URL) and the Auth admin API (secret key, server only). Unset URL: no staff sign-in or accounts; Passport code + PIN still works |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` | unset | browser sign-in only (baked into the frontend build; Docker build args) |
+| `GOOGLE_AUTH_ENABLED` | `false` | show "Continue with Google" |
+| `ANVAYA_PASSPORT_PEPPER` | dev pepper, with a warning | pepper for Passport code hashes; set a long random value in production |
+| `PASSPORT_RETENTION_DAYS`, `ANVAYA_UNSAVED_RETENTION_HOURS`, `ANVAYA_RETENTION_INTERVAL_MIN` | `365`, `24`, `60` | retention of saved / unsaved data; how often retention runs in the app (0 = only `manage cleanup`) |
+| `KIOSK_IDLE_SECONDS` | `180` | kiosk idle timeout (a 30 s warning comes first) |
+| `KIOSK_MAX_SESSION_MINUTES` | `30` | absolute length of a kiosk citizen session |
+| `VITE_TURNSTILE_SITE_KEY` | unset | Cloudflare Turnstile site key (public). Unset: no CAPTCHA widget, startup warning |
+| `ANVAYA_STAFF_MFA_REQUIRED` | `true` | staff API calls need an `aal2` (TOTP) token; `false` only for a local demo |
+| `ANVAYA_SESSION_CREATE_LIMIT`, `ANVAYA_AUTH_EVENT_LIMIT` | `20`, `30` | per-IP requests per minute: session creation and Passport resume; browser auth-event reports |
+| `PHONE_OTP_ENABLED` | `false` | phone OTP sign-in (needs DLT registration and an SMS provider) |
+| `DIGILOCKER_ENABLED`, `DIGILOCKER_CLIENT_ID`, `DIGILOCKER_CLIENT_SECRET`, `DIGILOCKER_AUTH_URL`, `DIGILOCKER_TOKEN_URL`, `DIGILOCKER_JWKS_URL`, `DIGILOCKER_REDIRECT_URI`, `DIGILOCKER_SCOPES`, `DIGILOCKER_ISSUER` | `false`, unset, `openid` | DigiLocker / Meri Pehchaan OIDC adapter (see [Auth hardening](#auth-hardening)) |
+| `SUPABASE_STORAGE_BUCKET`, `REVIEWED_UPLOAD_RETENTION_DAYS` | `documents`, `30` | private bucket for uploads; days uploads are kept after the case is reviewed |
+| `SUPABASE_JWKS_CACHE_S` | `600` | how long signing keys are cached |
+| `ANVAYA_ADMIN_EMAIL` / `_PASSWORD`, `ANVAYA_REVIEWER_EMAIL` / `_PASSWORD`, `ANVAYA_OPERATOR_EMAIL` / `_PASSWORD` | unset | read only by `manage seed-staff` (Supabase staff accounts; password ≥ 8 characters) |
 | `ANVAYA_METRICS_TOKEN` | unset | when set, `/metrics` needs `Authorization: Bearer <token>` |
-| `ANVAYA_DEMO_TEST_RUNS` | `off` | `on` lets anyone run/reset TC1–TC4 (otherwise admin only) |
-| `ANVAYA_SESSION_TTL_HOURS`, `ANVAYA_CASE_CODE_TTL_HOURS`, `ANVAYA_AUTH_TOKEN_TTL_HOURS` | `12`, `72`, `8` | session, case-code and staff-token lifetimes |
+| `ANVAYA_DEMO_TEST_RUNS` | `off` | `on` lets anyone run/reset TC1–TC5 (otherwise admin only) |
+| `ANVAYA_SESSION_TTL_HOURS`, `ANVAYA_CASE_CODE_TTL_HOURS` | `12`, `72` | session and case-code lifetimes |
 | `ANVAYA_CODE_LOOKUP_LIMIT` | `10` | case-code lookups per minute |
 | `ANVAYA_RULE_BUNDLE_VERSION`, `ANVAYA_DEFAULT_FRESHNESS_DAYS` | `rules-2026.10.1`, `180` | rule bundle label; source-freshness fallback |
+| `DATABASE_URL` | unset | set → PostgreSQL (Supabase Session pooler URI); unset → SQLite. See [Database](#database) |
+| `ANVAYA_DB_POOL_MAX`, `ANVAYA_DB_CACHE_CHECK_S` | `5`, `5` | Postgres connections per process; seconds between in-memory cache version checks |
 | `ANVAYA_DB`, `ANVAYA_DATASET`, `ANVAYA_FRONTEND_DIST` | `backend/instance/anvaya.db`, the CSV in `data/raw/`, `frontend/dist` | paths |
 | `GRAFANA_ADMIN_PASSWORD` | `anvaya-grafana` | Grafana `admin` password (applied when its data volume is first created) |
 | `GRAFANA_ANONYMOUS` | `true` | read-only anonymous dashboard viewing |
 | `PORT`, `PROMETHEUS_PORT`, `GRAFANA_PORT` | `5000`, `9090`, `3000` | no-Docker scripts only |
 
 A number that cannot be parsed falls back to its default, with a startup warning.
+
+---
+
+## Database
+
+The backend picks its database from `DATABASE_URL`:
+
+| `DATABASE_URL` | Database | Used by |
+|---|---|---|
+| unset (default) | SQLite file `ANVAYA_DB` (`backend/instance/anvaya.db`) | local development, tests, CI, the offline kiosk |
+| set | PostgreSQL (psycopg 3 + a connection pool) | the hosted deployment, on Supabase |
+
+Both run the same SQL, translated per dialect in `backend/anvaya/db.py`. Timestamps stay ISO-8601 text and JSON stays
+text, so the app behaves the same on both. The full test suite runs on both: `pytest` (SQLite), and
+`TEST_DATABASE_URL=postgresql://…@localhost:5432/… pytest` (a throwaway local `postgres:16`; CI starts one as a
+service). Tests never read `DATABASE_URL` and refuse a Supabase `TEST_DATABASE_URL`.
+
+**Schema and migrations.** Numbered migrations (`backend/anvaya/migrations.py`) are applied at startup and recorded in
+`schema_migrations`. On Postgres they run under an advisory lock, so several processes can start at once. An older
+SQLite file is upgraded in place. `python -m anvaya.manage init` is idempotent: it skips the catalogue import when
+the CSV's sha256 is unchanged, upserts the curated rules (keeping who verified them against the source), and
+creates staff accounts only if they are missing.
+
+**Supabase setup**
+
+1. Dashboard → **Connect** → **Session pooler**. Copy the URI
+   (`postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`) into `.env` as
+   `DATABASE_URL`. The direct connection is IPv6-only on the free plan; the Session pooler works over IPv4.
+   Session mode (port 5432) is used rather than transaction mode.
+2. Run `python -m anvaya.manage init` once. The first import over the network takes about 30 s; later runs take a
+   few seconds.
+3. Connection settings:
+   - TLS is required (`sslmode=require` is added unless the URL sets `sslmode`).
+   - Connect timeout 10 s, statement timeout 10 s, at most `ANVAYA_DB_POOL_MAX` (5) connections per process.
+   - `prepare_threshold=None`: no server-side prepared statements, which the pooler does not support.
+   - A dropped connection is retried once, but only when nothing in the transaction was sent yet.
+   - The URL and password are never logged. `/api/v1/ready` reports only
+     `"db": {"backend": "postgres", "status": "ok"|"error", "rls": "ok"|"error"}`.
+
+**Row Level Security.** After the migrations, every table has RLS enabled with **no policies**. Supabase's public
+REST API (the `anon` / `authenticated` roles behind the publishable key) can therefore read or write nothing:
+`GET /rest/v1/schemes` returns `[]`, and an insert fails with `42501`. The backend connects as the tables' owner,
+which RLS does not restrict. `/ready` is not ready (503) on Postgres if any table lacks RLS. Do not add policies and
+do not use the publishable key for app data.
+
+**Free plan pause.** A free Supabase project pauses after 7 days without activity, and the app then reports
+`db.status: "error"` until the project is resumed in the dashboard. A keep-alive is planned as the next step.
+
+**Latency.** The hosted database is in Seoul and the app runs on Render Singapore, about 70 ms per round trip.
+Requests are written to need as few round trips as possible:
+
+- One pooled connection and at most one write transaction per request.
+- A request's INSERT/UPDATE/DELETEs are queued and sent together with the next read or with `COMMIT`, in one
+  pipeline. The same insert repeated (one per extracted fact) becomes one batched statement.
+- Independent reads go in one round trip (`query_many`). Joins and `IN (…)` replace per-row lookups.
+- Rules, catalogue facets, the graph summary and TTS cache counts stay in memory, keyed by a `data_versions` row.
+  That row is re-checked at most every `ANVAYA_DB_CACHE_CHECK_S` (5) seconds. Prerendered audio clips and
+  translations are kept in memory too. UI strings (`i18n.py`) live in code and never touched the database.
+- Every API request logs `db_queries`, `db_roundtrips` and `db_ms` (no SQL, no values). Prometheus histograms:
+  `anvaya_db_queries_per_request`, `anvaya_db_roundtrips_per_request`.
+
+Queries per request (statements, excluding BEGIN/COMMIT; a batched insert counts once). "Before" is the previous code
+traced on SQLite; on Postgres each of its statements, plus BEGIN and COMMIT, would have been a round trip:
+
+| Request | Before: queries (round trips on Postgres) | After: queries / round trips |
+|---|---|---|
+| create session | 3 (5) | 2 / 1 |
+| conversation turn (TC1 sentence, 9 facts) | 53 (55) | 6 / 2 (+1 / +1 with LLM extraction on: cache lookup) |
+| evaluate | 11 (13) | 7 / 2 (8 / 3 when the cache version check is due) |
+| create draft | 12 (16) | 10 / 4 |
+| hand-off | 13 (17) | 10 / 3 |
+
+**Concurrency.** Draft and hand-off idempotency keys, case-code issuance and offline-sync dedupe use unique
+constraints with `INSERT … ON CONFLICT DO NOTHING RETURNING`, never read-then-write:
+- The key (or sync event) is claimed in the same transaction as the work. A concurrent duplicate waits for that
+  commit, then replays the stored response.
+- Hand-off locks the draft row (`SELECT … FOR UPDATE`).
+- Case codes have a unique index.
+- `tests/test_db.py` sends 10 identical hand-offs in parallel and checks that exactly one case and one code result,
+  on both databases.
 
 ---
 
@@ -376,7 +678,7 @@ Gunicorn runs one worker with threads so the in-process counters stay complete.
 
 | Workflow | Trigger | What runs |
 |---|---|---|
-| `ci.yml` | push to `main`, pull requests | backend pytest · frontend `tsc -b`, vitest, build · `kubectl kustomize` + `kubeconform` and `docker compose config` · image build, container run with read-only rootfs, TC1–TC4 must pass, `/metrics` check |
+| `ci.yml` | push to `main`, pull requests | backend pytest · frontend `tsc -b`, vitest, build · `kubectl kustomize` + `kubeconform` and `docker compose config` · image build, container run with read-only rootfs, TC1–TC5 must pass, `/metrics` check |
 | `cd.yml` | push to `main`, tags `v*.*.*`, manual | image to `ghcr.io/<owner>/anvaya-ai`; optional Kubernetes deploy via the `production` environment |
 | `dependabot.yml` | weekly | pip, npm, GitHub Actions, Docker base images |
 
@@ -403,16 +705,25 @@ Gunicorn runs one worker with threads so the in-process counters stay complete.
 
 * **Handoff and case codes:** consent is required before handoff. Case codes are ~40-bit random, stored as SHA-256,
   expire after 72 h and are rate-limited, and a code returns status only.
-* **Access control:** reviewer, admin and test-run routes check the role on the server, and unauthenticated calls get
-  `401`.
+* **Access control:** every bearer token is verified by the backend (JWKS signature, issuer, audience, expiry, and
+  not revoked by a global sign-out). Reviewer, admin and test-run routes check the role from `app_metadata` on the
+  server and require an `aal2` (TOTP) token; unauthenticated calls get `401`. A signed-in citizen's sessions answer
+  only to that citizen's token, a kiosk session only to its device and operator. See [Auth hardening](#auth-hardening).
+* **Accounts:** nothing is kept beyond the session without recorded consent; Passport codes are 40-bit random,
+  stored as peppered SHA-256, PINs argon2-hashed, with per-code / per-IP limits and lockout (see
+  [Accounts and modes](#accounts-and-modes)).
 * **Retry safety:** idempotency keys on draft, handoff and sync; optimistic concurrency on draft edits.
-* **Kiosk exit** deletes unconsented facts, turns, evaluations and drafts.
+* **Kiosk exit** (button or idle timeout) deletes unconsented facts, turns, evaluations, drafts and passport versions.
+* **Uploads:** private bucket reached only by the backend; 5-minute single-use upload links and 2-minute view links
+  signed by the backend; type checked by magic bytes; every view audited; never OCR'd or sent to an LLM.
 * **Logs:** audit logs hold IDs, never profile values. Request logs hold method, route, status and timing only. A
-  full TC1–TC4 run leaves no utterances, names, ages or incomes in the logs.
+  full TC1–TC5 run leaves no utterances, names, ages or incomes in the logs.
 * **Errors:** responses are JSON (`code`, `message`, `request_id`) and never contain stack traces.
 * **Audio:** no recorded (STT) audio is stored. `manage cleanup` deletes cached TTS clips of personal sentences once
   they are older than the session lifetime.
-* **Secrets:** keys live only in the gitignored `.env` and are never logged.
+* **Secrets:** keys live only in the gitignored `.env` and are never logged, including `DATABASE_URL`.
+* **Hosted database:** Row Level Security is on for every table with no policies, so Supabase's public REST API
+  cannot read or write app data (see [Database](#database)).
 * **Langfuse:** receives input/output only for demo/test data, and metadata only otherwise (enforced by the SDK
   masking hook, which fails closed).
 
@@ -511,21 +822,26 @@ questions and summaries play from the cache.
 * Only the 17 curated rules work offline, and only typed input (no speech).
 
 ### Security (demo scope)
-* **Staff sign-in** is username + password with a bearer token kept in the browser's `sessionStorage`. There is no
-  login throttling or lockout, no MFA, and no SSO.
-* **Rate limits live in process memory:** the case-code limiter resets on restart and is not shared between
-  processes.
-* **Demo credentials and case codes** are not production security.
+* **Staff sign-in** is Supabase email + password + TOTP; there is no SSO and there are no recovery codes (an admin
+  resets a lost authenticator). Roles are only as good as whoever holds `SUPABASE_SECRET_KEY`.
+* **Our own rate limits** (session creation, auth-event reports) live in process memory, like the case-code limiter.
+* **Document links** (5-minute upload, 2-minute view) are short-lived signed capability URLs, the one kind of token
+  that appears in a URL path; they are single purpose and the app never logs them.
+* **Passport code attempts** are counted per IP address as the app sees it; behind a proxy that hides client
+  addresses, all citizens share one address (configure the proxy to pass the real address).
+* **Case-code rate limits live in process memory:** that limiter resets on restart and is not shared between
+  processes (Passport-code limits are in the database).
+* **Case codes** are locators, not identity.
 
 ### Data retention
-* **Clean-up is manual.** `python -m anvaya.manage cleanup` ends expired sessions and deletes live TTS clips; nothing
-  schedules it.
+* **Retention runs in the app process** (hourly by default). With the app scaled to zero, nothing is deleted until it
+  runs again; `python -m anvaya.manage cleanup` does the same on demand and also deletes live TTS clips.
 * **Some caches never expire:** prerendered audio, including clips for wording that has since changed, and validated
   LLM answers stay until deleted by hand. Both hold demo data only by default.
-* **No backups** are configured for the SQLite volume.
+* **No backups** are configured for the SQLite volume. (A hosted Supabase database gets Supabase's own daily backups on paid plans only.)
 
 ### Operations and scale
-* **Single node:** SQLite and one gunicorn worker with threads. Prometheus counters are per process, so more workers
+* **Single node:** one gunicorn worker with threads (SQLite locally, or Postgres via `DATABASE_URL`). Prometheus counters are per process, so more workers
   need `prometheus_client` multiprocess mode. The LLM circuit breaker and the TTS background queue are also per
   process.
 * **Live checks are manual:** CI runs the mocked suite only. The live VerbX, LLM and Langfuse checks

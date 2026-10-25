@@ -167,10 +167,10 @@ def test_code_lookup_rate_limited(app, client):
 def test_kiosk_requires_operator_and_exit_clears_unconsented_data(client, operator):
     assert client.post("/api/v1/sessions", json={"mode": "kiosk"}).status_code == 401
     sid = client.post("/api/v1/sessions", json={"mode": "kiosk", "language": "te"}, headers=operator).json["session_id"]
-    client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": BIHAR})
-    client.post(f"/api/v1/sessions/{sid}/end")
-    assert client.get(f"/api/v1/sessions/{sid}").json["facts"] == []
-    assert client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": "x"}).status_code == 410
+    client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": BIHAR}, headers=operator)
+    client.post(f"/api/v1/sessions/{sid}/end", headers=operator)
+    assert client.get(f"/api/v1/sessions/{sid}", headers=operator).json["facts"] == []
+    assert client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": "x"}, headers=operator).status_code == 410
 
 
 def offline_event(**over):
@@ -234,7 +234,7 @@ def test_admin_verify_rule(client, admin, reviewer):
     assert client.post("/api/v1/admin/rules/R_PMJJBY/verify", json={}, headers=admin).status_code == 422
     r = client.post("/api/v1/admin/rules/R_PMJJBY/verify",
                     json={"checked_source_url": "https://jansuraksha.gov.in/Files/PMJJBY/English/Rules.pdf"}, headers=admin)
-    assert r.json["source_verified_by"] == "admin"
+    assert r.json["source_verified_by"] == "admin@anvaya.test"
     f = client.get("/api/v1/admin/schemes/freshness", headers=admin).json
     assert next(x for x in f["rules"] if x["rule_id"] == "R_PMJJBY")["source_verified_at"]
 
@@ -355,17 +355,22 @@ def test_confusable_spoken_number_needs_confirmation(client, lang, utterance, he
 
 
 def test_schema_migration_adds_confusable_column(tmp_path):
+    """A SQLite database from before schema_migrations existed (old facts table) is brought up to date."""
     import sqlite3
 
-    from anvaya.db import init_schema
+    from anvaya.db import connect
+    from anvaya.migrations import migrate
     path = tmp_path / "old.db"
     old = sqlite3.connect(path)
     old.execute("CREATE TABLE facts (fact_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, attribute TEXT NOT NULL)")
     old.execute("INSERT INTO facts VALUES ('F-1', 'S-1', 'age')")
     old.commit()
-    init_schema(old)
-    init_schema(old)  # idempotent
-    assert old.execute("SELECT confusable FROM facts WHERE fact_id='F-1'").fetchone()[0] == 0
+    old.close()
+    db = connect(str(path))
+    assert migrate(db) == [1, 2, 3, 4, 5, 6]
+    assert migrate(db) == []  # idempotent
+    assert db.execute("SELECT confusable FROM facts WHERE fact_id='F-1'").fetchone()[0] == 0
+    db.close()
 
 
 def test_no_user_facing_string_promises_eligibility_or_approval():

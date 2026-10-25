@@ -4,14 +4,26 @@ export class ApiError extends Error {
   }
 }
 
-let staffToken: string | null = sessionStorage.getItem("anvaya.staffToken");
-export const setStaffToken = (t: string | null) => {
-  staffToken = t;
-  try { t ? sessionStorage.setItem("anvaya.staffToken", t) : sessionStorage.removeItem("anvaya.staffToken"); } catch { /* storage blocked */ }
-};
-export const getStaffToken = () => staffToken;
+// The Supabase access token (anonymous citizen, linked citizen or staff), sent on every request; the server verifies it.
+let tokenProvider: () => Promise<string | null> = async () => null;
+export const setTokenProvider = (fn: () => Promise<string | null>) => { tokenProvider = fn; };
 
 export const newKey = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+
+// The kiosk device id (sent as X-Kiosk-Device in kiosk mode; kiosk sessions are bound to it). Set by state.tsx.
+let kioskDevice: () => string | null = () => null;
+export const setKioskDeviceProvider = (fn: () => string | null) => { kioskDevice = fn; };
+// Called when the server says this sign-in was revoked (signed out of all devices): forget it locally.
+let onRevoked: () => void = () => undefined;
+export const setRevokedHandler = (fn: () => void) => { onRevoked = fn; };
+
+/** Session ids never go in a URL: /sessions/<id>/... is sent as /sessions/current/... with the id in X-Session-Id. */
+export function sessionInHeader(path: string, headers: Record<string, string>): string {
+  const m = /^\/sessions\/([^/?#]+)(.*)$/.exec(path);
+  if (!m || m[1] === "current") return path;
+  headers["X-Session-Id"] = decodeURIComponent(m[1]);
+  return `/sessions/current${m[2]}`;
+}
 
 type Opts = { method?: string; body?: any; headers?: Record<string, string>; sessionId?: string; auth?: boolean; signal?: AbortSignal };
 
@@ -21,7 +33,13 @@ export async function api<T = any>(path: string, opts: Opts = {}): Promise<T> {
   if (opts.body instanceof FormData) body = opts.body;
   else if (opts.body !== undefined) { headers["Content-Type"] = "application/json"; body = JSON.stringify(opts.body); }
   if (opts.sessionId) headers["X-Session-Id"] = opts.sessionId;
-  if (staffToken && opts.auth !== false) headers["Authorization"] = `Bearer ${staffToken}`;
+  path = sessionInHeader(path, headers);
+  const device = kioskDevice();
+  if (device) headers["X-Kiosk-Device"] = device;
+  if (opts.auth !== false) {
+    const token = await tokenProvider().catch(() => null);
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
   let res: Response;
   try {
     res = await fetch(`/api/v1${path}`, { method: opts.method || (body ? "POST" : "GET"), headers, body, signal: opts.signal });
@@ -32,10 +50,43 @@ export async function api<T = any>(path: string, opts: Opts = {}): Promise<T> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const e = data.error || {};
+    if (e.code === "SESSION_REVOKED") onRevoked();
     throw new ApiError(e.code || `HTTP_${res.status}`, e.message || res.statusText, res.status, e.details, e.request_id);
   }
   return data as T;
 }
+
+/** A binary download (the draft PDF) with the same auth and session headers as api(). */
+export async function apiBlob(path: string, opts: { sessionId?: string; headers?: Record<string, string> } = {}): Promise<Blob> {
+  const headers: Record<string, string> = { ...(opts.headers || {}) };
+  if (opts.sessionId) headers["X-Session-Id"] = opts.sessionId;
+  path = sessionInHeader(path, headers);
+  const device = kioskDevice();
+  if (device) headers["X-Kiosk-Device"] = device;
+  const token = await tokenProvider().catch(() => null);
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  let res: Response;
+  try { res = await fetch(`/api/v1${path}`, { headers }); }
+  catch { throw new ApiError("NETWORK", "Cannot reach the Anvaya server.", 0); }
+  if (!res.ok) {
+    const e = (await res.json().catch(() => ({}))).error || {};
+    throw new ApiError(e.code || `HTTP_${res.status}`, e.message || res.statusText, res.status, e.details, e.request_id);
+  }
+  return res.blob();
+}
+
+// ---- Form Helper (draft page)
+export type HelperField = { key: string; label: string; value: string | null; copy_text: string | null; tag: "confirmed" | "inferred" | "citizen_entered" | "missing"; tag_label: string; bring: string | null };
+export type HelperStep = { text: string; text_en: string; heading: boolean; machine_translated: boolean };
+export type Helper = {
+  draft_id: string; scheme_id: string; scheme_name: string; language: string; status_label: string;
+  case: { case_id: string; status: string; status_label: string; code: string | null } | null;
+  fields: HelperField[]; office_only: { key: string; label: string; hint: string }[];
+  documents: { doc_key: string; label: string; status: string; status_label: string; ready: boolean }[];
+  steps: HelperStep[]; steps_machine_translated: boolean; steps_note: string | null;
+  official_link: { label: string; url: string } | null; links: { label: string; url: string }[]; qr_url: string | null;
+  watermark: string; watermark_local: string; labels: Record<string, string>;
+};
 
 // ---- shared types (mirror backend payloads)
 export type Fact = {
@@ -45,6 +96,8 @@ export type Fact = {
   confusable?: boolean; confirm_individually?: boolean; readback?: string;
   // Deterministic and LLM extraction heard different values: the citizen picks one (plain confirm is refused).
   alternatives?: any[] | null; disputed?: boolean;
+  // Read from DigiLocker (official record), not from what was said or typed.
+  verified?: boolean;
 };
 
 export type Criterion = {

@@ -70,7 +70,7 @@ for k in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL", "LA
 import tempfile
 from anvaya import create_app
 from anvaya.llm import tracing
-app = create_app({"DB_PATH": tempfile.mkdtemp() + "/t.db", "TESTING": True})
+app = create_app({"DB_PATH": tempfile.mkdtemp() + "/t.db", "DATABASE_URL": "", "TESTING": True})
 with app.test_request_context():
     with tracing.turn("SES_x", True, "hello", "extract-v1.1") as tr:
         assert not tr and tr.llm_call({"name": "groq", "model": "m"}, 1, []).end("ok") is not None
@@ -84,7 +84,7 @@ print("langfuse" in sys.modules, "opentelemetry" in sys.modules)
 
 def test_ready_reports_langfuse_integration(app, client, exported):
     from anvaya import startup
-    rep = startup.check(app.config, [])
+    rep = startup.check(app.config)
     assert rep["integrations"]["langfuse"] == {"status": "configured", "missing": [], "effect": rep["integrations"]
                                                ["langfuse"]["effect"]}
     assert client.get("/api/v1/ready").json["integrations"]["langfuse"]["status"] == "missing"  # boot-time report

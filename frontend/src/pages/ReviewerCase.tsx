@@ -5,6 +5,41 @@ import { ErrorNote, Json, OutcomeBadge, StaffBar, StaffLogin, StatusBadge } from
 import { attrLabel, showValue } from "../i18n";
 import { useApp } from "../state";
 
+/** An uploaded document: preview through a 2-minute view link (every view is audited), then Verify or ask again. */
+function UploadReview({ caseId, sessionId, docKey, upload, closed, onChange }: {
+  caseId: string; sessionId: string; docKey: string; upload: any; closed: boolean; onChange: () => void;
+}) {
+  const [preview, setPreview] = useState<{ url: string; type: string } | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const open = async () => {
+    setErr(null);
+    try { const v = await api<any>(`/sessions/${sessionId}/documents/${docKey}/view-url`); setPreview({ url: v.view_url, type: v.content_type }); }
+    catch (e) { setErr(e); }
+  };
+  const decide = async (action: "verify" | "request_reupload") => {
+    setErr(null);
+    try { await api(`/reviewer/cases/${caseId}/documents/${docKey}`, { body: { action } }); setPreview(null); onChange(); }
+    catch (e) { setErr(e); }
+  };
+  return (
+    <div className="stack small" style={{ marginLeft: "1.6rem" }}>
+      <div className="row">
+        <span className={`chip ${upload.status === "verified" ? "on" : ""}`}>📎 {upload.status} · {upload.content_type} · {Math.round(upload.size_bytes / 1024)} KB</span>
+        <button className="btn small" onClick={open}>Preview</button>
+        {!closed && upload.status !== "verified" && <>
+          <button className="btn small primary" onClick={() => decide("verify")}>Verify</button>
+          <button className="btn small danger" onClick={() => decide("request_reupload")}>Request re-upload</button>
+        </>}
+      </div>
+      {preview && (preview.type.startsWith("image/")
+        ? <img src={preview.url} alt={`Uploaded ${docKey}`} style={{ maxWidth: "100%", maxHeight: 420, border: "1px solid var(--line)", borderRadius: 8 }} />
+        : <iframe src={preview.url} title={`Uploaded ${docKey}`} style={{ width: "100%", height: 480, border: "1px solid var(--line)", borderRadius: 8 }} />)}
+      {preview && <span className="tiny">Link valid 2 minutes; this view is recorded in the audit trail.</span>}
+      <ErrorNote error={err} />
+    </div>
+  );
+}
+
 export default function ReviewerCase() {
   const { id } = useParams();
   const { staff } = useApp();
@@ -18,7 +53,7 @@ export default function ReviewerCase() {
   const ok = staff && ["reviewer", "admin"].includes(staff.role);
   const load = () => api(`/reviewer/cases/${id}`).then(setC).catch(setErr);
   useEffect(() => { if (ok) load(); }, [id, ok]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!ok) return <StaffLogin roles={["reviewer", "admin"]} title="Reviewer sign-in" hint="" demo={["reviewer"]} />;
+  if (!ok) return <StaffLogin roles={["reviewer", "admin"]} title="Reviewer sign-in" hint="" />;
   if (!c) return <ErrorNote error={err} />;
 
   const act = async (action: string) => {
@@ -70,15 +105,19 @@ export default function ReviewerCase() {
             <div className="small"><strong>Source:</strong> <a href={ev.source.source_url} target="_blank" rel="noreferrer">{ev.source.source_url}</a></div>
           </>) : <p className="muted">No evaluation found.</p>}
           <h2>Documents</h2>
-          <p className="tiny">Citizen marks are self-declarations. Tick a document only after inspecting it.</p>
+          <p className="tiny">Citizen marks are self-declarations; an upload is not verified until you verify it. Uploads are never read by AI or OCR.</p>
           {ev?.evidence.map((e: any) => {
             const st = c.documents[e.doc_key] ?? "unknown";
             return (
-              <label key={e.doc_key} className="row small">
-                <input type="checkbox" disabled={closed || st === "verified"} checked={st === "verified" || verify.includes(e.doc_key)}
-                  onChange={(x) => setVerify(x.target.checked ? [...verify, e.doc_key] : verify.filter((d) => d !== e.doc_key))} />
-                {e.label} — citizen: <strong>{st}</strong>
-              </label>
+              <div key={e.doc_key}>
+                <label className="row small">
+                  <input type="checkbox" disabled={closed || st === "verified"} checked={st === "verified" || verify.includes(e.doc_key)}
+                    onChange={(x) => setVerify(x.target.checked ? [...verify, e.doc_key] : verify.filter((d) => d !== e.doc_key))} />
+                  {e.label} — citizen: <strong>{st}</strong>
+                </label>
+                {c.uploads?.[e.doc_key] && <UploadReview caseId={c.case_id} sessionId={c.session_id} docKey={e.doc_key}
+                  upload={c.uploads[e.doc_key]} closed={closed} onChange={load} />}
+              </div>
             );
           })}
         </section>

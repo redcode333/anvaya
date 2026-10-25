@@ -29,7 +29,7 @@ def build_bundle() -> dict:
 def _ingest_offline_draft(device_id: str, ev: dict) -> dict:
     p = ev["payload"]
     lang = p.get("language", "en")
-    sess = profile.create_session("kiosk", lang, device_id=device_id)
+    sess = profile.create_session("kiosk", lang, device_id=device_id, synced=True)
     sid = sess["session_id"]
     for attr, value in (p.get("facts") or {}).items():
         if value is None or value == "":
@@ -38,8 +38,7 @@ def _ingest_offline_draft(device_id: str, ev: dict) -> dict:
                             raw_text="entered offline on kiosk form")
     for doc, status in (p.get("documents") or {}).items():
         if status in ("available", "missing", "expired", "unknown"):
-            catalogue.set_doc_mark(sid, doc, status)
-    get_db().commit()
+            catalogue.set_doc_mark(sid, doc, status, commit=False)
     evaluation = catalogue.evaluate_session(sid, origin="offline_sync")
     server_result = next((r for r in evaluation["results"] if r["scheme_id"] == p["scheme_id"]), None)
     local_outcome = (p.get("local_result") or {}).get("outcome")
@@ -78,7 +77,20 @@ def _ingest_draft_edit(ev: dict) -> dict:
     return {"status": "accepted", "draft_id": d["draft_id"], "version": d["version"]}
 
 
+def _process(device_id: str, ev: dict) -> dict:
+    if ev.get("schema_version") != SCHEMA_VERSION:
+        return {"status": "rejected", "reason": "UNSUPPORTED_SCHEMA_VERSION"}
+    if ev.get("type") == "offline_draft":
+        return _ingest_offline_draft(device_id, ev)
+    if ev.get("type") == "draft_edit":
+        return _ingest_draft_edit(ev)
+    return {"status": "rejected", "reason": "UNKNOWN_EVENT_TYPE"}
+
+
 def ingest(device_id: str, events: list[dict]) -> dict:
+    """Apply each outbox event exactly once. The event is claimed first (INSERT ... ON CONFLICT DO NOTHING on its
+    event_id and idempotency_key) in the same transaction as its effects, so the same event sent twice at once is
+    applied once; the second sender waits for the first commit and gets "duplicate"."""
     if not device_id:
         raise ApiError("DEVICE_ID_REQUIRED", "device_id is required.", 422)
     db = get_db()
@@ -88,39 +100,34 @@ def ingest(device_id: str, events: list[dict]) -> dict:
         if not key or not ev.get("event_id"):
             results.append({"event_id": ev.get("event_id"), "status": "rejected", "reason": "MISSING_KEYS"})
             continue
-        prior = db.execute("SELECT server_result_json FROM sync_events WHERE idempotency_key=? OR event_id=?",
-                           (key, ev["event_id"])).fetchone()
-        if prior:
-            metrics.SYNC_EVENTS.labels("duplicate").inc()
-            results.append({"event_id": ev["event_id"], "status": "duplicate",
-                            "original": json.loads(prior["server_result_json"])})
-            continue
-        if ev.get("schema_version") != SCHEMA_VERSION:
-            res = {"status": "rejected", "reason": "UNSUPPORTED_SCHEMA_VERSION"}
-        elif ev.get("type") == "offline_draft":
+        with db.transaction():
+            claimed = db.execute(
+                """INSERT INTO sync_events(event_id, device_id, idempotency_key, session_id, event_type,
+                   local_created_at, bundle_version, rule_version, schema_version, payload_json, server_result_json,
+                   received_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING RETURNING event_id""",
+                (ev["event_id"], device_id, key, None, ev.get("type", "?"), ev.get("created_at"),
+                 ev.get("bundle_version"), ev.get("rule_version"), ev.get("schema_version") or 0,
+                 dumps({k: v for k, v in (ev.get("payload") or {}).items() if k != "facts"}), "{}", iso()),
+            ).fetchone()
+            if not claimed:
+                prior = db.execute("SELECT server_result_json FROM sync_events WHERE idempotency_key=? OR event_id=?",
+                                   (key, ev["event_id"])).fetchone()
+                metrics.SYNC_EVENTS.labels("duplicate").inc()
+                results.append({"event_id": ev["event_id"], "status": "duplicate",
+                                "original": json.loads(prior["server_result_json"])})
+                continue
             try:
-                res = _ingest_offline_draft(device_id, ev)
+                with db.savepoint():  # a rejected event keeps its claim and result, not its partial effects
+                    res = _process(device_id, ev)
             except ApiError as e:
-                db.rollback()
                 res = {"status": "rejected", "reason": e.code, "message": e.message}
-        elif ev.get("type") == "draft_edit":
-            res = _ingest_draft_edit(ev)
-        else:
-            res = {"status": "rejected", "reason": "UNKNOWN_EVENT_TYPE"}
-        db.execute(
-            """INSERT INTO sync_events(event_id, device_id, idempotency_key, session_id, event_type, local_created_at,
-               bundle_version, rule_version, schema_version, payload_json, server_result_json, received_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (ev["event_id"], device_id, key, res.get("session_id"), ev.get("type", "?"), ev.get("created_at"),
-             ev.get("bundle_version"), ev.get("rule_version"), ev.get("schema_version") or 0,
-             dumps({k: v for k, v in (ev.get("payload") or {}).items() if k != "facts"}), dumps(res), iso()),
-        )
-        metrics.SYNC_EVENTS.labels(res["status"]).inc()
-        if res.get("result_changed"):
-            metrics.SYNC_RESULT_CHANGED.inc()
-        audit("sync.event", case_id=res.get("case_id"), session_id=res.get("session_id"),
-              details={"event_id": ev["event_id"], "device_id": device_id, "status": res["status"]})
-        db.commit()
+            db.execute("UPDATE sync_events SET session_id=?, server_result_json=? WHERE event_id=?",
+                       (res.get("session_id"), dumps(res), ev["event_id"]))
+            metrics.SYNC_EVENTS.labels(res["status"]).inc()
+            if res.get("result_changed"):
+                metrics.SYNC_RESULT_CHANGED.inc()
+            audit("sync.event", case_id=res.get("case_id"), session_id=res.get("session_id"),
+                  details={"event_id": ev["event_id"], "device_id": device_id, "status": res["status"]})
         results.append({"event_id": ev["event_id"], **res})
     return {"device_id": device_id, "server_bundle_version": current_app.config["RULE_BUNDLE_VERSION"],
             "results": results}

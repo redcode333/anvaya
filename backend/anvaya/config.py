@@ -27,16 +27,25 @@ def _flag(name: str, default: bool, on=("1", "true", "on", "yes")) -> bool:
     return default if not raw else raw in on
 
 
-# Seeded staff accounts: username -> (password env var, role, display name, demo password used only when unset).
-STAFF_ACCOUNTS = {
-    "reviewer": ("ANVAYA_REVIEWER_PASSWORD", "reviewer", "Demo Reviewer", "reviewer123"),
-    "operator": ("ANVAYA_OPERATOR_PASSWORD", "operator", "Demo Kiosk Operator", "operator123"),
-    "admin": ("ANVAYA_ADMIN_PASSWORD", "admin", "Demo Data Steward", "admin123"),
+# Staff accounts live in Supabase Auth; `manage seed-staff` creates or updates them from these variables and stores the
+# role in app_metadata (server-side only). role -> (email variable, password variable).
+STAFF_ROLES = {
+    "admin": ("ANVAYA_ADMIN_EMAIL", "ANVAYA_ADMIN_PASSWORD"),
+    "reviewer": ("ANVAYA_REVIEWER_EMAIL", "ANVAYA_REVIEWER_PASSWORD"),
+    "operator": ("ANVAYA_OPERATOR_EMAIL", "ANVAYA_OPERATOR_PASSWORD"),
 }
 
 
 class Config:
+    # DATABASE_URL set → PostgreSQL (e.g. Supabase through its Session pooler); unset → the SQLite file DB_PATH.
+    # The URL holds a password: it is never logged or returned (/ready shows only "sqlite" / "postgres").
+    DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
     DB_PATH = os.environ.get("ANVAYA_DB", str(BACKEND_DIR / "instance" / "anvaya.db"))
+    DB_SCHEMA = ""  # Postgres schema; empty = the connection's default (public). Tests use one schema per app.
+    DB_POOL_MAX = _num("ANVAYA_DB_POOL_MAX", 5, int)
+    # In-memory copies of read-mostly data (rules, catalogue facets, TTS index) re-check their version row at most
+    # this often, so most requests read them with no database round trip.
+    DB_CACHE_CHECK_S = _num("ANVAYA_DB_CACHE_CHECK_S", 5.0)
     DATASET_CSV = os.environ.get(
         "ANVAYA_DATASET",
         str(PROJECT_DIR / "data" / "raw" / "structured_govt_schemes_converted.csv"),
@@ -54,8 +63,68 @@ class Config:
 
     SESSION_TTL_HOURS = _num("ANVAYA_SESSION_TTL_HOURS", 12, int)
     CASE_CODE_TTL_HOURS = _num("ANVAYA_CASE_CODE_TTL_HOURS", 72, int)
-    AUTH_TOKEN_TTL_HOURS = _num("ANVAYA_AUTH_TOKEN_TTL_HOURS", 8, int)
     CODE_LOOKUP_LIMIT_PER_MIN = _num("ANVAYA_CODE_LOOKUP_LIMIT", 10, int)
+
+    # Supabase Auth. The backend verifies every access token itself (signature against the project's JWKS, issuer,
+    # audience, expiry) and uses SUPABASE_SECRET_KEY only for the Auth admin API (delete an account, seed staff). The
+    # secret key is never sent to the browser and never logged; the browser gets only VITE_SUPABASE_URL and
+    # VITE_SUPABASE_PUBLISHABLE_KEY (used for sign-in only, never for tables or storage).
+    SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
+    SUPABASE_SECRET_KEY = os.environ.get("SUPABASE_SECRET_KEY", "").strip()
+    SUPABASE_JWT_AUDIENCE = "authenticated"
+    # The signing keys are re-read at most this often (Supabase's own edge caches them for 10 minutes) and at once when a
+    # token names an unknown key id (rotation), at most every 30 s.
+    SUPABASE_JWKS_CACHE_S = _num("SUPABASE_JWKS_CACHE_S", 600, int)
+    GOOGLE_AUTH_ENABLED = _flag("GOOGLE_AUTH_ENABLED", False)
+    # Staff (operator / reviewer / admin) must use an aal2 access token (TOTP verified) on every staff API call.
+    # Off only for a local demo without Supabase MFA; never in production.
+    STAFF_MFA_REQUIRED = _flag("ANVAYA_STAFF_MFA_REQUIRED", True)
+    # Cloudflare Turnstile site key of the browser build (public). Supabase verifies the token server-side once CAPTCHA
+    # protection is enabled in the project's Auth settings; unset = the widget is skipped (local dev) with a warning.
+    TURNSTILE_SITE_KEY = os.environ.get("VITE_TURNSTILE_SITE_KEY", "").strip()
+    # Per-IP limits (requests per minute) on our endpoints that create sessions or report sign-in events.
+    SESSION_CREATE_LIMIT_PER_MIN = _num("ANVAYA_SESSION_CREATE_LIMIT", 20, int)
+    AUTH_EVENT_LIMIT_PER_MIN = _num("ANVAYA_AUTH_EVENT_LIMIT", 30, int)
+    # Phone OTP through Supabase phone auth: off (Indian SMS needs DLT registration and a paid SMS provider).
+    PHONE_OTP_ENABLED = _flag("PHONE_OTP_ENABLED", False)
+
+    # DigiLocker / Meri Pehchaan (OAuth 2.0 / OpenID Connect, authorization code + PKCE). Off unless
+    # DIGILOCKER_ENABLED=true and every endpoint below is configured; nothing is hardcoded (partner onboarding gives
+    # the real values). The Aadhaar number is never requested or stored.
+    DIGILOCKER_ENABLED = _flag("DIGILOCKER_ENABLED", False)
+    DIGILOCKER_CLIENT_ID = os.environ.get("DIGILOCKER_CLIENT_ID", "").strip()
+    DIGILOCKER_CLIENT_SECRET = os.environ.get("DIGILOCKER_CLIENT_SECRET", "").strip()
+    DIGILOCKER_AUTH_URL = os.environ.get("DIGILOCKER_AUTH_URL", "").strip()
+    DIGILOCKER_TOKEN_URL = os.environ.get("DIGILOCKER_TOKEN_URL", "").strip()
+    DIGILOCKER_JWKS_URL = os.environ.get("DIGILOCKER_JWKS_URL", "").strip()
+    DIGILOCKER_REDIRECT_URI = os.environ.get("DIGILOCKER_REDIRECT_URI", "").strip()
+    DIGILOCKER_SCOPES = os.environ.get("DIGILOCKER_SCOPES", "openid").strip()
+    DIGILOCKER_ISSUER = os.environ.get("DIGILOCKER_ISSUER", "").strip()  # optional: checked against the ID token's iss
+    DIGILOCKER_STATE_TTL_S = 600
+
+    # Kiosk temporary sessions end after this many minutes whatever the activity (the idle limit is separate).
+    KIOSK_MAX_SESSION_MINUTES = _num("KIOSK_MAX_SESSION_MINUTES", 30, int)
+
+    # Saved passports. Consent text version the citizen must accept before anything is kept beyond the session.
+    # Bumped when the notice text changes (save-2026-10-dpdp: itemised DPDP Act 2023 notice).
+    CONSENT_VERSION = "save-2026-10-dpdp"
+    PASSPORT_RETENTION_DAYS = _num("PASSPORT_RETENTION_DAYS", 365, int)   # saved passports, after inactivity
+    UNSAVED_RETENTION_HOURS = _num("ANVAYA_UNSAVED_RETENTION_HOURS", 24, int)  # unsaved anonymous data
+    STALE_FACT_DAYS = 90  # saved age / income older than this must be confirmed again
+    # Pepper for the sha256 of Passport codes (PSP-XXXX-XXXX). Unset = a public development pepper plus a warning.
+    PASSPORT_PEPPER = os.environ.get("ANVAYA_PASSPORT_PEPPER", "")
+    KIOSK_IDLE_SECONDS = _num("KIOSK_IDLE_SECONDS", 180, int)
+
+    # Document uploads (documents.py): private Supabase Storage bucket, reached only by this backend.
+    STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "documents")
+    MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+    UPLOAD_URL_TTL_S = 300  # capped at 5 minutes
+    VIEW_URL_TTL_S = 120    # capped at 2 minutes
+    UPLOAD_CONSENT_VERSION = "upload-2026-10"
+    REVIEWED_UPLOAD_RETENTION_DAYS = _num("REVIEWED_UPLOAD_RETENTION_DAYS", 30, int)
+    # Retention runs inside the app this often (minutes; 0 = only via `manage cleanup`), so the policy holds without
+    # an external scheduler. Concurrent runs from several processes are harmless (plain deletes).
+    RETENTION_INTERVAL_MIN = _num("ANVAYA_RETENTION_INTERVAL_MIN", 60, int)
 
     # Running or resetting the official scenarios (POST /test-runs/*) needs an admin token unless demo mode is on.
     DEMO_TEST_RUNS = os.environ.get("ANVAYA_DEMO_TEST_RUNS", "off").lower() == "on"

@@ -22,6 +22,19 @@ jobs:
     name: Backend tests (pytest)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      # A throwaway Postgres for the second test run (never the hosted Supabase database).
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: anvaya
+          POSTGRES_PASSWORD: anvaya
+          POSTGRES_DB: anvaya_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U anvaya -d anvaya_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/dataset
@@ -33,8 +46,13 @@ jobs:
       - name: Install dependencies
         working-directory: backend
         run: pip install -r requirements.txt
-      - name: Run tests (rules engine, extraction, API contracts, TC1–TC4)
+      - name: Run tests on SQLite (rules engine, extraction, API contracts, accounts, TC1–TC5)
         working-directory: backend
+        run: python -m pytest -q
+      - name: Run tests on PostgreSQL 16
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgresql://anvaya:anvaya@localhost:5432/anvaya_test?sslmode=disable
         run: python -m pytest -q
 
   frontend:
@@ -81,7 +99,7 @@ jobs:
         run: docker compose config -q
 
   docker:
-    name: Docker image smoke test (TC1–TC4)
+    name: Docker image smoke test (TC1–TC5)
     needs: [backend, frontend]
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -107,15 +125,17 @@ jobs:
             sleep 2
           done
           echo "::error::Service never became ready"; docker logs anvaya; exit 1
-      - name: Official scenarios TC1–TC4
+      - name: Official scenarios TC1–TC5
         run: |
           fail=0
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:5000/api/v1/test-runs/TC1)
           [ "$code" = "401" ] || { echo "::error::test runs must need an admin token (got $code)"; fail=1; }
-          token=$(curl -sf http://localhost:5000/api/v1/auth/login -H 'Content-Type: application/json' \
-            -d '{"username":"admin","password":"admin123"}' | jq -r '.token')
-          for tc in TC1 TC2 TC3 TC4; do
-            out=$(curl -sf -X POST -H "Authorization: Bearer $token" "http://localhost:5000/api/v1/test-runs/$tc") || { echo "::error::$tc request failed"; fail=1; continue; }
+          # Staff sign in through Supabase Auth, which CI does not have: restart the same image in demo-test-run mode.
+          docker rm -f anvaya >/dev/null
+          docker run -d --name anvaya --read-only --tmpfs /tmp -v anvaya-ci:/app/var -p 5000:5000             -e ANVAYA_DEMO_TEST_RUNS=on anvaya-ai:ci
+          for _ in $(seq 1 60); do curl -sf -o /dev/null http://localhost:5000/api/v1/ready && break; sleep 2; done
+          for tc in TC1 TC2 TC3 TC4 TC5; do
+            out=$(curl -sf -X POST "http://localhost:5000/api/v1/test-runs/$tc") || { echo "::error::$tc request failed"; fail=1; continue; }
             passed=$(echo "$out" | jq -r '.passed')
             echo "$tc passed=$passed"
             if [ "$passed" != "true" ]; then

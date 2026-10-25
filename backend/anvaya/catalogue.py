@@ -6,7 +6,7 @@ from flask import current_app
 
 from . import i18n, metrics, profile, rules_engine
 from .common import ApiError, audit
-from .db import dumps, get_db, iso, new_id, row_to_dict
+from .db import cached, dumps, get_db, iso, new_id, row_to_dict
 
 
 # ---------------------------------------------------------------- catalogue
@@ -45,14 +45,18 @@ def scheme_card(row, lang: str = "en", full: bool = False) -> dict:
 
 
 def get_scheme(scheme_id: str) -> dict:
-    row = get_db().execute("SELECT * FROM schemes WHERE scheme_id=?", (scheme_id,)).fetchone()
+    row, rule, *graph = get_db().query_many([
+        ("SELECT * FROM schemes WHERE scheme_id=?", (scheme_id,)),
+        ("SELECT rule_id, version, review_status, source_verified_at FROM rules WHERE scheme_id=? AND active=1",
+         (scheme_id,)),
+        *_related_queries(scheme_id),
+    ])
+    row = row.fetchone()
     if not row:
         raise ApiError("SCHEME_NOT_FOUND", "Scheme not found.", 404)
     card = scheme_card(row, full=True)
-    rule = get_db().execute("SELECT rule_id, version, review_status, source_verified_at FROM rules WHERE scheme_id=? AND active=1",
-                            (scheme_id,)).fetchone()
-    card["rule"] = row_to_dict(rule)
-    card["graph"] = related(scheme_id)
+    card["rule"] = row_to_dict(rule.fetchone())
+    card["graph"] = _related(*graph)
     return card
 
 
@@ -83,11 +87,12 @@ def search(q: str = "", state: str | None = None, level: str | None = None, cate
     sql_where = ("WHERE " + " AND ".join(where)) if where else ""
     db = get_db()
     base = f"FROM schemes s LEFT JOIN rules r ON r.scheme_id = s.scheme_id AND r.active = 1 {sql_where}"
-    total = db.execute(f"SELECT COUNT(*) {base}", args).fetchone()[0]
-    rows = db.execute(
-        f"SELECT s.*, r.rule_id AS rule_id {base} ORDER BY (r.rule_id IS NULL), s.level DESC, s.name LIMIT ? OFFSET ?",
-        args + [limit, offset],
-    ).fetchall()
+    total, rows = db.query_many([
+        (f"SELECT COUNT(*) {base}", args),
+        (f"SELECT s.*, r.rule_id AS rule_id {base} ORDER BY (r.rule_id IS NULL), s.level DESC, s.name, s.scheme_id"
+         " LIMIT ? OFFSET ?", args + [limit, offset]),
+    ])
+    total, rows = total.fetchone()[0], rows.fetchall()
     items = []
     for r in rows:
         c = scheme_card(r)
@@ -98,55 +103,68 @@ def search(q: str = "", state: str | None = None, level: str | None = None, cate
 
 
 def facets() -> dict:
-    db = get_db()
-    states = [r[0] for r in db.execute("SELECT DISTINCT state FROM schemes WHERE state IS NOT NULL ORDER BY state")]
-    cats = {}
-    for (c,) in db.execute("SELECT categories FROM schemes"):
-        for part in (c or "").split(","):
-            p = part.strip()
-            if p:
-                cats[p] = cats.get(p, 0) + 1
-    return {"states": states, "categories": sorted(cats, key=lambda k: -cats[k])[:25]}
+    """States and the 25 most common categories; kept in memory until the catalogue changes."""
+    def load():
+        states, cats_rows = get_db().query_many([
+            ("SELECT DISTINCT state FROM schemes WHERE state IS NOT NULL ORDER BY state", ()),
+            ("SELECT categories FROM schemes", ()),
+        ])
+        cats = {}
+        for (c,) in cats_rows:
+            for part in (c or "").split(","):
+                p = part.strip()
+                if p:
+                    cats[p] = cats.get(p, 0) + 1
+        return {"states": [r[0] for r in states], "categories": sorted(cats, key=lambda k: -cats[k])[:25]}
+    return cached(get_db(), "catalogue", "facets", load)
 
 
-def related(scheme_id: str) -> dict:
-    """Graph traversal over the relational knowledge graph (kg_nodes / kg_edges)."""
-    db = get_db()
+def _related_queries(scheme_id: str) -> list[tuple]:
     node = f"scheme:{scheme_id}"
-    edges = db.execute(
-        "SELECT e.rel, e.dst, n.node_type, n.label FROM kg_edges e JOIN kg_nodes n ON n.node_id = e.dst WHERE e.src=?",
-        (node,),
-    ).fetchall()
+    return [
+        ("SELECT e.rel, e.dst, n.node_type, n.label FROM kg_edges e JOIN kg_nodes n ON n.node_id = e.dst WHERE e.src=?",
+         (node,)),
+        # Two-hop: other schemes in the same department and state (shows multi-hop relationships).
+        ("""SELECT DISTINCT s2.scheme_id, s2.name FROM kg_edges d1
+            JOIN kg_edges d2 ON d2.dst = d1.dst AND d2.rel = 'ADMINISTERED_BY' AND d2.src != d1.src
+            JOIN kg_edges st1 ON st1.src = d1.src AND st1.rel = 'APPLIES_IN'
+            JOIN kg_edges st2 ON st2.src = d2.src AND st2.rel = 'APPLIES_IN' AND st2.dst = st1.dst
+            JOIN schemes s2 ON 'scheme:' || s2.scheme_id = d2.src
+            WHERE d1.src = ? AND d1.rel = 'ADMINISTERED_BY' ORDER BY s2.scheme_id LIMIT 8""", (node,)),
+    ]
+
+
+def _related(edges, siblings) -> dict:
     out: dict[str, list] = {}
     for e in edges:
         out.setdefault(e["rel"], []).append({"node_id": e["dst"], "type": e["node_type"], "label": e["label"]})
-    # Two-hop: other schemes in the same department and state (shows multi-hop relationships).
-    siblings = db.execute(
-        """SELECT DISTINCT s2.scheme_id, s2.name FROM kg_edges d1
-           JOIN kg_edges d2 ON d2.dst = d1.dst AND d2.rel = 'ADMINISTERED_BY' AND d2.src != d1.src
-           JOIN kg_edges st1 ON st1.src = d1.src AND st1.rel = 'APPLIES_IN'
-           JOIN kg_edges st2 ON st2.src = d2.src AND st2.rel = 'APPLIES_IN' AND st2.dst = st1.dst
-           JOIN schemes s2 ON 'scheme:' || s2.scheme_id = d2.src
-           WHERE d1.src = ? AND d1.rel = 'ADMINISTERED_BY' LIMIT 8""",
-        (node,),
-    ).fetchall()
     out["SAME_DEPARTMENT_AND_STATE"] = [{"scheme_id": r["scheme_id"], "name": r["name"]} for r in siblings]
     return out
 
 
+def related(scheme_id: str) -> dict:
+    """Graph traversal over the relational knowledge graph (kg_nodes / kg_edges)."""
+    return _related(*get_db().query_many(_related_queries(scheme_id)))
+
+
 def graph_summary() -> dict:
-    db = get_db()
-    return {
-        "nodes": {r[0]: r[1] for r in db.execute("SELECT node_type, COUNT(*) FROM kg_nodes GROUP BY node_type")},
-        "edges": {r[0]: r[1] for r in db.execute("SELECT rel, COUNT(*) FROM kg_edges GROUP BY rel")},
-    }
+    def load():
+        nodes, edges = get_db().query_many([("SELECT node_type, COUNT(*) FROM kg_nodes GROUP BY node_type", ()),
+                                            ("SELECT rel, COUNT(*) FROM kg_edges GROUP BY rel", ())])
+        return {"nodes": {r[0]: r[1] for r in nodes}, "edges": {r[0]: r[1] for r in edges}}
+    return cached(get_db(), "catalogue", "graph_summary", load)
 
 
 # ---------------------------------------------------------------- rules
 
 def active_rules() -> list[dict]:
-    db = get_db()
-    rows = db.execute(
+    """Curated rules with their scheme metadata; kept in memory until rules or the catalogue change. Callers get
+    their own copies, so they may modify them."""
+    return json.loads(cached(get_db(), "catalogue", "active_rules", _load_active_rules))
+
+
+def _load_active_rules() -> str:
+    rows = get_db().execute(
         """SELECT r.*, s.name AS scheme_name, s.source_url, s.imported_at, s.state AS scheme_state, s.level AS scheme_level
            FROM rules r JOIN schemes s ON s.scheme_id = r.scheme_id WHERE r.active = 1 ORDER BY r.rule_id"""
     ).fetchall()
@@ -160,7 +178,7 @@ def active_rules() -> list[dict]:
             "scheme_name": r["scheme_name"], "scheme_state": r["scheme_state"], "scheme_level": r["scheme_level"],
         }
         out.append({"rule": rule, "meta": meta})
-    return out
+    return json.dumps(out)
 
 
 def candidate_rules(state: str | None) -> list[dict]:
@@ -173,14 +191,17 @@ def candidate_rules(state: str | None) -> list[dict]:
     return out
 
 
-def engine_facts(session_id: str) -> dict:
-    return {a: {"fact_id": f["fact_id"], "value": f["value"], "confirmed": f["confirmed"]}
-            for a, f in profile.current_facts(session_id).items()}
+def engine_facts(session_id: str, current: dict | None = None) -> dict:
+    current = profile.current_facts(session_id) if current is None else current
+    return {a: {"fact_id": f["fact_id"], "value": f["value"], "confirmed": f["confirmed"]} for a, f in current.items()}
+
+
+DOC_MARKS_SQL = "SELECT doc_key, status FROM doc_marks WHERE session_id=?"
+LATEST_EVAL_SQL = "SELECT * FROM evaluations WHERE session_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1"
 
 
 def doc_marks(session_id: str) -> dict:
-    return {r["doc_key"]: r["status"] for r in get_db().execute(
-        "SELECT doc_key, status FROM doc_marks WHERE session_id=?", (session_id,))}
+    return {r["doc_key"]: r["status"] for r in get_db().execute(DOC_MARKS_SQL, (session_id,))}
 
 
 def localize_result(res: dict, lang: str) -> dict:
@@ -195,17 +216,22 @@ def localize_result(res: dict, lang: str) -> dict:
     return res
 
 
-def evaluate_session(session_id: str, *, require_confirmed=True, origin="online") -> dict:
-    session = profile.get_session(session_id)
+def evaluate_session(session_id: str, *, require_confirmed=True, origin="online", loaded: dict | None = None) -> dict:
+    """Screen the session's facts against the candidate rules. Reads the session, facts, document marks and previous
+    evaluation in one round trip and writes in one more. `loaded` (if given) receives the session and marks."""
+    session, fact_set, (marks_rows, prev_rows) = profile.load(
+        session_id, extra=[(DOC_MARKS_SQL, (session_id,)), (LATEST_EVAL_SQL, (session_id,))])
     lang = session["language"]
-    pending = profile.unconfirmed_critical(session_id)
+    pending = fact_set.unconfirmed_critical()
     if require_confirmed and pending:
         metrics.CONFIRMATION_BLOCKS.inc()
         raise ApiError("PROFILE_NEEDS_CONFIRMATION",
                        "Confirm or correct the highlighted details before checking schemes.", 409,
                        {"facts": [{"fact_id": f["fact_id"], "attribute": f["attribute"], "value": f["value"]} for f in pending]})
-    facts = engine_facts(session_id)
-    marks = doc_marks(session_id)
+    facts = engine_facts(session_id, fact_set.current())
+    marks = {r["doc_key"]: r["status"] for r in marks_rows}
+    if loaded is not None:
+        loaded.update(session=session, marks=marks)
     state = facts.get("state", {}).get("value") if facts.get("state", {}).get("confirmed") else None
     candidates = candidate_rules(state)
     t0 = time.perf_counter()
@@ -218,8 +244,7 @@ def evaluate_session(session_id: str, *, require_confirmed=True, origin="online"
     bundle_version = current_app.config["RULE_BUNDLE_VERSION"]
 
     db = get_db()
-    prev = db.execute("SELECT results_json FROM evaluations WHERE session_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1",
-                      (session_id,)).fetchone()
+    prev = prev_rows.fetchone()
     changes = []
     if prev:
         old = {r["scheme_id"]: r for r in json.loads(prev["results_json"])}
@@ -236,6 +261,9 @@ def evaluate_session(session_id: str, *, require_confirmed=True, origin="online"
         "INSERT INTO evaluations(eval_id, session_id, bundle_version, created_at, fact_ids_json, results_json, origin) VALUES (?,?,?,?,?,?,?)",
         (eval_id, session_id, bundle_version, iso(), dumps(fact_ids), dumps(results), origin),
     )
+    if session.get("citizen_id"):
+        from .accounts import record_version
+        record_version(session, eval_id, bundle_version, facts, marks, results)
     profile.set_workflow_state(session_id, "MATCH_RESULTS_READY")
     audit("eligibility.evaluate", session_id=session_id,
           details={"eval_id": eval_id, "bundle_version": bundle_version, "input_fact_ids": fact_ids,
@@ -253,17 +281,20 @@ def evaluate_session(session_id: str, *, require_confirmed=True, origin="online"
     }
 
 
-def latest_evaluation(session_id: str) -> dict | None:
-    row = get_db().execute("SELECT * FROM evaluations WHERE session_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1",
-                           (session_id,)).fetchone()
+def latest_evaluation(session_id: str, row=False) -> dict | None:
+    """The latest evaluation; pass `row` (an already-read evaluations row, or None) to skip reading it."""
+    if row is False:
+        row = get_db().execute(LATEST_EVAL_SQL, (session_id,)).fetchone()
     if not row:
         return None
     return {"eval_id": row["eval_id"], "bundle_version": row["bundle_version"], "created_at": row["created_at"],
             "results": json.loads(row["results_json"]), "fact_ids": json.loads(row["fact_ids_json"])}
 
 
-def set_doc_mark(session_id: str, doc_key: str, status: str, by: str = "citizen") -> dict:
-    allowed = {"available", "missing", "expired", "unknown"} | ({"verified"} if by == "reviewer" else set())
+def set_doc_mark(session_id: str, doc_key: str, status: str, by: str = "citizen", commit: bool = True) -> dict | None:
+    """Upsert one document mark. With commit=False the write joins the caller's transaction and nothing is returned."""
+    allowed = {"available", "missing", "expired", "unknown"} | (
+        {"verified", "reupload_requested"} if by == "reviewer" else {"uploaded"} if by == "upload" else set())
     if status not in allowed:
         raise ApiError("INVALID_DOC_STATUS", "Citizens can mark available, missing, expired or unknown; only a reviewer can verify.", 422)
     if doc_key not in i18n.DOCUMENTS:
@@ -274,17 +305,26 @@ def set_doc_mark(session_id: str, doc_key: str, status: str, by: str = "citizen"
         "ON CONFLICT(session_id, doc_key) DO UPDATE SET status=excluded.status, marked_by=excluded.marked_by, updated_at=excluded.updated_at",
         (session_id, doc_key, status, by, iso()),
     )
+    if status == "verified":  # a reviewer verifying a document also verifies its uploaded file
+        db.execute("UPDATE document_uploads SET status='verified', reviewed_at=? WHERE session_id=? AND doc_key=?"
+                   " AND status='uploaded'", (iso(), session_id, doc_key))
     audit("documents.mark", session_id=session_id, details={"doc_key": doc_key, "status": status, "by": by})
+    if not commit:
+        return None
     db.commit()
     return doc_marks(session_id)
 
 
 def document_guide(session_id: str) -> dict:
     """Union of evidence requirements across the latest non-mismatch results."""
-    session = profile.get_session(session_id)
+    from . import documents
+    session, ev_row, marks_rows, case_rows, upload_rows = get_db().query_many([
+        (profile.SESSION_SQL, (session_id,)), (LATEST_EVAL_SQL, (session_id,)), (DOC_MARKS_SQL, (session_id,)),
+        (documents.CASES_SQL, (session_id,)), (documents.SESSION_UPLOADS_SQL, (session_id,))])
+    session = profile._checked_session(session.fetchone(), allow_ended=False)
     lang = session["language"]
-    ev = latest_evaluation(session_id)
-    marks = doc_marks(session_id)
+    ev = latest_evaluation(session_id, ev_row.fetchone())
+    marks = {r["doc_key"]: r["status"] for r in marks_rows}
     docs: dict[str, dict] = {}
     for r in (ev["results"] if ev else []):
         if r["outcome"] == rules_engine.MISMATCH:
@@ -292,11 +332,14 @@ def document_guide(session_id: str) -> dict:
         for e in r["evidence"]:
             d = docs.setdefault(e["doc_key"], {"doc_key": e["doc_key"], "needed_for": []})
             d["needed_for"].append({"scheme_id": r["scheme_id"], "scheme_name": r["scheme_name"]})
+    uploads = {r["doc_key"]: {k: r[k] for k in ("upload_id", "status", "content_type", "size_bytes", "uploaded_at")}
+               for r in upload_rows}
     items = []
     for k, d in docs.items():
         label, purpose = i18n.doc_label(k, lang)
         status = marks.get(k, "unknown")
         items.append({**d, "label": label, "purpose": purpose, "status": status,
-                      "status_label": i18n.t(i18n.DOC_STATUS, status, lang)})
+                      "status_label": i18n.t(i18n.DOC_STATUS, status, lang), "upload": uploads.get(k)})
     items.sort(key=lambda x: (-len(x["needed_for"]), x["label"]))
-    return {"documents": items, "note": "Marking a document as available is your own declaration; it is not official verification."}
+    return {"documents": items, "upload": documents.policy_public(session, case_rows.fetchall()),
+            "note": "Marking a document as available is your own declaration; it is not official verification."}

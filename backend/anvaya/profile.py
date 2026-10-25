@@ -1,7 +1,9 @@
 """Sessions, profile facts (stable IDs + provenance + confirmation) and conversation turns."""
 import json
+import secrets
+from datetime import timedelta
 
-from flask import current_app
+from flask import current_app, g, request
 
 from . import extraction, i18n, llm, metrics
 from .llm import merge as llm_merge
@@ -24,6 +26,7 @@ ATTR_SCHEMA = {
     "has_bank_account": ("bool", None),
     "owns_pucca_house": ("bool", None),
     "applicant_name": ("str", 80),
+    "date_of_birth": ("date", None),  # only from an official source (DigiLocker), YYYY-MM-DD
 }
 
 # Order in which missing attributes are asked about (FR-03).
@@ -54,6 +57,15 @@ def validate_value(attr: str, value):
         if str(value).lower() in ("false", "no", "0"):
             return False
         raise ApiError("INVALID_VALUE", f"{attr} must be yes or no.", 422)
+    if kind == "date":
+        from datetime import date
+        try:
+            d = date.fromisoformat(str(value).strip()[:10])
+        except ValueError:
+            raise ApiError("INVALID_VALUE", f"{attr} must be a date (YYYY-MM-DD).", 422)
+        if not date(1900, 1, 1) <= d <= date.today():
+            raise ApiError("INVALID_VALUE", f"{attr} is out of range.", 422)
+        return d.isoformat()
     if kind == "enum":
         match = next((s for s in spec if s.lower() == str(value).strip().lower()), None)
         if match is None:
@@ -67,60 +79,159 @@ def validate_value(attr: str, value):
 
 # ---------------------------------------------------------------- sessions
 
-def create_session(mode: str, language: str, device_id=None, operator_id=None, is_test=False, is_demo=False) -> dict:
+DEVICE_ID_CHARS = set("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_")
+
+
+def new_session_id() -> str:
+    """128 random bits: a session id is never guessable. It travels only in the X-Session-Id header and the request
+    body, never in a URL or a log line."""
+    return f"SES_{secrets.token_hex(16)}"
+
+
+def valid_device_id(device_id) -> bool:
+    return isinstance(device_id, str) and 8 <= len(device_id) <= 64 and set(device_id) <= DEVICE_ID_CHARS
+
+
+def kiosk_device() -> str | None:
+    """The kiosk device id this request comes from (header set by the kiosk browser)."""
+    return request.headers.get("X-Kiosk-Device") or None
+
+
+def create_session(mode: str, language: str, device_id=None, operator_id=None, is_test=False, is_demo=False,
+                   claims: dict | None = None, citizen_id: str | None = None, commit: bool = True,
+                   synced: bool = False) -> dict:
+    """A new session. `claims` = a signed-in citizen (Supabase user): the session is tied to that user and, if they saved
+    their passports, starts from the saved profile. `citizen_id` = a Passport code holder resuming."""
     if mode not in SESSION_MODES:
         raise ApiError("INVALID_MODE", "mode must be personal or kiosk.", 422)
     if language not in i18n.SUPPORTED_LANGUAGES:
         raise ApiError("UNSUPPORTED_LANGUAGE", "Supported languages: en, hi, te.", 422)
-    sid = new_id("SES")
     db = get_db()
-    db.execute(
-        """INSERT INTO sessions(session_id, mode, language, workflow_state, device_id, operator_id, is_test,
-           is_demo, created_at, expires_at) VALUES (?,?,?,?,?,?,?,?,?,?)""",
-        (sid, mode, language, "SESSION_ACTIVE", device_id, operator_id, int(is_test), int(is_demo), iso(),
-         iso_in(current_app.config["SESSION_TTL_HOURS"])),
-    )
-    audit("session.start", session_id=sid, details={"mode": mode, "language": language, "demo": bool(is_demo)})
-    db.commit()
-    return get_session(sid)
+    auth_user_id = None
+    if claims and mode == "personal":
+        from .accounts import queue_citizen
+        citizen_id, auth_user_id = queue_citizen(claims), claims["sub"]
+    if mode == "kiosk":
+        # A kiosk session belongs to one device and one operator, and ends after KIOSK_MAX_SESSION_MINUTES at most.
+        # (synced=True: rebuilt from a kiosk's offline outbox, which has no live operator session to bind to)
+        if not synced and (not operator_id or not valid_device_id(device_id)):
+            raise ApiError("KIOSK_DEVICE_REQUIRED", "A kiosk session needs the operator and the kiosk device id.", 422)
+        expires = iso(now() + timedelta(minutes=current_app.config["KIOSK_MAX_SESSION_MINUTES"]))
+    else:
+        expires = iso_in(current_app.config["SESSION_TTL_HOURS"])
+    s = {"session_id": new_session_id(), "mode": mode, "language": language, "workflow_state": "SESSION_ACTIVE",
+         "device_id": device_id, "operator_id": operator_id, "is_test": int(is_test), "is_demo": int(is_demo),
+         "created_at": iso(), "expires_at": expires, "ended_at": None,
+         "citizen_id": citizen_id, "auth_user_id": auth_user_id}
+    cols = ("session_id", "mode", "language", "workflow_state", "device_id", "operator_id", "is_test", "is_demo",
+            "created_at", "expires_at", "citizen_id", "auth_user_id")
+    db.execute(f"INSERT INTO sessions({', '.join(cols)}) VALUES ({','.join('?' * len(cols))})", tuple(s[k] for k in cols))
+    audit("session.start", session_id=s["session_id"], details={"mode": mode, "language": language, "demo": bool(is_demo),
+                                                                "account": bool(citizen_id)})
+    if auth_user_id:
+        from .accounts import apply_saved_profile
+        s["account"] = apply_saved_profile(s, citizen_id)
+    if commit:
+        db.commit()
+    return s
 
 
-def get_session(session_id: str, allow_ended=False) -> dict:
-    row = get_db().execute("SELECT * FROM sessions WHERE session_id=?", (session_id,)).fetchone()
+SESSION_SQL = "SELECT * FROM sessions WHERE session_id=?"
+FACTS_SQL = "SELECT * FROM facts WHERE session_id=? ORDER BY captured_at, rowid"
+
+
+def check_owner(s: dict) -> None:
+    """A signed-in citizen's session is reachable only with that citizen's verified token (same user id after an
+    anonymous account is linked to an email); a kiosk session only from its kiosk device (X-Kiosk-Device) with the
+    token of the operator who started it."""
+    if s.get("auth_user_id"):
+        claims = g.get("auth")
+        if not claims or claims.get("sub") != s["auth_user_id"]:
+            raise ApiError("SESSION_FORBIDDEN", "This session belongs to another account.", 403)
+    if s.get("mode") == "kiosk" and s.get("operator_id"):
+        from .common import current_user
+        user = current_user()
+        if not user or user["user_id"] != s["operator_id"] or kiosk_device() != s.get("device_id"):
+            raise ApiError("SESSION_FORBIDDEN", "This kiosk session belongs to another kiosk or operator.", 403)
+        g.user = user
+
+
+def _checked_session(row, allow_ended: bool, owner: bool = True) -> dict:
     if not row:
         raise ApiError("SESSION_NOT_FOUND", "Session not found.", 404)
     s = dict(row)
+    if owner:
+        check_owner(s)
     if not allow_ended and (s["ended_at"] or parse_iso(s["expires_at"]) < now()):
         raise ApiError("SESSION_EXPIRED", "This session has ended or expired.", 410)
     return s
 
 
-def set_language(session_id: str, language: str) -> dict:
+def get_session(session_id: str, allow_ended=False) -> dict:
+    return _checked_session(get_db().execute(SESSION_SQL, (session_id,)).fetchone(), allow_ended)
+
+
+def load(session_id: str, allow_ended=False, extra=()) -> tuple[dict, "Facts", list]:
+    """The session, its facts and any `extra` (sql, params) reads, in one database round trip."""
+    res = get_db().query_many([(SESSION_SQL, (session_id,)), (FACTS_SQL, (session_id,)), *extra])
+    session = _checked_session(res[0].fetchone(), allow_ended)
+    return session, Facts(session_id, res[1].fetchall()), res[2:]
+
+
+def set_language(session_id: str, language: str, session: dict | None = None, commit: bool = True) -> dict:
     if language not in i18n.SUPPORTED_LANGUAGES:
         raise ApiError("UNSUPPORTED_LANGUAGE", "Supported languages: en, hi, te.", 422)
-    get_session(session_id)
+    session = session or get_session(session_id)
     get_db().execute("UPDATE sessions SET language=? WHERE session_id=?", (language, session_id))
     audit("session.language", session_id=session_id, details={"language": language})
-    get_db().commit()
-    return get_session(session_id)
+    if commit:
+        get_db().commit()
+    return {**session, "language": language}
 
 
-def end_session(session_id: str) -> None:
-    """Kiosk exit: unconsented facts are deleted; consented case data is retained."""
+def end_session(session_id: str, reason: str = "user", owner_checked: bool = False) -> None:
+    """End a session (kiosk End session / idle timeout, or Start over). Data nobody consented to keep is deleted:
+    a saved passport keeps its facts and versions, a consented hand-off keeps its case; utterances never stay."""
     db = get_db()
-    get_session(session_id, allow_ended=True)
-    has_case = db.execute("SELECT 1 FROM cases WHERE session_id=?", (session_id,)).fetchone()
-    if not has_case:
-        db.execute("DELETE FROM facts WHERE session_id=?", (session_id,))
-        db.execute("DELETE FROM turns WHERE session_id=?", (session_id,))
-        db.execute("DELETE FROM doc_marks WHERE session_id=?", (session_id,))
-        db.execute("DELETE FROM evaluations WHERE session_id=?", (session_id,))
-        db.execute("DELETE FROM drafts WHERE session_id=?", (session_id,))
+    session, case, saved, uploads = db.query_many([
+        (SESSION_SQL, (session_id,)), ("SELECT 1 FROM cases WHERE session_id=?", (session_id,)),
+        ("SELECT c.saved FROM citizens c JOIN sessions s ON s.citizen_id = c.citizen_id WHERE s.session_id=?",
+         (session_id,)),
+        ("SELECT upload_id, storage_path FROM document_uploads WHERE session_id=?", (session_id,))])
+    _checked_session(session.fetchone(), allow_ended=True, owner=not owner_checked)
+    has_case, row = case.fetchone(), saved.fetchone()
+    is_saved = bool(row and row[0])
+    removed_uploads = 0
+    if not has_case and not is_saved:
+        for table in ("facts", "turns", "doc_marks", "evaluations", "drafts", "passport_versions"):
+            db.execute(f"DELETE FROM {table} WHERE session_id=?", (session_id,))
+        from . import documents
+        try:
+            removed_uploads = documents.delete_uploads(db, [(r[0], r[1]) for r in uploads])
+        except ApiError:
+            pass  # Storage unreachable: the rows stay and the hourly retention run deletes the files later
     else:
         db.execute("DELETE FROM turns WHERE session_id=?", (session_id,))
     db.execute("UPDATE sessions SET ended_at=? WHERE session_id=?", (iso(), session_id))
-    audit("session.end", session_id=session_id, details={"retained_case": bool(has_case)})
+    audit("session.end", session_id=session_id,
+          details={"retained_case": bool(has_case), "saved_passport": is_saved, "reason": reason,
+                   **({"uploads_deleted": removed_uploads} if removed_uploads else {})})
     db.commit()
+
+
+def end_device_sessions(device_id: str, operator_id: str, reason: str = "operator_sign_out") -> int:
+    """A kiosk operator signs out at the device: every citizen session still open on that device ends, whoever started
+    it (shift change), with the same deletion as End session. Returns how many ended."""
+    if not valid_device_id(device_id):
+        raise ApiError("KIOSK_DEVICE_REQUIRED", "Send the kiosk device id (X-Kiosk-Device).", 422)
+    rows = get_db().execute("SELECT session_id FROM sessions WHERE mode='kiosk' AND device_id=? AND ended_at IS NULL",
+                            (device_id,)).fetchall()
+    for r in rows:
+        end_session(r[0], reason, owner_checked=True)
+    ended = len(rows)
+    audit("kiosk.device_signed_out", details={"sessions_ended": ended}, actor_id=operator_id)
+    get_db().commit()
+    return ended
 
 
 # ---------------------------------------------------------------- facts
@@ -135,6 +246,8 @@ def _fact_row_to_public(r) -> dict:
         "captured_at": r["captured_at"], "confirmed_at": r["confirmed_at"],
         "high_impact": r["attribute"] in extraction.HIGH_IMPACT,
         "confusable": bool(r["confusable"]),
+        # Read from an official source (DigiLocker), not from what was said or typed.
+        "verified": bool(r["verified"]),
         # Two extractors heard different values: the citizen picks one of these (PATCH {value}); plain confirm is refused.
         "alternatives": alternatives,
         "disputed": disputed,
@@ -144,63 +257,94 @@ def _fact_row_to_public(r) -> dict:
     }
 
 
+class Facts:
+    """A session's fact rows (history included) held in memory for one request: upserts update these rows and queue
+    their INSERT/UPDATE, so a request reads the facts once instead of after every change."""
+
+    COLUMNS = ("fact_id", "session_id", "attribute", "value_json", "raw_text", "source", "confidence", "confirmed",
+               "inferred", "note", "captured_at", "confirmed_at", "confusable", "alternatives_json", "verified")
+
+    def __init__(self, session_id: str, rows):
+        self.session_id = session_id
+        self.rows = [dict(r) for r in rows]
+
+    def by_attribute(self) -> dict[str, dict]:
+        return {r["attribute"]: r for r in self.rows if r["superseded_by"] is None}
+
+    def get(self, fact_id: str) -> dict | None:
+        return next((r for r in self.rows if r["fact_id"] == fact_id), None)
+
+    def current(self) -> dict[str, dict]:
+        return {a: _fact_row_to_public(r) for a, r in self.by_attribute().items()}
+
+    def history(self) -> list[dict]:
+        return [{**_fact_row_to_public(r), "superseded_by": r["superseded_by"]} for r in self.rows]
+
+    def unconfirmed_critical(self) -> list[dict]:
+        return [f for f in self.current().values() if f["confirm_individually"] and not f["confirmed"]]
+
+    def confirm(self, row: dict) -> None:
+        row.update(confirmed=1, confirmed_at=iso())
+        get_db().execute("UPDATE facts SET confirmed=1, confirmed_at=? WHERE fact_id=?",
+                         (row["confirmed_at"], row["fact_id"]))
+
+    def insert(self, row: dict) -> None:
+        self.rows.append({**row, "superseded_by": None})
+        get_db().execute(f"INSERT INTO facts({', '.join(self.COLUMNS)}) VALUES ({','.join('?' * len(self.COLUMNS))})",
+                         tuple(row[c] for c in self.COLUMNS))
+
+
+def load_facts(session_id: str) -> Facts:
+    return Facts(session_id, get_db().execute(FACTS_SQL, (session_id,)).fetchall())
+
+
 def current_facts(session_id: str) -> dict[str, dict]:
-    rows = get_db().execute(
-        "SELECT * FROM facts WHERE session_id=? AND superseded_by IS NULL ORDER BY captured_at", (session_id,)
-    ).fetchall()
-    return {r["attribute"]: _fact_row_to_public(r) for r in rows}
+    return load_facts(session_id).current()
 
 
 def fact_history(session_id: str) -> list[dict]:
-    rows = get_db().execute("SELECT * FROM facts WHERE session_id=? ORDER BY captured_at, rowid", (session_id,)).fetchall()
-    out = []
-    for r in rows:
-        d = _fact_row_to_public(r)
-        d["superseded_by"] = r["superseded_by"]
-        out.append(d)
-    return out
+    return load_facts(session_id).history()
 
 
 def upsert_fact(session_id, attribute, value, *, source, raw_text=None, confidence=1.0, inferred=False,
-                note=None, confirmed=False, confusable=False, alternatives=None) -> dict:
+                note=None, confirmed=False, confusable=False, alternatives=None, verified=False,
+                facts: Facts | None = None) -> dict:
     value = validate_value(attribute, value)
     alternatives = [validate_value(attribute, a) for a in alternatives] if alternatives else None
+    facts = facts or load_facts(session_id)
     db = get_db()
-    existing = db.execute(
-        "SELECT * FROM facts WHERE session_id=? AND attribute=? AND superseded_by IS NULL", (session_id, attribute)
-    ).fetchone()
-    if existing and json.loads(existing["value_json"]) == value:
+    existing = facts.by_attribute().get(attribute)
+    if existing and json.loads(existing["value_json"]) == value and (existing["verified"] or not verified):
         if confirmed and not existing["confirmed"]:
-            db.execute("UPDATE facts SET confirmed=1, confirmed_at=? WHERE fact_id=?", (iso(), existing["fact_id"]))
+            facts.confirm(existing)
         elif alternatives and not existing["confirmed"]:
+            existing.update(alternatives_json=dumps(alternatives), note=note)
             db.execute("UPDATE facts SET alternatives_json=?, note=? WHERE fact_id=?",
-                       (dumps(alternatives), note, existing["fact_id"]))
-            return {"fact": _fact_row_to_public(db.execute("SELECT * FROM facts WHERE fact_id=?", (existing["fact_id"],)).fetchone()),
-                    "changed": True, "previous": None}
-        return {"fact": _fact_row_to_public(db.execute("SELECT * FROM facts WHERE fact_id=?", (existing["fact_id"],)).fetchone()),
-                "changed": False, "previous": None}
-    seq = db.execute("SELECT COUNT(*) FROM facts WHERE session_id=?", (session_id,)).fetchone()[0] + 1
-    fact_id = f"F-{session_id[-6:]}-{seq:03d}"
-    db.execute(
-        """INSERT INTO facts(fact_id, session_id, attribute, value_json, raw_text, source, confidence, confirmed,
-           inferred, note, captured_at, confirmed_at, confusable, alternatives_json)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (fact_id, session_id, attribute, dumps(value), raw_text, source, confidence, int(confirmed), int(inferred),
-         note, iso(), iso() if confirmed else None, int(confusable), dumps(alternatives) if alternatives else None),
-    )
+                       (existing["alternatives_json"], note, existing["fact_id"]))
+            return {"fact": _fact_row_to_public(existing), "changed": True, "previous": None}
+        return {"fact": _fact_row_to_public(existing), "changed": False, "previous": None}
+    fact_id = f"F-{session_id[-6:]}-{len(facts.rows) + 1:03d}"
+    ts = iso()
+    row = {"fact_id": fact_id, "session_id": session_id, "attribute": attribute, "value_json": dumps(value),
+           "raw_text": raw_text, "source": source, "confidence": confidence, "confirmed": int(confirmed),
+           "inferred": int(inferred), "note": note, "captured_at": ts, "confirmed_at": ts if confirmed else None,
+           "confusable": int(confusable), "alternatives_json": dumps(alternatives) if alternatives else None,
+           "verified": int(verified)}
+    facts.insert(row)
     previous = None
     if existing:
+        existing["superseded_by"] = fact_id
         db.execute("UPDATE facts SET superseded_by=? WHERE fact_id=?", (fact_id, existing["fact_id"]))
         previous = {"fact_id": existing["fact_id"], "value": json.loads(existing["value_json"])}
-    fact = _fact_row_to_public(db.execute("SELECT * FROM facts WHERE fact_id=?", (fact_id,)).fetchone())
-    return {"fact": fact, "changed": True, "previous": previous}
+    return {"fact": _fact_row_to_public(facts.get(fact_id)), "changed": True, "previous": previous}
 
 
-def patch_fact(session_id: str, fact_id: str, body: dict) -> dict:
-    """Confirm a fact as-is, or correct it (creates a new confirmed fact that supersedes it)."""
-    get_session(session_id)
+def patch_fact(session_id: str, fact_id: str, body: dict, loaded: list | None = None) -> dict:
+    """Confirm a fact as-is, or correct it (creates a new confirmed fact that supersedes it). Pass a list as `loaded`
+    to receive the (session, Facts) this call ended with, for the profile view."""
+    session, facts, _ = load(session_id)
     db = get_db()
-    row = db.execute("SELECT * FROM facts WHERE fact_id=? AND session_id=?", (fact_id, session_id)).fetchone()
+    row = facts.get(fact_id)
     if not row:
         raise ApiError("FACT_NOT_FOUND", "Fact not found in this session.", 404)
     if row["superseded_by"]:
@@ -208,7 +352,7 @@ def patch_fact(session_id: str, fact_id: str, body: dict) -> dict:
                        {"superseded_by": row["superseded_by"]})
     if "value" in body:
         res = upsert_fact(session_id, row["attribute"], body["value"], source=body.get("source", "citizen_correction"),
-                          raw_text=body.get("raw_text"), confidence=1.0, confirmed=True)
+                          raw_text=body.get("raw_text"), confidence=1.0, confirmed=True, facts=facts)
         if res["changed"]:
             metrics.FACT_CORRECTIONS.labels(row["attribute"]).inc()
         audit("profile.fact_corrected", session_id=session_id,
@@ -217,48 +361,56 @@ def patch_fact(session_id: str, fact_id: str, body: dict) -> dict:
         if row["alternatives_json"] and not row["confirmed"]:
             raise ApiError("VALUE_DISPUTED", "Two different values were heard; choose one by sending {value: ...}.", 409,
                            {"alternatives": json.loads(row["alternatives_json"])})
-        db.execute("UPDATE facts SET confirmed=1, confirmed_at=? WHERE fact_id=?", (iso(), fact_id))
-        res = {"fact": _fact_row_to_public(db.execute("SELECT * FROM facts WHERE fact_id=?", (fact_id,)).fetchone()),
-               "changed": False, "previous": None}
+        facts.confirm(row)
+        res = {"fact": _fact_row_to_public(row), "changed": False, "previous": None}
         audit("profile.fact_confirmed", session_id=session_id, details={"fact_id": fact_id, "attribute": row["attribute"]})
     else:
         raise ApiError("INVALID_PATCH", "Send {confirmed: true} or {value: ...}.", 422)
-    refresh_workflow_state(session_id)
+    refresh_workflow_state(session_id, session, facts)
     db.commit()
+    if loaded is not None:
+        loaded[:] = [session, facts]
     return res
 
 
-def confirm_all(session_id: str) -> dict:
+def confirm_all(session_id: str, loaded: list | None = None) -> dict:
     """Bulk-confirm low-impact facts only. High-impact facts (age, income, state, area, household size) and
     confusable spoken numbers stay pending until each one is read back and confirmed on its own."""
-    get_session(session_id)
+    session, facts, _ = load(session_id)
     db = get_db()
-    pending = [f for f in current_facts(session_id).values() if not f["confirmed"]]
+    pending = [f for f in facts.current().values() if not f["confirmed"]]
     bulk = [f["fact_id"] for f in pending if not f["confirm_individually"]]
-    db.executemany("UPDATE facts SET confirmed=1, confirmed_at=? WHERE fact_id=?", [(iso(), fid) for fid in bulk])
+    ts = iso()
+    for fid in bulk:
+        facts.get(fid).update(confirmed=1, confirmed_at=ts)
+    db.executemany("UPDATE facts SET confirmed=1, confirmed_at=? WHERE fact_id=?", [(ts, fid) for fid in bulk])
     still = [f["fact_id"] for f in pending if f["confirm_individually"]]
     audit("profile.confirm_all", session_id=session_id, details={"confirmed": bulk, "needs_individual": still})
-    refresh_workflow_state(session_id)
+    refresh_workflow_state(session_id, session, facts)
     db.commit()
+    if loaded is not None:
+        loaded[:] = [session, facts]
     return {"confirmed": bulk, "needs_individual_confirmation": still}
 
 
 def unconfirmed_critical(session_id: str) -> list[dict]:
     """Facts that block screening until confirmed one by one."""
-    return [f for f in current_facts(session_id).values() if f["confirm_individually"] and not f["confirmed"]]
+    return load_facts(session_id).unconfirmed_critical()
 
 
-def refresh_workflow_state(session_id: str) -> str:
-    db = get_db()
-    state = db.execute("SELECT workflow_state FROM sessions WHERE session_id=?", (session_id,)).fetchone()[0]
-    if unconfirmed_critical(session_id):
+def refresh_workflow_state(session_id: str, session: dict | None = None, facts: Facts | None = None) -> str:
+    if session is None or facts is None:
+        session, facts, _ = load(session_id, allow_ended=True)
+    state = session["workflow_state"]
+    if facts.unconfirmed_critical():
         new = "PROFILE_NEEDS_CONFIRMATION"
     elif state == "PROFILE_NEEDS_CONFIRMATION":
         new = "SESSION_ACTIVE"
     else:
         new = state
     if new != state:
-        db.execute("UPDATE sessions SET workflow_state=? WHERE session_id=?", (new, session_id))
+        get_db().execute("UPDATE sessions SET workflow_state=? WHERE session_id=?", (new, session_id))
+        session["workflow_state"] = new
     return new
 
 
@@ -268,8 +420,8 @@ def set_workflow_state(session_id: str, state: str) -> None:
 
 # ---------------------------------------------------------------- conversation
 
-def next_question(session_id: str, lang: str, needed: set[str] | None = None) -> dict | None:
-    facts = current_facts(session_id)
+def next_question(session_id: str, lang: str, needed: set[str] | None = None, facts: dict | None = None) -> dict | None:
+    facts = current_facts(session_id) if facts is None else facts
     for attr in QUESTION_ORDER:
         if attr in facts:
             continue  # never re-ask an attribute we already hold (confirmed or pending confirmation)
@@ -312,16 +464,16 @@ def _traced_llm_turn(tr, utterance: str, det_facts: list[dict], other_people: li
 
 def handle_turn(session_id: str, utterance: str, channel: str = "text", language: str | None = None,
                 needed: set[str] | None = None) -> dict:
-    session = get_session(session_id)
+    session, facts, _ = load(session_id)
     if language and language != session["language"]:
-        session = set_language(session_id, language)
+        session = set_language(session_id, language, session, commit=False)
     lang = session["language"]
     if not utterance or len(utterance) > 2000:
         raise ApiError("INVALID_UTTERANCE", "Utterance must be 1–2000 characters.", 422)
 
     result = extraction.extract(utterance)
     candidates, llm_summary = _llm_turn(session, utterance, result["facts"], result["other_people"])
-    held = current_facts(session_id)
+    held = facts.by_attribute()
     applied = []
     for cand in candidates:
         if cand.get("source") == "llm" and cand["attribute"] in held:
@@ -335,13 +487,14 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
                               source=cand.get("source") or channel, raw_text=cand.get("raw_text"),
                               confidence=cand.get("confidence", 0.9) * (0.85 if channel == "voice" else 1.0),
                               inferred=cand.get("inferred", False), note=cand.get("note"), confirmed=auto_confirm,
-                              confusable=bool(cand.get("confusable")), alternatives=cand.get("alternatives"))
+                              confusable=bool(cand.get("confusable")), alternatives=cand.get("alternatives"),
+                              facts=facts)
         except ApiError:
             continue
         if res["changed"]:
             applied.append({**res["fact"], "previous": res["previous"]})
 
-    wf = refresh_workflow_state(session_id)
+    wf = refresh_workflow_state(session_id, session, facts)
     parts = []
     settled = [f for f in applied if not f["disputed"]]
     if settled:
@@ -364,7 +517,7 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
                                 words=cand["heard_as"], alt=" / ".join(cand["confusable_with"])))
     for o in result["other_people"]:
         parts.append(i18n.t(i18n.MESSAGES, "relative_age_ignored", lang, relation=o["relation"], age=o["value"]))
-    q = next_question(session_id, lang, needed)
+    q = next_question(session_id, lang, needed, facts.current())
     if wf == "PROFILE_NEEDS_CONFIRMATION":
         parts.append(i18n.t(i18n.MESSAGES, "please_confirm", lang))
     if q:
@@ -395,7 +548,7 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
         "other_people": result["other_people"],
         "next_question": q,
         "workflow_state": wf,
-        "needs_confirmation": [f["fact_id"] for f in unconfirmed_critical(session_id)],
+        "needs_confirmation": [f["fact_id"] for f in facts.unconfirmed_critical()],
         "llm": llm_summary,
     }
 
@@ -427,16 +580,21 @@ def display_value(attr: str, value, lang: str) -> str:
     return str(value)
 
 
-def profile_view(session_id: str) -> dict:
-    s = get_session(session_id, allow_ended=True)
-    facts = current_facts(session_id)
+def profile_view(session_id: str, loaded: list | None = None) -> dict:
+    """The profile card. `loaded` = [session, Facts] this request already holds, so they are not read again."""
+    marks_sql = ("SELECT doc_key, status FROM doc_marks WHERE session_id=?", (session_id,))
+    if loaded:
+        (s, fact_set), marks_rows = loaded, get_db().execute(*marks_sql)
+    else:
+        s, fact_set, (marks_rows,) = load(session_id, allow_ended=True, extra=[marks_sql])
+    facts = fact_set.current()
     for f in facts.values():
         f["readback"] = f"{i18n.t(i18n.ATTRIBUTE_LABELS, f['attribute'], s['language'])}: " \
                         f"{display_value(f['attribute'], f['value'], s['language'])}"
-    marks = {r["doc_key"]: r["status"] for r in get_db().execute(
-        "SELECT doc_key, status FROM doc_marks WHERE session_id=?", (session_id,))}
+    marks = {r["doc_key"]: r["status"] for r in marks_rows}
     return {
-        "session": {k: s[k] for k in ("session_id", "mode", "language", "workflow_state", "created_at", "expires_at", "ended_at")},
+        "session": {**{k: s[k] for k in ("session_id", "mode", "language", "workflow_state", "created_at", "expires_at",
+                                         "ended_at")}, "linked_to_citizen": bool(s.get("citizen_id"))},
         "facts": list(facts.values()),
         "needs_confirmation": [f["fact_id"] for f in facts.values() if f["confirm_individually"] and not f["confirmed"]],
         "documents": marks,

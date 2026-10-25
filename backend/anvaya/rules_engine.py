@@ -95,8 +95,8 @@ def evaluate(rule: dict, facts: dict, doc_marks: dict, meta: dict, at: datetime 
     """Evaluate one rule.
 
     facts: {attribute: {"fact_id", "value", "confirmed"}}
-    doc_marks: {doc_key: status} where status in available|missing|expired|unknown|verified.
-        Only "verified" (settable by a reviewer) satisfies an evidence requirement.
+    doc_marks: {doc_key: status} where status in available|missing|expired|unknown|uploaded|reupload_requested|verified.
+        Only "verified" (settable by a reviewer) satisfies an evidence requirement; an upload alone does not.
     meta: {"review_status", "source_verified_at", "source_url", "source_id", "imported_at",
            "bundle_version", "scheme_name"}
     """
@@ -109,7 +109,7 @@ def evaluate(rule: dict, facts: dict, doc_marks: dict, meta: dict, at: datetime 
     for doc in rule.get("evidence_requirements", []):
         status = doc_marks.get(doc, "unknown")
         evidence.append({"doc_key": doc, "status": status, "satisfied": status == "verified"})
-    gaps = [e["doc_key"] for e in evidence if e["status"] in ("missing", "expired", "unknown")]
+    gaps = [e["doc_key"] for e in evidence if e["status"] in ("missing", "expired", "unknown", "reupload_requested")]
     unverified = [e["doc_key"] for e in evidence if not e["satisfied"]]
 
     verified_at = meta.get("source_verified_at")

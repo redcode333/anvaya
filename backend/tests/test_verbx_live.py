@@ -27,7 +27,7 @@ def live_app(tmp_path_factory):
     env = _env()
     if not env.get("VERBX_API_KEY"):
         pytest.skip("VERBX_API_KEY not set")
-    app = create_app({"DB_PATH": str(tmp_path_factory.mktemp("live") / "live.db"), "TESTING": True,
+    app = create_app({"DATABASE_URL": "", "DB_PATH": str(tmp_path_factory.mktemp("live") / "live.db"), "TESTING": True,
                       "VERBX_BASE_URL": env.get("VERBX_BASE_URL") or "https://api.verbxeco.com",
                       "VERBX_API_KEY": env["VERBX_API_KEY"]})
     with app.app_context():

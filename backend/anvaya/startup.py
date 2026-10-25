@@ -6,13 +6,13 @@ shown by GET /api/v1/ready.
 """
 import logging
 
-from .config import CONFIG_WARNINGS, STAFF_ACCOUNTS
+from .config import CONFIG_WARNINGS
 from .llm.providers import is_configured, missing
 
 log = logging.getLogger("anvaya.startup")
 
 
-def check(cfg, demo_password_users: list[str]) -> dict:
+def check(cfg) -> dict:
     integrations = {}
 
     need = [k for k in ("VERBX_BASE_URL", "VERBX_API_KEY") if not cfg[k]]
@@ -40,19 +40,45 @@ def check(cfg, demo_password_users: list[str]) -> dict:
         "effect": "LLM-extraction traces not exported (SDK not loaded)" if lf_need
         else "LLM-extraction turns traced to Langfuse (input/output for demo data only)"}
 
+    need = [k for k in ("SUPABASE_URL", "SUPABASE_SECRET_KEY") if not cfg[k]]
+    integrations["supabase_auth"] = {
+        "status": "missing" if "SUPABASE_URL" in need else ("partial" if need else "configured"), "missing": need,
+        "effect": "staff sign-in and citizen accounts unavailable (Passport code + PIN still works)"
+        if "SUPABASE_URL" in need else ("tokens verified; account deletion cannot remove the Auth user" if need
+                                        else "tokens verified against the project's JWKS; admin API for deletion")}
+
     integrations["metrics"] = {
         "status": "configured" if cfg["METRICS_TOKEN"] else "missing",
         "missing": [] if cfg["METRICS_TOKEN"] else ["ANVAYA_METRICS_TOKEN"],
         "effect": "/metrics requires a bearer token" if cfg["METRICS_TOKEN"]
         else "/metrics is open (fine for a local demo; set a token behind a public ingress)"}
 
+    integrations["turnstile"] = {
+        "status": "configured" if cfg["TURNSTILE_SITE_KEY"] else "missing",
+        "missing": [] if cfg["TURNSTILE_SITE_KEY"] else ["VITE_TURNSTILE_SITE_KEY"],
+        "effect": "CAPTCHA token sent with anonymous sign-in, email OTP and staff sign-in (verified by Supabase)"
+        if cfg["TURNSTILE_SITE_KEY"] else "no CAPTCHA widget (local dev only)"}
+
+    from . import digilocker
+    dl = digilocker.describe(cfg)
+    integrations["digilocker"] = {
+        "status": "configured" if dl["enabled"] else ("partial" if dl["missing"] else "disabled"),
+        "missing": dl["missing"],
+        "effect": "DigiLocker sign-in offered" if dl["enabled"] else "button hidden (DIGILOCKER_ENABLED=false)"}
+
     warnings = list(CONFIG_WARNINGS)
-    for user in demo_password_users:
-        warnings.append(f"{STAFF_ACCOUNTS[user][0]} is not set: account '{user}' uses the public demo password")
+    if not cfg["PASSPORT_PEPPER"]:
+        warnings.append("ANVAYA_PASSPORT_PEPPER is not set: Passport codes are hashed with a public development pepper")
+    if not cfg["TURNSTILE_SITE_KEY"]:
+        warnings.append("VITE_TURNSTILE_SITE_KEY is not set: sign-in runs without the Turnstile CAPTCHA (local dev only)")
+    if not cfg["STAFF_MFA_REQUIRED"]:
+        warnings.append("ANVAYA_STAFF_MFA_REQUIRED is off: staff API calls are allowed without TOTP (never in production)")
+    if dl["missing"]:
+        warnings.append(f"DIGILOCKER_ENABLED is true but {', '.join(dl['missing'])} not set: DigiLocker stays off")
 
     for name, i in integrations.items():
         extra = f" (missing {', '.join(i['missing'])})" if i["missing"] else ""
         log.info("integration %-12s %s%s: %s", name, i["status"], extra, i["effect"])
     for w in warnings:
         log.warning("config: %s", w)
-    return {"integrations": integrations, "warnings": warnings, "demo_password_users": demo_password_users}
+    return {"integrations": integrations, "warnings": warnings}

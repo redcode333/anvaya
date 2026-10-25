@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, newKey, type Draft, type Evaluation, type SchemeResult } from "../api";
+import { SavePanel } from "../AccountUI";
 import { ErrorNote, OutcomeBadge, ValueInput } from "../components";
 import { attrLabel, showValue, t, type Lang } from "../i18n";
 import { speak, voiceProvider } from "../speech";
@@ -193,6 +194,7 @@ export default function Passport() {
               {list.map((r) => <SchemeCard key={r.rule_id} r={r} lang={lang} onDraft={draft} onAnswer={answer} />)}
             </section>
           ))}
+          <SavePanel sessionId={sessionId} />
         </div>
       )}
     </div>

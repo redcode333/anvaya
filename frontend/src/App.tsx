@@ -1,15 +1,20 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { KioskIdleGuard } from "./AccountUI";
 import { LANGS, t } from "./i18n";
 import { getBundle, getOutbox } from "./offline/store";
 import AdminSchemes from "./pages/AdminSchemes";
+import AdminSecurity from "./pages/AdminSecurity";
 import CaseStatus from "./pages/CaseStatus";
+import DigiLockerCallback from "./pages/DigiLockerCallback";
 import Documents from "./pages/Documents";
 import DraftPage from "./pages/Draft";
 import Journey from "./pages/Journey";
 import Landing from "./pages/Landing";
+import MyPassports from "./pages/MyPassports";
 import Passport from "./pages/Passport";
 import Reviewer from "./pages/Reviewer";
+import Resume from "./pages/Resume";
 import ReviewerCase from "./pages/ReviewerCase";
 import TestRuns from "./pages/TestRuns";
 import { useApp } from "./state";
@@ -33,7 +38,7 @@ function StatusBar() {
       )}
       <span className="chip">bundle {bundle ? `${bundle.bundle_version} · ${bundle.rules.length} rules · ${new Date(bundle.generated_at).toLocaleString()}` : "not cached"}</span>
       {pending > 0 && <span className="chip s-SYNC_PENDING">outbox: {pending} SYNC_PENDING</span>}
-      {sessionId && !staffPage && <span className="chip mono">{sessionId}</span>}
+      {sessionId && !staffPage && mode !== "kiosk" && <span className="chip mono" title="Session">{sessionId.slice(0, 8)}…</span>}
       {!staffPage && (
         <span className="row" style={{ marginLeft: "auto", gap: ".25rem" }}>
           {LANGS.map((l) => (
@@ -47,7 +52,7 @@ function StatusBar() {
 }
 
 export default function App() {
-  const { mode } = useApp();
+  const { mode, lang } = useApp();
   return (
     <>
       <header className="topbar">
@@ -55,10 +60,12 @@ export default function App() {
           <NavLink to="/" className="brand"><img src="/icon.svg" alt="" />Anvaya AI</NavLink>
           <nav className="nav" aria-label="Main">
             <NavLink to={mode === "kiosk" ? "/kiosk" : "/citizen"}>Citizen</NavLink>
+            {mode !== "kiosk" && <NavLink to="/citizen/passports">{t("myPassports", lang)}</NavLink>}
             <NavLink to="/case">Case status</NavLink>
             <NavLink to="/reviewer">Reviewer</NavLink>
             <NavLink to="/admin/schemes">Catalogue</NavLink>
-            <NavLink to="/test-runs">TC1–TC4</NavLink>
+            <NavLink to="/admin/security">Security</NavLink>
+            <NavLink to="/test-runs">TC1–TC5</NavLink>
           </nav>
         </div>
         <StatusBar />
@@ -71,15 +78,20 @@ export default function App() {
           <Route path="/citizen/schemes" element={<Passport />} />
           <Route path="/citizen/documents" element={<Documents />} />
           <Route path="/citizen/draft/:id" element={<DraftPage />} />
+          <Route path="/citizen/passports" element={<MyPassports />} />
+          <Route path="/resume" element={<Resume />} />
           <Route path="/case" element={<CaseStatus />} />
           <Route path="/case/:code" element={<CaseStatus />} />
           <Route path="/reviewer" element={<Reviewer />} />
           <Route path="/reviewer/case/:id" element={<ReviewerCase />} />
           <Route path="/admin/schemes" element={<AdminSchemes />} />
+          <Route path="/admin/security" element={<AdminSecurity />} />
+          <Route path="/auth/digilocker/callback" element={<DigiLockerCallback />} />
           <Route path="/test-runs" element={<TestRuns />} />
           <Route path="*" element={<div className="card">Page not found.</div>} />
         </Routes>
       </main>
+      <KioskIdleGuard />
     </>
   );
 }

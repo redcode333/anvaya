@@ -20,8 +20,7 @@ def _row(name: str):
 
 def _upsert(name: str, **cols) -> None:
     db = get_db()
-    if not _row(name):
-        db.execute("INSERT INTO llm_provider_state(provider, updated_at) VALUES (?,?)", (name, iso()))
+    db.execute("INSERT INTO llm_provider_state(provider, updated_at) VALUES (?,?) ON CONFLICT DO NOTHING", (name, iso()))
     sets = ", ".join(f"{k}=?" for k in cols)
     db.execute(f"UPDATE llm_provider_state SET {sets}, updated_at=? WHERE provider=?", (*cols.values(), iso(), name))
     db.commit()

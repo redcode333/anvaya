@@ -38,7 +38,7 @@ def provider_app(request, tmp_path_factory):
     providers = load_providers(env)
     if not providers[0]["api_key"] or not providers[0]["model"]:
         pytest.skip(f"{request.param.upper()}_API_KEY / _MODEL not set")
-    app = create_app({"DB_PATH": str(tmp_path_factory.mktemp(f"live-{request.param}") / "live.db"), "TESTING": True,
+    app = create_app({"DATABASE_URL": "", "DB_PATH": str(tmp_path_factory.mktemp(f"live-{request.param}") / "live.db"), "TESTING": True,
                       "LLM_EXTRACTION": True, "LLM_PROVIDERS": providers})
     with app.app_context():
         yield app, request.param

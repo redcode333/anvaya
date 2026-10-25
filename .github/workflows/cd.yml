@@ -52,6 +52,11 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          # Browser sign-in: Supabase project URL + publishable key (public values; never the secret key).
+          build-args: |
+            VITE_SUPABASE_URL=${{ vars.VITE_SUPABASE_URL }}
+            VITE_SUPABASE_PUBLISHABLE_KEY=${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+            VITE_TURNSTILE_SITE_KEY=${{ vars.VITE_TURNSTILE_SITE_KEY }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -92,6 +97,9 @@ jobs:
           VERBX_API_KEY: ${{ secrets.VERBX_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          ANVAYA_PASSPORT_PEPPER: ${{ secrets.ANVAYA_PASSPORT_PEPPER }}
         run: |
           for required in ANVAYA_METRICS_TOKEN GRAFANA_ADMIN_PASSWORD; do
             if [ -z "${!required}" ]; then echo "::error::Secret $required is required for deploy"; exit 1; fi
@@ -104,6 +112,9 @@ jobs:
             echo "VERBX_API_KEY=${VERBX_API_KEY}"
             echo "GROQ_API_KEY=${GROQ_API_KEY}"
             echo "GEMINI_API_KEY=${GEMINI_API_KEY}"
+            echo "SUPABASE_URL=${SUPABASE_URL}"
+            echo "SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY}"
+            echo "ANVAYA_PASSPORT_PEPPER=${ANVAYA_PASSPORT_PEPPER}"
           } > k8s/secrets.env
       - name: Pin image to this commit
         if: steps.gate.outputs.enabled == 'true'
