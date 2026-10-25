@@ -1,40 +1,87 @@
 # Anvaya AI — *Every voice, a way forward.*
 
-Multilingual (Telugu / Hindi / English), voice-first welfare-scheme discovery, eligibility **pre-screening**,
-document guidance and application-draft preparation, with a hybrid edge/cloud kiosk that keeps working offline.
+Multilingual (Telugu / Hindi / English), voice-first welfare-scheme discovery, eligibility **pre-screening**, document
+guidance and application-draft preparation. It runs on a citizen's phone, or at an operator-assisted **kiosk** that keeps
+working offline.
 
 > Voice and the optional LLM are only the conversational interface. **Eligibility is decided by a deterministic,
 > versioned rules engine** on facts the citizen has confirmed. Unknown facts stay unknown. Results are potential or
 > provisional matches; nothing in this app is an approval, a benefit guarantee or a government submission.
 
+## At a glance
+
+| | |
+|---|---|
+| **What it does** | Hears (or reads) a household's story in Telugu, Hindi or English → proposes facts → the citizen confirms them → a rules engine screens against curated scheme rules → lists documents to bring → prepares a draft and a copy-ready **Form Helper** → optionally hands the draft to a human reviewer, with consent |
+| **What it never does** | Decide eligibility with an LLM · submit anything to a government portal · read, OCR or store Aadhaar numbers · keep data without consent |
+| **Catalogue** | 3,534 schemes in 37 jurisdictions (searchable) · **17 curated, quoted rules** that are screened automatically |
+| **Surfaces** | Citizen (phone) · **Kiosk** (operator-assisted, offline-capable) · Reviewer · Admin (catalogue, security, background jobs) · Official scenarios TC1–TC5 |
+| **Stack** | React + Vite PWA · Flask API (gunicorn) · Supabase (Postgres with Row Level Security, Auth with TOTP for staff, private Storage) · VerbX speech · optional Groq → Gemini LLM · Langfuse tracing · Prometheus + Grafana · GitHub Actions |
+| **Verified by** | 365 backend tests on SQLite and 366 on Postgres 16 · 68 frontend tests · TC1–TC5 against the live Supabase project (checks 6/6, 6/6, 7/7, 7/7, 8/8) — all passing at the time of this README (2026-10-25) |
+| **Runs on** | A sleeping free tier (Render) with no Redis, queue, gateway or separate worker — see [Scaling](#scaling) |
+
+**Contents:**
+[Product tour](#product-tour) ·
+[High-level design](#high-level-design) ·
+[How the agent works](#how-the-agent-works) ·
+[Kiosk](#kiosk-assisted-operator-run-offline-capable) ·
+[Quick start](#quick-start) ·
+[Accounts and modes](#accounts-and-modes) ·
+[Configuration](#configuration-env) ·
+[Database](#database) ·
+[Read-aloud](#read-aloud-verbx-tts-cached) ·
+[LLM extraction](#llm-extraction-optional-free-providers) ·
+[Langfuse](#langfuse-tracing-optional) ·
+[Scaling](#scaling) ·
+[Observability](#observability-prometheus--grafana) ·
+[Metrics, latency and scores](#metrics-latency-and-scores) ·
+[Integrations and roadmap](#integrations-and-roadmap) ·
+[Failure modes](#failure-modes--fallbacks) ·
+[Limitations](#limitations)
+
 ---
 
-## Screenshots
+## Product tour
 
-All screenshots come from the running app (`docker compose up`) using the built-in demo phrases; no real citizen data.
+All screenshots are from the real, current frontend build running against a throwaway local database, with Supabase
+sign-in mocked at the network layer (so no real account, key or citizen data appears). The Grafana image is from the
+live monitoring stack. Rules, text and numbers on screen are what the app produces.
 
 ### Citizen (personal phone)
 
-| Conversation: facts held for confirmation | Scheme Passport: potential / provisional matches |
+| 1. Landing: language, phone or kiosk, case status | 2. Conversation: facts held for confirmation |
 |---|---|
-| ![Citizen conversation](docs/screenshots/02-citizen-conversation.png) | ![Scheme Passport](docs/screenshots/03-scheme-passport.png) |
-| Each fact shows its ID and the words heard; high-impact facts (age, income, area…) are read back and confirmed one by one. | Every result quotes the rule text and its source. Documents still to check appear on each card. |
+| ![Landing](docs/screenshots/01-landing.png) | ![Citizen conversation](docs/screenshots/02-citizen-conversation.png) |
+| Telugu / Hindi / English at one tap. *Resume* takes a Passport code + PIN. | Each fact shows its ID and the words heard. High-impact facts (age, state, income, area, household size) are read back and confirmed **one by one**; "confirm the rest" never covers them. |
 
-| Document Guide | Draft (with consent before handoff) |
+| 3. Scheme Passport: potential / provisional matches | 3b. "Why?": the rule trace behind a result |
+|---|---|
+| ![Scheme Passport](docs/screenshots/03-scheme-passport.png) | ![Rule trace](docs/screenshots/03b-rule-trace.png) |
+| Results are *potential* or *provisional*, never approvals. Each card shows criteria passed and documents still to check. | Every criterion quotes the rule's source text, the fact IDs compared, the rule version and the bundle version. |
+
+| 4. Document Guide (with consented upload) | 5. Draft for review |
 |---|---|
 | ![Document Guide](docs/screenshots/04-document-guide.png) | ![Draft](docs/screenshots/05-draft.png) |
-| Marking a document is the citizen's declaration; only a reviewer can mark it verified. | Each field is tagged confirmed / inferred / missing; nothing reaches a reviewer without the consent tick. |
+| Marking a document is the citizen's own declaration; only a reviewer can mark it *verified*. Uploads are optional, consented, and never read by AI or OCR. | Each field is tagged confirmed / inferred / citizen-entered / missing. Nothing reaches a reviewer without the consent tick. |
 
-| Landing page | Case status by code |
+| 6. Form Helper: copy-ready fields | 7. Form Helper: application steps, official link, PDF |
 |---|---|
-| ![Landing](docs/screenshots/01-landing.png) | ![Case status](docs/screenshots/10-case-status.png) |
+| ![Form Helper fields](docs/screenshots/05b-form-helper.png) | ![Form Helper steps](docs/screenshots/05c-form-helper-steps.png) |
+| "Draft ready — submit at the office/portal". Missing fields say what to bring. Aadhaar and bank account numbers are never collected. | Numbered steps (machine-translated for hi/te and labelled so), the official link with a QR code, and a watermarked PDF. |
+
+| 8. Case status by code |
+|---|
+| ![Case status](docs/screenshots/10-case-status.png) |
+| A case code shows **status only**. Codes are ~40-bit random, stored hashed, expire after 72 h, and lookups are rate-limited. |
 
 ### Kiosk (assisted, Telugu)
 
-| Misheard age held for confirmation | Offline pre-screen (simulated network loss) |
-|---|---|
-| ![Kiosk in Telugu](docs/screenshots/06-kiosk-telugu.png) | ![Kiosk offline](docs/screenshots/07-kiosk-offline.png) |
-| An operator starts the session. A voice transcript that says 26 is held, read back in digits, and blocks screening until confirmed or corrected. | The cached, checksummed rule bundle runs in the browser; drafts queue in the outbox and sync exactly once. |
+| Operator sign-in | A misheard age, held for confirmation | Offline pre-screen (simulated network loss) |
+|---|---|---|
+| ![Kiosk operator sign-in](docs/screenshots/06a-kiosk-operator-signin.png) | ![Kiosk in Telugu](docs/screenshots/06-kiosk-telugu.png) | ![Kiosk offline](docs/screenshots/07-kiosk-offline.png) |
+| Password plus authenticator code. The sign-in lives in memory only. | The transcript says 26; it is read back in digits and blocks screening until confirmed or corrected. | The cached, checksummed rule bundle runs in the browser; drafts queue in the outbox and sync exactly once. |
+
+The full kiosk design is in [Kiosk](#kiosk-assisted-operator-run-offline-capable).
 
 ### Reviewer and admin
 
@@ -42,62 +89,98 @@ All screenshots come from the running app (`docker compose up`) using the built-
 |---|---|
 | ![Review queue](docs/screenshots/08-reviewer-queue.png) | ![Reviewer case](docs/screenshots/09-reviewer-case.png) |
 
-| Catalogue & data freshness (admin) | Official scenarios TC1–TC4 |
+| Catalogue and data freshness (admin) | Official scenarios TC1–TC5 |
 |---|---|
-| ![Admin catalogue](docs/screenshots/11-admin-catalogue.png) | ![TC1–TC4](docs/screenshots/12-test-runs.png) |
-| Source artifact hash, quality flags, knowledge graph, and the 17 curated rules with review / official-source verification status. | Each scenario runs the real pipeline and shows input, expected, actual and per-check evidence. |
+| ![Admin catalogue](docs/screenshots/11-admin-catalogue.png) | ![TC1–TC5](docs/screenshots/12-test-runs.png) |
+| Source artifact hash, quality flags, knowledge graph, and the 17 curated rules with review and official-source verification status. | Each scenario runs the real pipeline and shows input, expected, actual and per-check evidence. |
 
-### Operations (Grafana)
+| Security: staff two-step sign-in, **background jobs**, auth audit |
+|---|
+| ![Admin security and jobs](docs/screenshots/14-admin-security-jobs.png) |
+| Who has an authenticator (reset when a phone is lost); every retention / cleanup run with trigger, status and counts (counts only, never personal data); the last 500 auth events (IP prefix only). |
 
-![Grafana dashboard](docs/screenshots/13-grafana.png)
+### Operations
+
+| Grafana: "Anvaya AI — Operations" |
+|---|
+| ![Grafana dashboard](docs/screenshots/13-grafana.png) |
+| Live view of the API, screening outcomes, LLM providers, kiosk sync and security signals. The dashboard definition has since gained a *Background jobs & database* row (hours since last successful retention, job runs by status, database round trips per request); this screenshot was taken before that row was added. |
+
+Measured latency and Langfuse charts are in [Metrics, latency and scores](#metrics-latency-and-scores).
 
 ---
 
-## Architecture
+## High-level design
 
+```mermaid
+flowchart TB
+  subgraph EDGE["Edge: browser / kiosk PWA (React + Vite)"]
+    direction LR
+    UI["Citizen · Kiosk<br/>Reviewer · Admin"]
+    VOICE["Voice in/out<br/>VerbX → browser speech → typing"]
+    OFFLINE["Offline pre-screen<br/>cached rule bundle · outbox"]
+    UI --- VOICE --- OFFLINE
+  end
+
+  subgraph CLOUD["Cloud: Flask API, gunicorn (1 worker × 8 threads)"]
+    direction LR
+    AUTH["Auth<br/>JWT checked on every request<br/>TOTP (aal2) for staff"] --> CONV["Conversation<br/>rules extractor + optional LLM,<br/>merged, always confirmed"]
+    CONV --> RULES["Rules engine<br/>pure · versioned · quoted"]
+    RULES --> CASES["Drafts · Form Helper<br/>cases · review · audit"]
+    SYNC["Offline sync<br/>dedupe · re-check"] --> RULES
+    DOCS["Documents<br/>signed short-lived links"]
+    JOBS["Jobs<br/>retention · cleanup"]
+    LIMITS["Rate limits<br/>DB counters"]
+  end
+
+  subgraph DATA["Data: Supabase"]
+    direction LR
+    PG[("Postgres<br/>RLS on, no policies")]
+    STORE[("Private Storage")]
+    SBAUTH["Supabase Auth<br/>anonymous · email OTP · password + TOTP"]
+  end
+
+  subgraph EXT["External services: optional, each with a fallback"]
+    direction LR
+    VERBX["VerbX<br/>STT · TTS · translate"]
+    LLM["Groq → Gemini<br/>candidate facts only"]
+    LF["Langfuse<br/>traces · experiments"]
+    TURN["Cloudflare Turnstile"]
+  end
+
+  subgraph OPS["Operations"]
+    direction LR
+    GHA["GitHub Actions<br/>hourly cron"]
+    PROM["Prometheus"] --> GRAF["Grafana"]
+  end
+
+  subgraph SOON["Planned"]
+    direction LR
+    DL["DigiLocker / Meri Pehchaan<br/>adapter built, awaiting onboarding"]
+    SETU["API Setu live scheme data<br/>requested; scheduled sync"]
+  end
+
+  EDGE -->|"HTTPS + JWT"| CLOUD
+  EDGE <-->|"sign-in only"| DATA
+  EDGE -.->|"speech · CAPTCHA"| EXT
+  CLOUD --> DATA
+  CLOUD -.->|"candidate facts · traces"| EXT
+  OPS -->|"hourly job call · metrics scrape"| CLOUD
+  SOON -.->|"verified facts · live scheme data"| CLOUD
 ```
-EDGE (browser / kiosk PWA)                              CLOUD (Flask API + SQLite, gunicorn)
-─────────────────────────────                           ─────────────────────────────────────────────────────
-React UI (citizen · kiosk · reviewer · admin · TC)      /api/v1  sessions · turns · facts · eligibility
-Voice in : VerbX STT ─▶ browser speech ─▶ typing ──────▶ extraction: deterministic en/hi/te patterns + glossary
-Voice out: VerbX TTS (cached per sentence) ─▶ text        [optional] LLM candidates: Groq ─▶ Gemini fallback
-           + "audio unavailable" note                               validated · merged · never decides
-Offline : cached rule bundle (SHA-256 checksum,          rules_engine (pure, versioned) ◀── golden_rules.json
-          last-known-good kept) + TS mirror of the       catalogue (3,534 schemes) + knowledge graph
-          rules engine + durable outbox ────────────────▶ /sync/events: dedupe · online re-check · conflicts
-                                                         drafts · consent handoff · reviewer · audit · TC runner
-                                                         VerbX translate: scheme names hi/te (labelled MT)
-                                                         /metrics ─▶ Prometheus ─▶ Grafana
-                                                         [optional] LLM turns ─▶ Langfuse traces (background)
-```
 
-* **VerbX** (`backend/anvaya/voice.py`; contract discovered from VerbX's own `/openapi.json`, see
-  `docs/vendor/verbx.md`). It provides three things:
-  * **STT** (`/v1/stt`) for voice input.
-  * **TTS** (`/v1/tts`) for read-aloud, cached per sentence (see [Read-aloud](#read-aloud-verbx-tts-cached)).
-  * **Translate** (`/v1/translate`, `/v1/translate/batch`) for Hindi/Telugu scheme names, always labelled "machine
-    translation", and as the English side-input for the LLM.
+Solid lines are built and used; dotted lines are optional (they degrade gracefully) or planned.
 
-  Without VerbX: browser speech, then typing. Text input always works.
-* **LLM (optional, off by default):** the providers in `LLM_PROVIDERS=groq,gemini` are tried in order. Groq goes
-  first; Gemini is used if Groq times out or returns 429, 5xx or invalid output; if both fail, extraction is
-  rule-based only. The LLM only proposes *candidate* facts. They are validated against the utterance, merged with the
-  deterministic ones, and always need the citizen's confirmation. **It never sees or decides eligibility** (see
-  [LLM extraction](#llm-extraction-optional-free-providers)).
-* **Langfuse (optional):** each turn that used the LLM becomes one trace, covering translation, every provider
-  call, and the merge. Demo/test data is traced in full; everything else is metadata only (see
-  [Langfuse tracing](#langfuse-tracing-optional)).
-* **Rules engine:** each curated rule is a list of criteria that must *all* pass on confirmed facts. Outcomes, from
-  worst to best:
-  1. `MISMATCH`: a confirmed criterion fails.
-  2. `INSUFFICIENT_INFORMATION`: a fact is missing or unconfirmed.
-  3. `NEEDS_HUMAN_REVIEW`: the rule or its source is ambiguous.
-  4. `PROVISIONAL`: the criteria pass, but documents are unverified, officer checks are pending, or the source is
-     unverified or stale.
-  5. `MATCH` (shown as "Potential match"): everything above is satisfied.
-
-  Every result carries the reasons, a per-criterion trace with the quoted rule text, the input fact IDs, the source
-  URL, the rule version and the bundle version.
+| Layer | Responsibility | Where |
+|---|---|---|
+| **Edge UI** | Four role-specific surfaces, three languages, voice with fallbacks, offline kiosk mode; Supabase is used for sign-in only | `frontend/src/` |
+| **Auth** | Every request's JWT is verified against the project's JWKS; staff need an `aal2` (TOTP) token; kiosk sessions are bound to device + operator | `auth.py`, `common.py` |
+| **Conversation** | Deterministic en/hi/te extractor is the primary path; the LLM may *add candidates* that are validated, merged and always confirmed | `extraction.py`, `llm/`, `profile.py` |
+| **Rules engine** | Pure function of confirmed facts and a versioned rule; mirrored in TypeScript for offline | `rules_engine.py` ⇄ `offline/rulesEngine.ts` |
+| **Cases** | Drafts, Form Helper, consent hand-off, review decisions, idempotency keys, audit | `cases.py`, `formhelper.py` |
+| **Data** | One Postgres (or SQLite locally) behind a dual-dialect unit of work; RLS on every table | `db.py`, `migrations.py` |
+| **Background work** | Retention and cleanup as idempotent jobs behind a lock; rate limits as database counters | `jobs.py`, `ratelimit.py` |
+| **Operations** | `/metrics` → Prometheus → Grafana; LLM traces → Langfuse; scheduled workflow | `metrics.py`, `monitoring/`, `.github/workflows/` |
 
 | Spec module | Implementation |
 |---|---|
@@ -108,11 +191,130 @@ Offline : cached rule bundle (SHA-256 checksum,          rules_engine (pure, ver
 | draft_case / review_service | `backend/anvaya/cases.py` |
 | sync_service | `backend/anvaya/sync.py`, `frontend/src/offline/store.ts` |
 | audit_service | `common.audit()` → `audit_events` |
+| accounts / auth | `backend/anvaya/accounts.py`, `auth.py`, `digilocker.py` |
+| documents | `backend/anvaya/documents.py`, `storage.py` |
+| jobs / limits | `backend/anvaya/jobs.py`, `ratelimit.py` |
 | test_runner | `backend/anvaya/testrunner.py`, `/test-runs` |
 
 **Workflow states:** `SESSION_ACTIVE → PROFILE_NEEDS_CONFIRMATION → MATCH_RESULTS_READY → DRAFT_SAVED → PENDING_REVIEW ⇄
 CORRECTION_REQUESTED → REVIEWED`. Kiosk outbox events are `SYNC_PENDING / SYNCED / FAILED_RETRYABLE / CONFLICT`.
 `SUBMITTED_EXTERNAL` is reserved and never produced.
+
+**Rules engine outcomes**, from worst to best (a result takes the worst applicable one):
+
+```mermaid
+flowchart TD
+  A["Confirmed facts + one curated rule"] --> B{"A confirmed criterion fails?"}
+  B -- yes --> M1["MISMATCH"]
+  B -- no --> C{"A needed fact is missing or unconfirmed?"}
+  C -- yes --> M2["INSUFFICIENT_INFORMATION"]
+  C -- no --> D{"Rule or its source is ambiguous?"}
+  D -- yes --> M3["NEEDS_HUMAN_REVIEW"]
+  D -- no --> E{"Documents unverified, officer checks pending,<br/>or source unverified / stale?"}
+  E -- yes --> M4["PROVISIONAL"]
+  E -- no --> M5["MATCH — shown as 'Potential match'"]
+```
+
+Every result carries the reasons, a per-criterion trace with the quoted rule text, the input fact IDs, the source URL,
+the rule version and the bundle version.
+
+---
+
+## How the agent works
+
+"Agent" here means the conversational layer. It is deliberately **not autonomous**: it proposes, the citizen confirms,
+and a deterministic engine decides. One conversation turn:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor C as Citizen
+  participant UI as Browser UI
+  participant V as VerbX STT/TTS
+  participant API as Flask API
+  participant X as Deterministic extractor
+  participant L as LLM (optional)
+  participant R as Rules engine
+  participant DB as Postgres
+
+  C->>UI: speaks or types (te / hi / en)
+  UI->>V: audio (falls back to browser speech, then typing)
+  V-->>UI: transcript
+  UI->>API: POST /sessions/current/turns (JWT, X-Session-Id)
+  API->>X: patterns + dialect glossary
+  X-->>API: candidate facts with evidence
+  opt LLM on, and data class is demo/test (or LLM_ALLOW_REAL_DATA)
+    API->>L: utterance (+ English translation) with 6 s call cap
+    L-->>API: candidate facts
+    Note over API: merge: agree / llm_only / disagree / dropped,<br/>evidence must appear in the utterance
+  end
+  API->>DB: facts stored unconfirmed, with IDs and evidence
+  API-->>UI: reply + facts + next question
+  UI-->>C: read back in digits (high-impact facts)
+  C->>UI: confirm or correct each high-impact fact
+  UI->>API: PATCH fact (confirmed) / POST confirm-all
+  C->>UI: "Check schemes"
+  UI->>API: POST /eligibility/evaluate
+  API->>R: confirmed facts only
+  R-->>API: outcome + trace per rule
+  API->>DB: passport version, audit event
+  API-->>UI: Scheme Passport (potential / provisional)
+  UI->>V: summary sentences (cached TTS, 8 s cap)
+```
+
+Design rules that follow from this:
+
+* **Confirmation gate.** Screening is blocked (`409 PROFILE_NEEDS_CONFIRMATION`) until every high-impact fact is confirmed
+  individually. A misheard "साठ" (60) as "सात" (7) is caught here, not downstream.
+* **The LLM can only add or disagree, never replace.** If the LLM and the rules disagree on a high-impact value,
+  *neither* is picked and the citizen chooses.
+* **Every fact has provenance**: `source` (text / voice / llm / digilocker), the words heard, and a stable ID that the
+  rule trace later cites.
+* **Every external call has a fallback** (see [Failure modes](#failure-modes--fallbacks)); eligibility never depends on one.
+* **Everything is observable**: each LLM turn is a Langfuse trace (`extract-facts` → `translate-utterance`,
+  `extract-candidate-facts`, `merge-facts`), and each request is a Prometheus sample and a log line without personal data.
+
+---
+
+## Kiosk (assisted, operator-run, offline-capable)
+
+The kiosk is the product's reach: a shared device (tablet or PC with a microphone) at a panchayat office, CSC or
+camp, operated by a trained **operator**, used by **citizens who never sign in**. Everything about it is built around
+three facts: the next person must find nothing of the last, the network may drop, and the citizen may not read.
+
+```mermaid
+stateDiagram-v2
+  [*] --> OperatorSignedOut
+  OperatorSignedOut --> OperatorReady: operator signs in (password + authenticator code)
+  OperatorReady --> CitizenSession: Start (language chosen) — session bound to device + operator
+  CitizenSession --> CitizenSession: speak / type → confirm facts → screen → draft
+  CitizenSession --> HandedOff: citizen consents → case code (and optional Passport code + PIN)
+  CitizenSession --> Ended: End session
+  CitizenSession --> IdleWarning: no input for 180 s
+  IdleWarning --> CitizenSession: "Still there?" answered within 30 s
+  IdleWarning --> Ended: no answer
+  CitizenSession --> Ended: 30 minutes since start, whatever the activity
+  HandedOff --> Ended
+  Ended --> OperatorReady: unconsented data deleted on the server
+  OperatorReady --> OperatorSignedOut: Operator sign out (ends every open session on the device)
+  CitizenSession --> OfflinePrescreen: network lost
+  OfflinePrescreen --> CitizenSession: network back — outbox syncs once
+```
+
+| Concern | How the kiosk handles it |
+|---|---|
+| **Who may start a session** | Only a signed-in operator (Supabase password + TOTP, role from `app_metadata`). Citizens get no account on a kiosk. |
+| **Operator sign-in storage** | In memory only (never `localStorage` / `sessionStorage`): a reload, a new tab or the next person finds nothing. |
+| **Session binding** | A kiosk session answers only to its **device id** (`X-Kiosk-Device`) and the **operator** who started it; anything else gets `403 SESSION_FORBIDDEN`. Session IDs are 128-bit random, sent in a header, never in a URL, never shown on screen. |
+| **Nothing left behind** | *End session*, the idle timeout, the 30-minute cap and operator sign-out all run the same server-side deletion of everything not consented. After that the server answers `410` for that session. |
+| **Saving anything** | Possible only with citizen consent: a **Passport code + 4-digit PIN** shown large and read aloud (40-bit random code, argon2 PIN, weak PINs refused), or a hand-off case for a reviewer. |
+| **Language and voice** | Telugu, Hindi, English; read-aloud of every reply and summary from the cached TTS; typing always works; demo phrases (simulated transcripts) run through exactly the same pipeline. |
+| **Offline** | A cached, SHA-256-checked bundle of the 17 rules runs in the browser (typed input only). Drafts and results queue in a **durable outbox** (`Sync now`, `Retry`, `Refresh bundle`) and sync **exactly once** (event IDs deduplicate; the server re-checks online and reports changed results). |
+| **Accessibility intent** | Large controls, ARIA labels, number read-back in digits, spoken prompts. No formal WCAG audit yet ([Limitations](#limitations)). |
+| **Operations** | `anvaya_active_sessions{mode="kiosk"}`, `anvaya_sync_events_total{status}` and `anvaya_sync_result_changed_total` show kiosk load and offline health in Grafana. |
+
+Details of the session rules, idle timer and sign-out are under [Accounts and modes](#accounts-and-modes); the offline
+engine and sync under [Failure modes](#failure-modes--fallbacks).
 
 ---
 
@@ -232,8 +434,8 @@ or `missing (missing VAR, …)`. It logs variable names, never values. Missing o
   come back unconfirmed and block screening until confirmed again; eligibility and confirmation rules are unchanged.
 * **Delete my account and data** removes facts, passport versions, sessions and the Supabase Auth user (admin API,
   done first: if it fails nothing is deleted). Only cases the citizen consented to hand to a reviewer stay. The audit
-  event records counts, never values. (Audio is never stored and citizens cannot upload files, so there are no uploads
-  to delete.)
+  event records counts, never values. (Audio is never stored. Uploaded documents are deleted with the account; see
+  [Document uploads](#document-uploads).)
 
 **Passport code + PIN**
 
@@ -314,11 +516,11 @@ The draft page has a **Form Helper**. Anvaya never submits anything to a governm
 | Unsaved anonymous Supabase users | with their data after 24 h (admin API) |
 | Saved passports | after `PASSPORT_RETENTION_DAYS` (default **365**) without use, Auth user included |
 | Uploaded documents | with the account; with unsaved sessions; `REVIEWED_UPLOAD_RETENTION_DAYS` (default **30**) after the case is reviewed; at once on *Request re-upload* |
-| Passport code attempts (hashes only) | after 1 day |
+| Rate-limit counters (client address and code only as hashes) | when their window ends; deleted by the retention job |
 | Consented hand-off cases | kept for the reviewer, also after account deletion |
 
-Retention runs inside the app every `ANVAYA_RETENTION_INTERVAL_MIN` (default 60) and with `python -m anvaya.manage
-cleanup`. The policy is shown in English, Hindi and Telugu wherever something can be saved.
+Retention runs as a scheduled job: hourly from the in-app timer, hourly from the GitHub Actions call to `POST /internal/jobs/run` (which also
+wakes a sleeping server), and on demand with `python -m anvaya.manage cleanup`. Each run is recorded in `job_runs`; see [Scaling](#scaling). The policy is shown in English, Hindi and Telugu wherever something can be saved.
 
 ### Supabase Auth setup
 
@@ -656,6 +858,32 @@ Run of 2026-10-23:
 | rules + groq `openai/gpt-oss-120b` | 40 | 0 | 0.988 |
 | rules + gemini `gemini-3.5-flash-lite` | 40 | 0 | 0.970 |
 
+### Charts from the Langfuse project
+
+These two figures are drawn from the project's own data, read through the Langfuse API (`/api/public/v2/observations`,
+`/api/public/v3/scores`) on 2026-10-25. The project holds demo and test data only; the counts are small and say so.
+
+![Langfuse experiment scores](docs/screenshots/16-langfuse-eval.png)
+
+*The three experiments on the dataset `anvaya-extraction-eval`: mean recall per configuration (left) and per-utterance
+recall (right). The dots below 1.0 are the utterances where a fact was missed. No configuration let a wrong fact reach
+the confirmation step.*
+
+![Langfuse traces](docs/screenshots/17-langfuse-traces.png)
+
+*What is in the project: 51 LLM generations, of which 44 (86 %) were answered from the validated-answer cache and 7
+were live provider calls taking 1.5–2.8 s, well under the 6 s call cap. Each `extract-facts` trace has one
+`extract-candidate-facts` generation and one `merge-facts` span; `translate-utterance` appears only for Hindi/Telugu
+script. 36 of the 51 traces came from the TC runner and 15 from the default environment.*
+
+How to read a trace in the Langfuse UI: open *Tracing → Traces*, filter by tag `llm-extraction`, and open one
+`extract-facts` trace. The `extract-candidate-facts` generation shows the model, tokens, latency and `result`
+(`ok`, `cache_hit`, `timeout`, `server_error`, `invalid_output`); `merge-facts` shows, per attribute, whether the LLM
+agreed with the rules, only it found the fact, disagreed (the citizen then chooses) or was dropped. *Datasets →
+anvaya-extraction-eval* lists the three experiment runs with their `recall`, `wrong_facts` and
+`wrong_high_impact_facts` scores per utterance.
+
+
 ## Scaling
 
 Written for a sleeping free-tier server (Render free) with one app instance, Supabase Postgres, and **no Redis, Kafka,
@@ -681,7 +909,9 @@ not the limit; the database round trips per request are (budgets are enforced in
   `anvaya_job_last_success_timestamp{job}` (rebuilt from `job_runs`, so it survives restarts). `/api/v1/ready` adds a
   warning when retention has not succeeded in 26 hours; readiness itself never depends on it.
 - `.github/workflows/scheduled-jobs.yml` calls the endpoint hourly. A sleeping server starts on that request, which is
-  what keeps the schedule alive when the in-app timer is asleep.
+  what keeps the schedule alive when the in-app timer is asleep. The call does not keep a free-tier server awake for
+  the next citizen (Render sleeps again after about 15 idle minutes), so the first request after an idle period still
+  pays a cold start.
 
 **Rate limits are in the database** (`rate_limits`: fixed-window counters with an expiry, client IPs only as peppered
 hashes): Passport code/PIN attempts (failed attempts only), case-code lookups, session creation, Passport resume and
@@ -721,11 +951,101 @@ URL of the deployment) and `INTERNAL_JOBS_TOKEN` (the same value).
 | `anvaya_drafts_total`, `anvaya_case_transitions_total`, `anvaya_idempotent_replays_total`, `anvaya_cases{status}` | draft/case lifecycle, retry safety |
 | `anvaya_sync_events_total{status}`, `anvaya_sync_result_changed_total` | kiosk outbox: accepted / duplicate / conflict |
 | `anvaya_auth_events_total`, `anvaya_code_lookups_rate_limited_total` | security signals |
-| `anvaya_test_runs_total{tc,result}`, `anvaya_catalogue_records{kind}`, `anvaya_active_sessions{mode}` | TC1–TC4 history, catalogue size, live sessions |
+| `anvaya_test_runs_total{tc,result}`, `anvaya_catalogue_records{kind}`, `anvaya_active_sessions{mode}` | TC1–TC5 history, catalogue size, live sessions |
+| `anvaya_job_runs_total{job,status}`, `anvaya_job_last_success_timestamp{job}` | background jobs (success / failed / skipped); the timestamp is rebuilt from `job_runs`, so it survives restarts |
+| `anvaya_db_queries_per_request`, `anvaya_db_roundtrips_per_request` | database cost of each route |
 | `anvaya_llm_calls_total{provider,result}`, `anvaya_llm_latency_seconds{provider}`, `anvaya_llm_fallbacks_total`, `anvaya_llm_merge_total{outcome}` | LLM per provider, fallbacks (`to="deterministic"` = all down), merge outcomes |
 
 The configs live in `monitoring/`. The dashboard JSON is generated by `monitoring/grafana/generate_dashboard.py`.
 Gunicorn runs one worker with threads so the in-process counters stay complete.
+
+## Metrics, latency and scores
+
+How the system is measured: the metrics Prometheus holds, the Langfuse scores, the formulas behind every number in the
+UI and in this README, and latency, measured and modelled.
+
+### Grafana panels and their queries
+
+The dashboard "Anvaya AI — Operations" (45 panels, generated by `monitoring/grafana/generate_dashboard.py`) is organised in
+rows. The queries below are the exact PromQL behind the key panels.
+
+| Row | Panel | Query | Why it matters |
+|---|---|---|---|
+| Overview | API p95 latency | `histogram_quantile(0.95, sum by (le) (rate(anvaya_http_request_duration_seconds_bucket[5m])))` | the headline SLO |
+| Screening | Rule evaluation time (p50 / p95) | `histogram_quantile(0.5\|0.95, sum by (le) (rate(anvaya_rule_evaluation_seconds_bucket[5m])))` | the engine is not the bottleneck (≈ 0.15 ms mean) |
+| Screening | Screenings vs confirmation blocks | `rate(anvaya_eligibility_evaluations_total[1m]) * 60` vs `rate(anvaya_screening_blocked_total[1m]) * 60` | how often the confirmation gate stops a screening |
+| Screening | Citizen corrections by attribute | `sum by (attribute) (anvaya_fact_corrections_total)` | which facts the voice pipeline gets wrong most |
+| Conversation | Turns by language / channel | `sum by (language) (rate(anvaya_conversation_turns_total[1m])) * 60` | adoption per language and text vs voice |
+| Conversation | VerbX voice calls | `sum by (op, result) (rate(anvaya_voice_requests_total[1m])) * 60` | TTS cache hits vs live syntheses vs timeouts |
+| LLM | Call latency p50 / p95 per provider | `histogram_quantile(0.95, sum by (le, provider) (rate(anvaya_llm_latency_seconds_bucket[5m])))` | free-tier providers are slow and uneven |
+| LLM | Provider fallbacks; all providers down | `increase(anvaya_llm_fallbacks_total[5m])`, `anvaya_llm_fallbacks_total{to="deterministic"}` | how often the LLM is skipped entirely |
+| Cases & sync | Kiosk sync events by status; offline results changed | `increase(anvaya_sync_events_total[5m])`, `increase(anvaya_sync_result_changed_total[5m])` | offline kiosks: accepted / duplicate / conflict |
+| API & security | p95 latency by route, error responses | `histogram_quantile(0.95, sum by (le, route) (rate(anvaya_http_request_duration_seconds_bucket[5m])))` | per-route SLOs; 4xx/5xx split |
+| API & security | Auth events, rate-limited lookups | `increase(anvaya_auth_events_total[5m])`, `increase(anvaya_code_lookups_rate_limited_total[5m])` | brute-force and sign-in health |
+| **Background jobs & database** | Hours since last successful retention / cleanup | `(time() - anvaya_job_last_success_timestamp{job="retention"}) / 3600` | alert above 26 h (`/ready` warns at the same threshold) |
+| **Background jobs & database** | Job runs by status | `sum by (job, status) (increase(anvaya_job_runs_total[1h]))` | `skipped` = another run held the lock |
+| **Background jobs & database** | DB round trips / queries per request (p95, per route) | `histogram_quantile(0.95, sum by (le, route) (rate(anvaya_db_roundtrips_per_request_bucket[5m])))` | each round trip costs ≈ 70 ms on the hosted database |
+| Official scenarios | TC1–TC5 runs | `sum by (tc, result) (anvaya_test_runs_total)` | evidence that the pipeline still passes |
+
+Prometheus cannot scrape a server that is asleep, and in-process counters restart from zero when it wakes. That is why
+the job gauges are rebuilt from the `job_runs` table (not memory) and why Grafana's rate panels are best read while
+the server is up; see [Scaling](#scaling) and [Limitations](#limitations).
+
+### Formulas and scores
+
+| Quantity | Definition | Where it appears |
+|---|---|---|
+| **Extraction precision** | `P = TP / (TP + FP)` over facts proposed (per attribute and overall) | `manage eval-extraction`, README table |
+| **Extraction recall** | `R = TP / (TP + FN)` over the facts a careful human reads from the utterance | same |
+| **Per-utterance recall** | `found expected facts / expected facts` for one utterance | Langfuse score `recall` |
+| **Wrong facts reaching confirmation** | `Σ` facts that survive the merge with a value different from the gold value | Langfuse scores `wrong_facts`, `wrong_high_impact_facts`, `wrong_facts_reaching_confirmation`; the safety metric: target **0** |
+| **Screening outcome** | worst of the rule's criteria, in the order `MISMATCH > INSUFFICIENT_INFORMATION > NEEDS_HUMAN_REVIEW > PROVISIONAL > MATCH` | Scheme Passport |
+| **Criteria score** | `criteria passed / criteria total` (e.g. "4/4 criteria pass"), shown per scheme | Scheme Passport, reviewer trace |
+| **Rule staleness** | stale when `now − source_verified_at > freshness_days` (default 180); a stale or unverified source caps the outcome at `PROVISIONAL` | admin catalogue |
+| **Fact staleness** | a saved `age` or `annual_income` confirmed more than 90 days ago returns unconfirmed and blocks screening | saved passports |
+| **Income** | `yearly = monthly × 12`, the conversion is shown for confirmation | extraction |
+| **Request latency (hosted)** | `T ≈ T_app + RT × 70 ms`, where `RT` = database round trips of the request (Seoul ↔ Singapore) | chart and table below |
+| **Rate limit** | fixed window: `start = t − (t mod W)`; allowed while `hits(bucket, key, start) ≤ limit`; counters expire at `start + W` | `ratelimit.py` |
+| **Passport-code lockout** | 5 failed attempts per code and per IP per 15 min → `429`; 10 failures → code locked 1 h; only failures count | `accounts.py` |
+| **LLM budgets** | call ≤ 6 s; turn (translation + calls) ≤ 7 s; 5 consecutive failures open a provider's circuit for 60 s | `llm/` |
+| **Read-aloud wait** | cached clip ≈ 10–25 ms; uncached 0.9–10.5 s, capped at 8 s, after which the text stays and audio arrives later | `voice.py` |
+| **LLM cache hit ratio** | `cache_hit / all generations` = 44 / 51 = 86 % in the Langfuse project (demo data repeats) | Langfuse chart |
+| **Capacity** | `requests/day = kiosks × sessions per kiosk × requests per session` = 50 × 6 × 50 = 15,000; mean rate = 15,000 / 86,400 ≈ 0.17 req/s; a busy hour carrying 10 % of the day ≈ 0.42 req/s | [Scaling](#scaling) |
+
+### Latency
+
+Measured on 2026-10-25 against the real API (production build, local SQLite, one process): 120 full citizen journeys
+(session → turn → confirmations → screening → draft for a third of them → Form Helper) plus 60 `/ready` calls, over
+HTTP from the same machine. This isolates **application compute**. The hosted figure applies the formula above with the
+database round trips each request needs (asserted in `tests/test_db.py` for session creation, a turn, screening and a draft; estimated for the others, marked *est.*); it is a model, not a measurement of the Render + Supabase deployment.
+
+![API latency by request](docs/screenshots/15-latency-budget.png)
+
+| Request | n | p50 (ms) | p95 (ms) | DB round trips | Modelled p50, hosted DB (ms) |
+|---|---|---|---|---|---|
+| `POST /sessions` | 120 | 7.8 | 10.9 | 2 | 148 |
+| `POST /sessions/{id}/turns` | 120 | 9.4 | 12.7 | 2 | 149 |
+| `POST …/profile/confirm-all` | 120 | 8.3 | 12.5 | 2 *(est.)* | 148 |
+| `PATCH …/profile/facts/{id}` | 320 | 8.5 | 12.0 | 2 *(est.)* | 148 |
+| `POST …/eligibility/evaluate` | 120 | 10.6 | 14.8 | 2 | 151 |
+| `POST …/drafts` | 40 | 9.5 | 13.0 | 4 | 289 |
+| `GET …/drafts/{id}/helper` | 40 | 6.6 | 11.5 | 2 *(est.)* | 147 |
+| `GET /api/v1/ready` | 60 | 4.7 | 8.2 | 1 *(est.)* | 75 |
+
+Other measured and configured figures:
+
+| Stage | Figure | Source |
+|---|---|---|
+| Rules engine, one screening of 17 rules | ≈ 0.15 ms mean (0.0202 s over 133 screenings) | `anvaya_rule_evaluation_seconds` |
+| Uncached LLM extraction call | 1.5–2.8 s (7 live calls, Groq `gpt-oss-120b`), cap 6 s | Langfuse |
+| LLM answer from cache | ≈ 0 ms (86 % of generations in the Langfuse project) | Langfuse |
+| Read-aloud, cached / uncached | ≈ 10–25 ms / 0.9–10.5 s (cap 8 s) | testing, `voice.py` |
+| Langfuse export, when unreachable | +0.1 to +1.7 ms per turn (background, 2 s timeout) | `tests/test_tracing.py` |
+| Offline pre-screen | no network; rules run in the browser | `frontend/src/offline/` |
+
+Not measured, and therefore not claimed: VerbX speech-to-text latency, end-to-end latency in a browser on a 3G
+connection, and behaviour under concurrent load beyond the pilot estimate.
+
 
 ## CI/CD (GitHub Actions)
 
@@ -780,6 +1100,71 @@ Gunicorn runs one worker with threads so the in-process counters stay complete.
 * **Langfuse:** receives input/output only for demo/test data, and metadata only otherwise (enforced by the SDK
   masking hook, which fails closed).
 
+## Integrations and roadmap
+
+What is live, what is built but switched off, and what is next. "Built" means code and tests exist; "planned" means it
+does not exist yet.
+
+| Integration | Status | What it adds | What is needed |
+|---|---|---|---|
+| Supabase Postgres / Auth / Storage | **Live** | Data with RLS, anonymous + email OTP + staff password/TOTP sign-in, private uploads | — |
+| VerbX (STT, TTS, translation) | **Live**, optional | Voice in/out in te/hi/en, machine-translated scheme names | key; falls back to browser speech and text |
+| Groq → Gemini | **Live**, optional, off by default | Candidate facts for messy phrasing | keys; real citizen data stays rule-based unless `LLM_ALLOW_REAL_DATA=true` |
+| Langfuse | **Live**, optional | LLM traces, datasets, experiments | keys |
+| Cloudflare Turnstile | **Live** | Bot protection on sign-in | site + secret key |
+| Prometheus + Grafana | **Live** | Operations dashboard, job health | Docker, Kubernetes or the local scripts |
+| GitHub Actions scheduled jobs | **Live** | Hourly retention/cleanup call that also wakes the server; daily database keep-alive | secrets `APP_URL`, `INTERNAL_JOBS_TOKEN` |
+| **DigiLocker / Meri Pehchaan** | **Built, switched off** | Sign-in and verified name / date of birth / gender as `verified` facts (no Aadhaar number is ever read) | partner onboarding: registered entity, official domain, digital signature, committee approval |
+| **API Setu (live scheme data)** | **Requested — planned** | Replace the static CSV snapshot with live scheme records, refreshed on a schedule | API access granted by API Setu; contract and sample payloads |
+| Phone OTP | Built, switched off | Mobile-number sign-in | TRAI DLT registration and a paid SMS provider |
+| SMS / WhatsApp case-status notices | Planned | Tell a citizen when a reviewer acts | DLT-registered templates, consent text |
+| CSC / e-District hand-off | Planned | Pass a reviewed draft to the office that files it | MoU, API or file format from the office |
+
+### Live scheme data via API Setu (planned design)
+
+The catalogue today is one imported CSV (3,534 rows, hash-pinned, with quality flags). Once API Setu access is
+granted, the same job machinery that already runs retention would also keep the catalogue fresh, **without a new
+service**:
+
+```mermaid
+flowchart LR
+  CRON["GitHub Actions cron<br/>hourly (wakes the server)"] -->|"POST /internal/jobs/run {job: catalogue-sync}"| JOB["catalogue-sync job<br/>advisory lock · idempotent · recorded in job_runs"]
+  JOB --> FETCH["Fetch changed records from API Setu<br/>(ETag / updated-since, rate-limit aware)"]
+  FETCH --> NORM["Normalise into the existing schema<br/>content hash per record"]
+  NORM --> DIFF{"Record changed?"}
+  DIFF -- no --> SKIP["Touch last_seen_at only"]
+  DIFF -- yes --> STORE["Write new version into source_artifacts<br/>+ quality flags"]
+  STORE --> RULECHK{"Does a curated rule<br/>cite this record?"}
+  RULECHK -- no --> DONE["Search index updated"]
+  RULECHK -- yes --> STALE["Mark the rule's source unverified<br/>→ outcomes drop to PROVISIONAL"]
+  STALE --> ADMIN["Admin catalogue page: review diff,<br/>re-verify against the official portal"]
+  ADMIN --> BUNDLE["New rule bundle version<br/>→ kiosks refresh their offline cache"]
+```
+
+Principles carried over from the current design:
+* **A changed source never silently changes an eligibility result.** A curated rule whose cited record changed becomes
+  *unverified* (outcomes cap at `PROVISIONAL`) until an admin re-verifies it; that is already how `source_verified_at`
+  and `freshness_days` work.
+* **Idempotent and lock-protected**, so an hourly call, a manual call and a retry can overlap safely; every run is a
+  `job_runs` row with counts, a Prometheus counter and a `/ready` warning when it has not succeeded in 26 hours.
+* **The offline bundle is versioned**: kiosks keep the last-known-good bundle and refresh on reconnect.
+* Until access is granted, nothing in the app depends on it: the CSV import and `manage init` keep working.
+
+### Engineering that should accompany DigiLocker / Meri Pehchaan and live data
+
+* **Production onboarding checklist:** a registered entity and domain, redirect URIs per environment, client secret in
+  the secret store (never `.env` in production), a staging tenant, and a written data-flow note for the DPDP notice.
+* **Verified facts:** facts from DigiLocker carry `source="digilocker"` and skip the high-impact read-back, but remain
+  visible and correctable; the consent notice must name the fields read. Re-consent when the field set changes.
+* **Rule authoring pipeline:** today a rule is hand-edited JSON. Next: a schema-validated editor in the admin page,
+  a second reviewer for every rule change, golden test cases per rule, and a signed (not only checksummed) offline bundle.
+* **Either/or criteria and household rules** in the rules engine, so fewer schemes fall back to officer checks.
+* **Reliability:** database backups and a restore drill, a staging environment, load tests against the pilot estimate,
+  alerting on `anvaya_job_last_success_timestamp`, error rate and p95 latency, and an on-call note.
+* **Scale triggers** (Redis, queue, gateway) are listed with their thresholds in [Scaling](#scaling).
+
+---
+
 ## Failure modes & fallbacks
 
 Every external dependency is optional, and each failure has a defined fallback. Eligibility never depends on any of
@@ -812,7 +1197,7 @@ them.
 | LLM slow (e.g. Gemini free tier) | Nothing to do; the turn finishes within ~7 s | "The LLM only proposes candidates; when it's slow the turn is rule-based." |
 | Grafana won't load | Open `http://localhost:5000/metrics` or `/api/v1/ready` | — |
 | Docker won't start | `bash scripts/run_local.sh` in Ubuntu/WSL | — |
-| Everything is slow | Open `/test-runs`: the latest saved TC1–TC4 evidence shows without re-running | — |
+| Everything is slow | Open `/test-runs`: the latest saved TC1–TC5 evidence shows without re-running | — |
 
 Run `docker compose exec anvaya python -m anvaya.manage prerender-audio` once before the demo, so the greeting,
 questions and summaries play from the cache.
@@ -829,10 +1214,15 @@ questions and summaries play from the cache.
 
 ## Limitations
 
+Grouped by area. Items marked **(planned)** are covered in [Integrations and roadmap](#integrations-and-roadmap).
+
 ### Eligibility rules
 * **17 curated rules.** The other ~3,500 catalogue records are searchable, labelled "not verified", and never
   evaluated automatically. "team_reviewed" rules were checked against the dataset text, not against the official
   portals.
+* **The catalogue is a snapshot.** It is one imported CSV, so a scheme that changed after the import is stale until the
+  next import. Live data through API Setu, refreshed by a scheduled job and gated by re-verification, is requested and
+  **planned**.
 * **All-of rules only.** Every criterion in a rule must pass. Either/or conditions ("belongs to one of the listed
   categories") are not expressed as logic yet; they become manual checks for an officer, which keeps the result at
   `PROVISIONAL`.
@@ -842,65 +1232,123 @@ questions and summaries play from the cache.
 * **No time-bound rules.** Application windows, scheme deadlines and annual re-verification are not modelled.
 * **Income is a single yearly figure.** A monthly amount is multiplied by 12, and the conversion is shown for
   confirmation. Seasonal or irregular income is not modelled.
+* **Rules are hand-authored.** There is no in-app rule editor, no second-reviewer workflow and no per-rule golden test
+  harness beyond TC1–TC5 and the unit tests. **(planned)**
 
 ### Language understanding
 * **Hindi/Telugu understanding** is a deterministic pattern extractor with a small dialect glossary, tested on the
-  phrasings in `tests/test_extraction.py`. It is not general NLU.
+  phrasings in `tests/test_extraction.py`. It is not general NLU, and the eval set is 40 utterances.
 * **Romanized text:** Hinglish number words are understood ("umar saath saal"), but romanized Telugu numbers are not
   ("vayassu aravai edu" gives no age). Telugu script works.
 * **Unrelated numbers in an income sentence:** the largest amount in the income clause is taken. An unrelated number
   there, such as a reference number, can be read as income. It is still held for confirmation, and an LLM
   disagreement makes the citizen choose.
+* **Only three languages.** Telugu, Hindi and English; other Indian languages and many regional dialects are not covered.
 * **Machine translation:** scheme descriptions stay in English. Scheme names are machine-translated for hi/te, are
   sometimes only partly translated ("INDIRAMMA Old Age పెన్షన్"), and are always labelled as machine translation.
 
-### Voice and AI services
-* **VerbX STT can mishear numbers:** in testing it heard "साठ" (60) as "सात" (7). The confirmation step handles this.
-  High-impact facts (age, income, state, area, household size) are read back in digits, confirmed one by one, and
-  never bulk-confirmed. Confusable number words (साठ/सत्तर, sixteen/sixty) are flagged.
+### Voice agent
+Voice is the interface, so its limits are the product's limits.
+* **Push-to-talk, not a live conversation.** The browser records a clip and sends it for transcription; there are no
+  streaming partial transcripts, no wake word and no **barge-in** (speaking over the read-aloud does not interrupt it).
+* **STT can mishear numbers:** in testing VerbX heard "साठ" (60) as "सात" (7). The confirmation step handles this:
+  high-impact facts (age, income, state, area, household size) are read back in digits, confirmed one by one, and
+  never bulk-confirmed. Confusable number words (साठ/सत्तर, sixteen/sixty) are flagged. Speech-recognition
+  confidence is not used to decide anything.
+* **Noisy rooms and several speakers.** A busy office, a fan or a family talking at once degrade recognition, and the
+  app does not separate speakers: whatever is heard is attributed to the applicant until the citizen corrects it.
+* **Code-switching and dialect.** Telugu–English or Hindi–English mixes and strong regional pronunciations are the
+  weakest cases; the typed fallback exists for them.
+* **Manual start and stop.** The citizen (or operator) taps the microphone to start and again to stop; there is no automatic end-of-speech detection, so a clip can include long pauses or be stopped too early. Re-recording or typing always works.
 * **VerbX TTS** takes 0.9–10.5 s per uncached sentence. Its rate limit is stricter in practice than the documented
-  120/min: HTTP 429 after ~60 quick calls. Hence the cache, the prerendered prompts and the 8 s cap.
+  120/min: HTTP 429 after ~60 quick calls. Hence the cache, the prerendered prompts and the 8 s cap. One configurable voice
+  (`verbx-female` by default, `verbx-male` available) is used for every language.
+* **Audio leaves the device.** Recorded clips go to the speech provider for transcription (they are not stored by Anvaya);
+  this needs to be stated in the consent notice and the provider's terms reviewed before a real deployment.
 * **Browser speech fallback:** quality depends on the browser and OS, and many systems have no Telugu voice.
 * **Free-tier LLMs get demo data only.** Groq and Gemini free tiers may use what they receive, so real citizen turns
   are rule-based only unless `LLM_ALLOW_REAL_DATA=true`.
 * **Gemini's free tier can be slow.** The same demo sentence took 1.7 s once and 43 s another time. In the final run
   every Gemini live call failed: 6 s timeouts, then HTTP 503 from Google. A slow or failing provider is skipped within
   the 7 s turn budget, and the turn falls back to rule-based extraction.
-* **Langfuse tracing covers LLM extraction only**, not whole requests, speech or rule evaluation.
+* **Langfuse tracing covers LLM extraction only**, not whole requests, speech or rule evaluation, and its data is small
+  (51 generations).
 
-### Offline kiosk
+### Kiosk and offline
 * **Browser storage** (`localStorage`) stands in for kiosk SQLite. Clearing the browser loses the cached bundle and
   any unsynced outbox events.
-* **Integrity, not authenticity:** the bundle is checked with a SHA-256 checksum, not a cryptographic signature.
-* Only the 17 curated rules work offline, and only typed input (no speech).
+* **Integrity, not authenticity:** the bundle is checked with a SHA-256 checksum, not a cryptographic signature. **(planned)**
+* **Offline is typed-only and limited to the 17 curated rules**; there is no speech, no catalogue search and no uploads
+  offline.
+* **One operator per device, no shift hand-over view.** The operator signs out to end every open session; there is no
+  fleet console, remote wipe or device attestation.
+* **Hardware is not specified or tested:** microphone quality, kiosk lockdown mode, printers for the Passport code and
+  the PDF, and screen privacy are the deployer's responsibility.
+* **Accessibility** has ARIA labels, large kiosk controls and spoken prompts, but no formal WCAG audit, screen-reader
+  testing or sign-language/low-literacy testing with real users.
+* **Phone layout** is checked at 390–430 px and 1100–1280 px only.
+
+### Integrations
+* **DigiLocker / Meri Pehchaan** is built and tested against a mock OpenID Connect provider but **not enabled**; it needs
+  partner onboarding (registered entity, domain, digital signature, approval). **(planned)**
+* **API Setu** access has been requested; nothing depends on it yet. **(planned)**
+* **No notifications:** nothing is sent to the citizen when a reviewer acts (SMS needs DLT registration). **(planned)**
+* **No filing:** drafts are prepared for a citizen to take to an office or portal; there is no submission, status sync
+  from a government system, or CSC hand-off.
 
 ### Security (demo scope)
 * **Staff sign-in** is Supabase email + password + TOTP; there is no SSO and there are no recovery codes (an admin
   resets a lost authenticator). Roles are only as good as whoever holds `SUPABASE_SECRET_KEY`.
-* **Our own rate limits** (session creation, auth-event reports) live in process memory, like the case-code limiter.
+* **Rate limits** are fixed-window counters in the database: a client can send up to twice the limit across a window
+  boundary, and each limited request costs one extra database round trip.
 * **Document links** (5-minute upload, 2-minute view) are short-lived signed capability URLs, the one kind of token
   that appears in a URL path; they are single purpose and the app never logs them.
-* **Passport code attempts** are counted per IP address as the app sees it; behind a proxy that hides client
-  addresses, all citizens share one address (configure the proxy to pass the real address).
-* **Case-code rate limits live in process memory:** that limiter resets on restart and is not shared between
-  processes (Passport-code limits are in the database).
+* **Client addresses** are counted as the app sees them; behind a proxy that hides them, all citizens share one address
+  (configure the proxy to pass the real address).
 * **Case codes** are locators, not identity.
+* **No penetration test or formal threat-model review** has been done; the controls are described in
+  [Auth hardening](#auth-hardening) and [Security & privacy](#security--privacy-demo-scope).
 
-### Data retention
-* **Retention runs in the app process** (hourly by default). With the app scaled to zero, nothing is deleted until it
-  runs again; `python -m anvaya.manage cleanup` does the same on demand and also deletes live TTS clips.
+### Data retention and jobs
+* **A sleeping server only works when woken.** On Render's free tier the app sleeps after about 15 idle minutes; the
+  hourly workflow wakes it and runs retention, but the first citizen request after an idle period waits for a cold
+  start (tens of seconds). If the workflow's secrets are missing or Actions is disabled, retention stops and
+  `/api/v1/ready` warns after 26 hours.
+* **Jobs are hourly at best** (GitHub's cron can also run late by minutes), so "deleted within 24 hours" means
+  24 hours plus the schedule's jitter.
+* **A crashed run leaves a `running` row** in `job_runs`; the lock frees itself (Postgres: with the connection; SQLite:
+  after 15 minutes) and the next run proceeds.
 * **Some caches never expire:** prerendered audio, including clips for wording that has since changed, and validated
   LLM answers stay until deleted by hand. Both hold demo data only by default.
-* **No backups** are configured for the SQLite volume. (A hosted Supabase database gets Supabase's own daily backups on paid plans only.)
+* **No backups** are configured for the SQLite volume. (A hosted Supabase database gets Supabase's own daily backups on
+  paid plans only.) There is no restore drill.
 
 ### Operations and scale
-* **Single node:** one gunicorn worker with threads (SQLite locally, or Postgres via `DATABASE_URL`). Prometheus counters are per process, so more workers
-  need `prometheus_client` multiprocess mode. The LLM circuit breaker and the TTS background queue are also per
-  process.
+* **Single node:** one gunicorn worker with threads (SQLite locally, or Postgres via `DATABASE_URL`). Prometheus
+  counters are per process and restart from zero when a sleeping server wakes, and Prometheus cannot scrape it while it
+  sleeps. The LLM circuit breaker, the TTS background queue and the in-memory caches are also per process.
+* **No staging environment, load test or alerting rules** are included; the pilot capacity is an estimate
+  ([Scaling](#scaling)), and latency over a real mobile network was not measured.
 * **Live checks are manual:** CI runs the mocked suite only. The live VerbX, LLM and Langfuse checks
   (`pytest -m live`, `eval-extraction`) are run by hand.
-* **Accessibility** has ARIA labels and large kiosk controls, but no formal WCAG audit or screen-reader testing.
+* **Free-tier dependencies** (Render, Supabase free plan, Groq/Gemini free tiers, Langfuse cloud) can pause, throttle or
+  change terms; a Supabase free project pauses after 7 days without activity (the scheduled workflow prevents that).
 
 ### Out of scope
-PostgreSQL, real identity (Aadhaar/eKYC), OCR of documents, PDF or official application forms, DigiLocker/CSC
-integration, and any real government submission are not built.
+Real identity verification (Aadhaar / eKYC), OCR or any reading of uploaded documents, official application forms filled
+on a government site, CSC / e-District filing, and any real government submission are not built. A citizen takes the
+prepared draft to the office or portal.
+
+---
+
+## Status and what comes next
+
+**Finished and verified:** the citizen journey in three languages, the confirmation gate, 17 curated rules with traces,
+Document Guide with consented private uploads, Form Helper with PDF, consent hand-off and review, the operator-run
+**kiosk with offline mode and exactly-once sync**, saved passports (Passport code + PIN or account), staff two-step
+sign-in, retention and cleanup as scheduled jobs, database-backed rate limits, observability (Prometheus, Grafana,
+Langfuse), and TC1–TC5 passing against the live database.
+
+**Next, in order:** API Setu live scheme data and the catalogue-sync job → DigiLocker / Meri Pehchaan onboarding →
+rule-authoring workflow and signed offline bundle → notifications → pilot with 50 kiosks (alerting, backups, load
+test). Redis, a queue and an API gateway are added only when the triggers in [Scaling](#scaling) are met.

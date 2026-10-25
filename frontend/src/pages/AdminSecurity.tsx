@@ -22,9 +22,14 @@ export default function AdminSecurity() {
   const load = useCallback(async () => {
     setErr(null);
     try {
-      const [s, e, j] = await Promise.all([api<{ staff: StaffRow[] }>("/admin/staff"), api<{ events: AuthEventRow[] }>("/admin/auth-events"),
+      // Independent sources: one failing (e.g. the Auth admin API behind the staff list) must not blank the others.
+      const [s, e, j] = await Promise.allSettled([api<{ staff: StaffRow[] }>("/admin/staff"), api<{ events: AuthEventRow[] }>("/admin/auth-events"),
         api<{ runs: JobRun[] }>("/admin/jobs")]);
-      setRows(s.staff); setEvents(e.events); setRuns(j.runs);
+      if (s.status === "fulfilled") setRows(s.value.staff);
+      if (e.status === "fulfilled") setEvents(e.value.events);
+      if (j.status === "fulfilled") setRuns(j.value.runs);
+      const failed = [s, e, j].find((r): r is PromiseRejectedResult => r.status === "rejected");
+      if (failed) setErr(failed.reason);
     } catch (x) { setErr(x); }
   }, []);
   useEffect(() => { if (isAdmin) load(); }, [isAdmin, load]);
@@ -72,7 +77,7 @@ export default function AdminSecurity() {
                 <td className="tiny mono">{r.started_at.replace("T", " ").slice(0, 19)}</td><td>{r.job}</td><td>{r.trigger}</td>
                 <td>{r.status === "success" ? "✓ success" : r.status}</td>
                 <td className="tiny mono">{r.finished_at?.replace("T", " ").slice(11, 19) ?? "—"}</td>
-                <td className="tiny mono">{Object.keys(r.counts).length ? JSON.stringify(r.counts) : ""}</td>
+                <td className="tiny mono" style={{ wordBreak: "break-word" }}>{Object.keys(r.counts).length ? JSON.stringify(r.counts) : ""}</td>
               </tr>
             ))}
           </tbody>
