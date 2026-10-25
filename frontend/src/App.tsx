@@ -13,9 +13,11 @@ import Journey from "./pages/Journey";
 import Landing from "./pages/Landing";
 import MyPassports from "./pages/MyPassports";
 import Passport from "./pages/Passport";
+import Profile from "./pages/Profile";
 import Reviewer from "./pages/Reviewer";
 import Resume from "./pages/Resume";
 import ReviewerCase from "./pages/ReviewerCase";
+import SignIn from "./pages/SignIn";
 import TestRuns from "./pages/TestRuns";
 import { useApp } from "./state";
 
@@ -53,11 +55,16 @@ function StatusBar() {
 
 export default function App() {
   const { mode, lang } = useApp();
+  const loc = useLocation();
   return (
     <>
       <header className="topbar">
         <div className="topbar-inner">
-          <NavLink to="/" className="brand"><img src="/icon.svg" alt="" />Anvaya AI</NavLink>
+          <NavLink to="/" className="brand">
+            <img className="brand-mark light" src="/brand/anvaya-mark.svg" alt="" width="28" height="28" />
+            <img className="brand-mark dark" src="/brand/anvaya-mark-white.svg" alt="" width="28" height="28" />
+            Anvaya AI
+          </NavLink>
           <nav className="nav" aria-label="Main">
             <NavLink to={mode === "kiosk" ? "/kiosk" : "/citizen"}>Citizen</NavLink>
             {mode !== "kiosk" && <NavLink to="/citizen/passports">{t("myPassports", lang)}</NavLink>}
@@ -66,11 +73,12 @@ export default function App() {
             <NavLink to="/admin/schemes">Catalogue</NavLink>
             <NavLink to="/admin/security">Security</NavLink>
             <NavLink to="/test-runs">TC1–TC5</NavLink>
+            <NavLink to="/signin">Sign in</NavLink>
           </nav>
         </div>
         <StatusBar />
       </header>
-      <main>
+      <main className={loc.pathname === "/" ? "main-landing" : undefined}>
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/citizen" element={<Journey mode="personal" />} />
@@ -88,6 +96,8 @@ export default function App() {
           <Route path="/admin/security" element={<AdminSecurity />} />
           <Route path="/auth/digilocker/callback" element={<DigiLockerCallback />} />
           <Route path="/test-runs" element={<TestRuns />} />
+          <Route path="/signin" element={<SignIn />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="*" element={<div className="card">Page not found.</div>} />
         </Routes>
       </main>

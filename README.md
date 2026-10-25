@@ -17,7 +17,7 @@ working offline.
 | **Catalogue** | 3,534 schemes in 37 jurisdictions (searchable) · **17 curated, quoted rules** that are screened automatically |
 | **Surfaces** | Citizen (phone) · **Kiosk** (operator-assisted, offline-capable) · Reviewer · Admin (catalogue, security, background jobs) · Official scenarios TC1–TC5 |
 | **Stack** | React + Vite PWA · Flask API (gunicorn) · Supabase (Postgres with Row Level Security, Auth with TOTP for staff, private Storage) · VerbX speech · optional Groq → Gemini LLM · Langfuse tracing · Prometheus + Grafana · GitHub Actions |
-| **Verified by** | 365 backend tests on SQLite and 366 on Postgres 16 · 68 frontend tests · TC1–TC5 against the live Supabase project (checks 6/6, 6/6, 7/7, 7/7, 8/8) — all passing at the time of this README (2026-10-25) |
+| **Verified by** | 375 backend tests on SQLite and 376 on Postgres 16 · 92 frontend tests · TC1–TC5 against the live Supabase project (checks 6/6, 6/6, 7/7, 7/7, 8/8) — all passing at the time of this README (2026-10-25) |
 | **Runs on** | A sleeping free tier (Render) with no Redis, queue, gateway or separate worker — see [Scaling](#scaling) |
 
 **Contents:**
@@ -47,29 +47,40 @@ All screenshots are from the real, current frontend build running against a thro
 sign-in mocked at the network layer (so no real account, key or citizen data appears). The Grafana image is from the
 live monitoring stack. Rules, text and numbers on screen are what the app produces.
 
+### Landing and sign-in
+
+| Landing: a headline that rotates through Hinglish, Hindi, English and Telugu, with a live demo | Sign in: no account needed; verified options are visible and honest |
+|---|---|
+| ![Landing, desktop](docs/screenshots/01d-landing-desktop.png) | ![Sign in](docs/screenshots/18d-signin-desktop.png) |
+| One tap on the microphone starts a conversation. The demo card plays a Telugu / Hinglish exchange; below it the page explains how it works and races a seven-step portal against one sentence. Kiosk, case status, *Resume with Passport code* and *My Passports* sit under the microphone. | *Continue without account* is the main path. **Meri Pehchaan (DigiLocker)** and **phone OTP** show as "Coming soon" until they are switched on (`GET /api/config`); a disabled option never fires a request. At a kiosk, verified and phone sign-in are never offered. |
+
+| Landing on a phone | How it works | Seven steps, or one sentence |
+|---|---|---|
+| ![Landing, phone](docs/screenshots/01-landing.png) | ![How it works](docs/screenshots/01b-landing-how.png) | ![Portal race](docs/screenshots/01c-landing-portal.png) |
+
 ### Citizen (personal phone)
 
-| 1. Landing: language, phone or kiosk, case status | 2. Conversation: facts held for confirmation |
-|---|---|
-| ![Landing](docs/screenshots/01-landing.png) | ![Citizen conversation](docs/screenshots/02-citizen-conversation.png) |
-| Telugu / Hindi / English at one tap. *Resume* takes a Passport code + PIN. | Each fact shows its ID and the words heard. High-impact facts (age, state, income, area, household size) are read back and confirmed **one by one**; "confirm the rest" never covers them. |
+| 1. Conversation: facts held for confirmation |
+|---|
+| ![Citizen conversation](docs/screenshots/02-citizen-conversation.png) |
+| Each fact shows its ID and the words heard. High-impact facts (age, state, income, area, household size) are read back and confirmed **one by one**; "confirm the rest" never covers them. |
 
-| 3. Scheme Passport: potential / provisional matches | 3b. "Why?": the rule trace behind a result |
+| 2. Scheme Passport: potential / provisional matches | 2b. "Why?": the rule trace behind a result |
 |---|---|
 | ![Scheme Passport](docs/screenshots/03-scheme-passport.png) | ![Rule trace](docs/screenshots/03b-rule-trace.png) |
 | Results are *potential* or *provisional*, never approvals. Each card shows criteria passed and documents still to check. | Every criterion quotes the rule's source text, the fact IDs compared, the rule version and the bundle version. |
 
-| 4. Document Guide (with consented upload) | 5. Draft for review |
+| 3. Document Guide (with consented upload) | 4. Draft for review |
 |---|---|
 | ![Document Guide](docs/screenshots/04-document-guide.png) | ![Draft](docs/screenshots/05-draft.png) |
 | Marking a document is the citizen's own declaration; only a reviewer can mark it *verified*. Uploads are optional, consented, and never read by AI or OCR. | Each field is tagged confirmed / inferred / citizen-entered / missing. Nothing reaches a reviewer without the consent tick. |
 
-| 6. Form Helper: copy-ready fields | 7. Form Helper: application steps, official link, PDF |
+| 5. Form Helper: copy-ready fields | 6. Form Helper: application steps, official link, PDF |
 |---|---|
 | ![Form Helper fields](docs/screenshots/05b-form-helper.png) | ![Form Helper steps](docs/screenshots/05c-form-helper-steps.png) |
 | "Draft ready — submit at the office/portal". Missing fields say what to bring. Aadhaar and bank account numbers are never collected. | Numbered steps (machine-translated for hi/te and labelled so), the official link with a QR code, and a watermarked PDF. |
 
-| 8. Case status by code |
+| 7. Case status by code |
 |---|
 | ![Case status](docs/screenshots/10-case-status.png) |
 | A case code shows **status only**. Codes are ~40-bit random, stored hashed, expire after 72 h, and lookups are rate-limited. |
@@ -173,7 +184,7 @@ Solid lines are built and used; dotted lines are optional (they degrade graceful
 
 | Layer | Responsibility | Where |
 |---|---|---|
-| **Edge UI** | Four role-specific surfaces, three languages, voice with fallbacks, offline kiosk mode; Supabase is used for sign-in only | `frontend/src/` |
+| **Edge UI** | A landing page with a rotating Hinglish / Hindi / English / Telugu headline and live demo, then four role-specific surfaces, three languages, voice with fallbacks, offline kiosk mode; Supabase is used for sign-in only | `frontend/src/` |
 | **Auth** | Every request's JWT is verified against the project's JWKS; staff need an `aal2` (TOTP) token; kiosk sessions are bound to device + operator | `auth.py`, `common.py` |
 | **Conversation** | Deterministic en/hi/te extractor is the primary path; the LLM may *add candidates* that are validated, merged and always confirmed | `extraction.py`, `llm/`, `profile.py` |
 | **Rules engine** | Pure function of confirmed facts and a versioned rule; mirrored in TypeScript for offline | `rules_engine.py` ⇄ `offline/rulesEngine.ts` |
@@ -589,8 +600,8 @@ and name, date of birth and gender become facts with `source="digilocker"`, conf
 Aadhaar are dropped and no Aadhaar number is ever read or stored. Everything comes from the environment
 (`DIGILOCKER_ENABLED=false`, `DIGILOCKER_CLIENT_ID`, `DIGILOCKER_CLIENT_SECRET`, `DIGILOCKER_AUTH_URL`,
 `DIGILOCKER_TOKEN_URL`, `DIGILOCKER_JWKS_URL`, `DIGILOCKER_REDIRECT_URI` → the app's `/auth/digilocker/callback`,
-`DIGILOCKER_SCOPES`); no real endpoint is in the code. The button is hidden unless `DIGILOCKER_ENABLED=true` and every
-value is set. It is tested end to end against a local mock OIDC provider (`tests/test_auth_hardening.py`: code
+`DIGILOCKER_SCOPES`); no real endpoint is in the code. The option on the **Sign in** page shows "Coming soon" unless `DIGILOCKER_ENABLED=true` and every
+value is set; the verified details appear on the **Profile** page (`GET /auth/digilocker/me`), and *unlink* (`DELETE /auth/digilocker/link`) releases them for editing. It is tested end to end against a local mock OIDC provider (`tests/test_auth_hardening.py`: code
 exchange, PKCE, invalid / replayed state, expired code, bad signature, wrong nonce). **Not enabled in this build:**
 DigiLocker / Meri Pehchaan access requires partner onboarding — a registered Indian entity, an official domain, a
 digital signature, and approval by the onboarding committee.
@@ -640,6 +651,8 @@ read it, and `.env` is gitignored.
 | `KIOSK_IDLE_SECONDS` | `180` | kiosk idle timeout (a 30 s warning comes first) |
 | `KIOSK_MAX_SESSION_MINUTES` | `30` | absolute length of a kiosk citizen session |
 | `VITE_TURNSTILE_SITE_KEY` | unset | Cloudflare Turnstile site key (public). Unset: no CAPTCHA widget, startup warning |
+| `DIGILOCKER_STATUS`, `PHONE_OTP_STATUS` | `coming_soon` | `off` / `coming_soon` / `on`, read at runtime by the frontend from `GET /api/config`. `DIGILOCKER_STATUS` is reported `on` exactly when the DigiLocker adapter is enabled and fully configured (`DIGILOCKER_ENABLED` + all its variables); an `on` that cannot work is shown as `coming_soon`. Phone OTP routes answer `503 FEATURE_NOT_AVAILABLE` until `on` (and `501` if switched on without an integration) |
+| `TURNSTILE_SITE_KEY` | unset | Cloudflare Turnstile public site key, returned by `GET /api/config` |
 | `ANVAYA_STAFF_MFA_REQUIRED` | `true` | staff API calls need an `aal2` (TOTP) token; `false` only for a local demo |
 | `ANVAYA_SESSION_CREATE_LIMIT`, `ANVAYA_AUTH_EVENT_LIMIT` | `20`, `30` | per-IP requests per minute: session creation and Passport resume; browser auth-event reports |
 | `PHONE_OTP_ENABLED` | `false` | phone OTP sign-in (needs DLT registration and an SMS provider) |

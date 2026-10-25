@@ -498,6 +498,27 @@ def test_digilocker_full_flow_links_identity_and_stores_verified_facts(app, clie
     assert rows(app, "SELECT COUNT(*) FROM oidc_states WHERE auth_user_id=?", (uid,))[0][0] == 0  # single use
 
 
+def test_digilocker_profile_shows_verified_facts_and_unlink_releases_them(app, client, dl):
+    from anvaya.db import connect
+    db = connect(app.config)
+    db.execute("DELETE FROM linked_identities")  # the mock provider always answers with the same subject
+    db.commit()
+    db.close()
+    uid = str(uuid.uuid4())
+    h = citizen_headers(uid, anonymous=True)
+    assert client.get("/api/v1/auth/digilocker/me", headers=h).json == {"linked": False, "facts": {}}
+    sid = personal_session(client, h)
+    code, state = dl.authorize(dl_start(client, h, sid))
+    assert client.post("/api/v1/auth/digilocker/callback", json={"code": code, "state": state}, headers=h).status_code == 200
+    me = client.get("/api/v1/auth/digilocker/me", headers=h).json
+    assert me["linked"] is True and set(me["facts"]) == {"name", "dob", "gender"} and me["facts"]["dob"] == "1958-03-14"
+    assert client.get("/api/v1/auth/digilocker/me").status_code == 401  # needs a signed-in citizen
+    assert client.delete("/api/v1/auth/digilocker/link", headers=h).json == {"linked": False}
+    assert client.get("/api/v1/auth/digilocker/me", headers=h).json["linked"] is False
+    facts = {f["attribute"]: f for f in client.get(f"/api/v1/sessions/{sid}", headers=h).json["facts"]}
+    assert facts["date_of_birth"]["verified"] is False and facts["date_of_birth"]["source"] == "digilocker"
+
+
 def test_digilocker_rejects_invalid_or_replayed_state(client, dl):
     h = citizen_headers(anonymous=True)
     sid = personal_session(client, h)

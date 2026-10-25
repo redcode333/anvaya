@@ -179,6 +179,16 @@ def digilocker_callback():
     return digilocker.finish(claims, b.get("code") or "", b.get("state") or "")
 
 
+@bp.get("/auth/digilocker/me")
+def digilocker_me():
+    return digilocker.me(accounts.require_account(allow_anonymous=True))
+
+
+@bp.delete("/auth/digilocker/link")
+def digilocker_unlink():
+    return digilocker.unlink(accounts.require_account(allow_anonymous=True))
+
+
 # ---------------------------------------------------------------- citizen accounts
 
 @bp.get("/account")

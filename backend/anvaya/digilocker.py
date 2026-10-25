@@ -19,6 +19,7 @@ claims above are used. Tokens, codes and claims are never logged.
 """
 import base64
 import hashlib
+import json
 import logging
 import secrets
 from datetime import date, datetime, timedelta
@@ -210,6 +211,34 @@ def _link(claims: dict, session_id: str, idc: dict) -> dict:
     auth.record("digilocker_linked", claims["sub"], "citizen", {"facts": [s["attribute"] for s in stored]})
     db.commit()
     return {"linked": True, "provider": PROVIDER, "facts": stored}
+
+
+_ME_KEYS = {"applicant_name": "name", "date_of_birth": "dob", "gender": "gender"}
+
+
+def me(claims: dict) -> dict:
+    """Is this citizen linked to DigiLocker, and which verified facts did it give (name, date of birth, gender)?"""
+    db = get_db()
+    cid = citizen_id_for(claims["sub"])
+    if not db.execute("SELECT 1 FROM linked_identities WHERE provider=? AND citizen_id=?", (PROVIDER, cid)).fetchone():
+        return {"linked": False, "facts": {}}
+    rows = db.execute("SELECT f.attribute, f.value_json FROM facts f JOIN sessions s ON s.session_id = f.session_id"
+                      " WHERE s.citizen_id=? AND f.source='digilocker' AND f.superseded_by IS NULL", (cid,)).fetchall()
+    return {"linked": True, "facts": {_ME_KEYS[r["attribute"]]: json.loads(r["value_json"])
+                                      for r in rows if r["attribute"] in _ME_KEYS}}
+
+
+def unlink(claims: dict) -> dict:
+    """Remove the link. The facts stay but are no longer marked verified, so the citizen can change them."""
+    db = get_db()
+    cid = citizen_id_for(claims["sub"])
+    with db.transaction():
+        db.execute("DELETE FROM linked_identities WHERE provider=? AND citizen_id=?", (PROVIDER, cid))
+        db.execute("UPDATE facts SET verified=0 WHERE source='digilocker' AND session_id IN"
+                   " (SELECT session_id FROM sessions WHERE citizen_id=?)", (cid,))
+        audit("account.identity_unlinked", details={"provider": PROVIDER})
+        auth.record("digilocker_unlinked", claims["sub"], "citizen", {})
+    return {"linked": False}
 
 
 def describe(cfg) -> dict:

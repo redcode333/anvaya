@@ -2,9 +2,11 @@
 // Only same-origin GETs for the app's own files are cached. API answers, document links, job calls and metrics are never
 // cached or even touched here (the browser goes straight to the network), and any response marked no-store is not stored.
 // The offline rule bundle lives in localStorage.
-const CACHE = "anvaya-shell-v2";
+// Bump CACHE whenever shell assets change (v3: new Anvaya logo and landing) so returning users get them.
+const CACHE = "anvaya-shell-v3";
 const NEVER = ["/api/", "/internal/", "/metrics"];
-self.addEventListener("install", (e) => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", "/index.html"]))); });
+const SHELL = ["/", "/index.html", "/brand/favicon.svg", "/brand/anvaya-mark.svg", "/brand/icon-192.png"];
+self.addEventListener("install", (e) => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL))); });
 self.addEventListener("activate", (e) => e.waitUntil(
   caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())
 ));

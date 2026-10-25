@@ -169,7 +169,7 @@ AUTH_EVENTS = {
     "sign_in_success", "sign_in_failure", "otp_requested", "mfa_enrolled", "mfa_verified", "mfa_failed",
     # recorded by the server itself
     "mfa_required", "mfa_reset", "role_changed", "password_changed", "global_sign_out", "data_export",
-    "account_deleted", "kiosk_sign_out", "digilocker_linked", "digilocker_failed",
+    "account_deleted", "kiosk_sign_out", "digilocker_linked", "digilocker_unlinked", "digilocker_failed",
 }
 
 

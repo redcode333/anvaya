@@ -163,3 +163,9 @@ class Config:
     # 1 = `manage eval-extraction` also pushes the eval utterances as a Langfuse dataset and each run as an experiment.
     LANGFUSE_TRACE_EVAL = _flag("LANGFUSE_TRACE_EVAL", False)
     LANGFUSE_SPAN_EXPORTER = None  # tests only: a fake OpenTelemetry exporter in place of OTLP/HTTP
+
+    # Sign-in options still being integrated, read at runtime by GET /api/config: "off" | "coming_soon" | "on".
+    # Until "on", their routes answer 503 FEATURE_NOT_AVAILABLE (anvaya/features.py).
+    DIGILOCKER_STATUS = os.environ.get("DIGILOCKER_STATUS", "coming_soon")
+    PHONE_OTP_STATUS = os.environ.get("PHONE_OTP_STATUS", "coming_soon")
+    TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY", "")  # public site key only

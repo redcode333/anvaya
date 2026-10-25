@@ -16,3 +16,6 @@ archive (1).zip
 
 # Submission notes are kept locally, not in the repository.
 SUBMISSION.md
+
+# landing browser-check output
+frontend/e2e/screenshots/
