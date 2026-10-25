@@ -166,7 +166,7 @@ ts("DB queries per request (p95, by route)",
 state["y"] += 8
 
 row("Official scenarios")
-bars("TC1–TC4 runs (since server start)", f"sum by (tc, result) (anvaya_test_runs_total)", "{{tc}} {{result}}", 0,
+bars("TC1–TC5 runs (since server start)", f"sum by (tc, result) (anvaya_test_runs_total)", "{{tc}} {{result}}", 0,
      w=24, h=6)
 
 dash = {"uid": "anvaya-overview", "title": "Anvaya AI — Operations", "tags": ["anvaya"], "timezone": "browser",

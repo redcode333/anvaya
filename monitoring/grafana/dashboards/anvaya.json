@@ -1909,7 +1909,7 @@
     },
     {
       "type": "bargauge",
-      "title": "TC1–TC4 runs (since server start)",
+      "title": "TC1–TC5 runs (since server start)",
       "description": "",
       "targets": [
         {
