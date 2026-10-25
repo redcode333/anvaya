@@ -83,6 +83,9 @@ p { margin: 0 0 .75rem; }
 }
 /* Content sits in the centre of the page. */
 .page-enter > .card, .page-enter > .signin, .page-enter > .stack, .page-enter .card[style*="max-width"] { margin-left: auto; margin-right: auto; }
+/* Landing page: just the logo and name, no strip, so nothing competes with the headline. */
+.topbar.is-landing { position: static; background: #FAF7F2; border-bottom: 0; }
+.topbar.is-landing .topbar-inner { grid-template-columns: 1fr; padding-top: .9rem; padding-bottom: .2rem; max-width: 1200px; }
 /* Page change: the new page eases in. */
 .page-enter { animation: page-enter .38s cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes page-enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }

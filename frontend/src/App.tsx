@@ -65,28 +65,37 @@ function LangSwitch() {
 }
 
 export default function App() {
-  const { mode, lang } = useApp();
+  const { mode, lang, staff } = useApp();
   const loc = useLocation();
+  const landing = loc.pathname === "/";
+  const role = staff?.role;
+  const reviewer = role === "reviewer" || role === "admin";
   return (
     <>
-      <header className="topbar">
+      <header className={`topbar${landing ? " is-landing" : ""}`}>
         <div className="topbar-inner">
           <NavLink to="/" className="brand">
             <img className="brand-mark light" src="/brand/anvaya-mark.svg" alt="" width="28" height="28" />
             <img className="brand-mark dark" src="/brand/anvaya-mark-white.svg" alt="" width="28" height="28" />
             Anvaya AI
           </NavLink>
-          <nav className="nav" aria-label="Main">
-            <NavLink to={mode === "kiosk" ? "/kiosk" : "/citizen"}>Citizen</NavLink>
-            {mode !== "kiosk" && <NavLink to="/citizen/passports">{t("myPassports", lang)}</NavLink>}
-            <NavLink to="/case">Case status</NavLink>
-            <NavLink to="/reviewer">Reviewer</NavLink>
-            <NavLink to="/admin/schemes">Catalogue</NavLink>
-            <NavLink to="/admin/security">Security</NavLink>
-            <NavLink to="/test-runs">TC1–TC5</NavLink>
-            <NavLink to="/signin">Sign in</NavLink>
-          </nav>
-          <LangSwitch />
+          {/* The landing page shows only the name and logo; the rest of the site gets the public tabs, and staff tabs
+              appear only after a staff sign-in. */}
+          {!landing && (
+            <>
+              <nav className="nav" aria-label="Main">
+                <NavLink to={mode === "kiosk" ? "/kiosk" : "/citizen"}>Citizen</NavLink>
+                {mode !== "kiosk" && <NavLink to="/citizen/passports">{t("myPassports", lang)}</NavLink>}
+                <NavLink to="/case">Case status</NavLink>
+                {reviewer && <NavLink to="/reviewer">Reviewer</NavLink>}
+                {reviewer && <NavLink to="/admin/schemes">Catalogue</NavLink>}
+                {role === "admin" && <NavLink to="/admin/security">Security</NavLink>}
+                {role === "admin" && <NavLink to="/test-runs">TC1–TC5</NavLink>}
+                <NavLink to="/signin">Sign in</NavLink>
+              </nav>
+              <LangSwitch />
+            </>
+          )}
         </div>
         <StatusBar />
       </header>
