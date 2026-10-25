@@ -81,6 +81,9 @@ def create_app(overrides: dict | None = None) -> Flask:
                                   "request_id": g.get("request_id")}}), 500
 
     app.register_blueprint(bp)
+    from .features import config_bp, guard_bp
+    app.register_blueprint(config_bp)
+    app.register_blueprint(guard_bp)
 
     @app.get("/metrics")
     def prometheus_metrics():

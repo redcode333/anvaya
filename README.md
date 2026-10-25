@@ -225,6 +225,8 @@ read it, and `.env` is gitignored.
 | `ANVAYA_ADMIN_PASSWORD`, `ANVAYA_REVIEWER_PASSWORD`, `ANVAYA_OPERATOR_PASSWORD` | demo passwords, with a warning | staff passwords, re-applied on every start |
 | `ANVAYA_METRICS_TOKEN` | unset | when set, `/metrics` needs `Authorization: Bearer <token>` |
 | `ANVAYA_DEMO_TEST_RUNS` | `off` | `on` lets anyone run/reset TC1–TC4 (otherwise admin only) |
+| `DIGILOCKER_STATUS`, `PHONE_OTP_STATUS` | `coming_soon` | `off` / `coming_soon` / `on`, read at runtime via `GET /api/config`. Until `on`, the routes answer `503 FEATURE_NOT_AVAILABLE` |
+| `TURNSTILE_SITE_KEY` | unset | Cloudflare Turnstile public site key, returned by `GET /api/config` |
 | `ANVAYA_SESSION_TTL_HOURS`, `ANVAYA_CASE_CODE_TTL_HOURS`, `ANVAYA_AUTH_TOKEN_TTL_HOURS` | `12`, `72`, `8` | session, case-code and staff-token lifetimes |
 | `ANVAYA_CODE_LOOKUP_LIMIT` | `10` | case-code lookups per minute |
 | `ANVAYA_RULE_BUNDLE_VERSION`, `ANVAYA_DEFAULT_FRESHNESS_DAYS` | `rules-2026.10.1`, `180` | rule bundle label; source-freshness fallback |

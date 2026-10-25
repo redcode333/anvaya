@@ -72,7 +72,119 @@ const S = {
   missingInfo: { en: "Missing information", hi: "छूटी जानकारी", te: "లేని సమాచారం" },
   changed: { en: "What changed after your correction", hi: "सुधार के बाद क्या बदला", te: "సవరణ తర్వాత ఏమి మారింది" },
   addDetail: { en: "Add a detail", hi: "जानकारी जोड़ें", te: "వివరం జోడించండి" },
+
+  // ---- landing
+  heroEyebrow: { en: "Government schemes, in your language", hi: "सरकारी योजनाएँ, आपकी भाषा में", te: "ప్రభుత్వ పథకాలు, మీ భాషలో" },
+  heroSub: {
+    en: "Speak in your language. Anvaya finds the schemes you may qualify for, the documents you need, and where to apply.",
+    hi: "अपनी भाषा में बोलिए। Anvaya बताएगा कि आप किन योजनाओं के लिए पात्र हो सकते हैं, कौन-से काग़ज़ चाहिए, और कहाँ आवेदन करना है।",
+    te: "మీ భాషలో మాట్లాడండి. మీకు అర్హత ఉండగల పథకాలు, కావలసిన పత్రాలు, ఎక్కడ దరఖాస్తు చేయాలో Anvaya చెబుతుంది.",
+  },
+  typeInstead: { en: "Type instead", hi: "लिखकर पूछिए", te: "టైప్ చేసి అడగండి" },
+  heroTrust: { en: "No login · No forms · Hindi, English, Telugu", hi: "लॉगिन नहीं · फ़ॉर्म नहीं · हिंदी, English, తెలుగు", te: "లాగిన్ లేదు · ఫారాలు లేవు · हिंदी, English, తెలుగు" },
+  headlineLanguages: { en: "Headline language", hi: "शीर्षक की भाषा", te: "శీర్షిక భాష" },
+  pauseRotation: { en: "Pause headline rotation", hi: "शीर्षक बदलना रोकें", te: "శీర్షిక మార్పు ఆపండి" },
+  playRotation: { en: "Play headline rotation", hi: "शीर्षक बदलना चलाएँ", te: "శీర్షిక మార్పు ప్రారంభించండి" },
+  ctaA: { en: "Say it", hi: "एक बार", te: "ఒక్కసారి" },
+  ctaEm: { en: "once,", hi: "बोलकर", te: "మాట్లాడి" },
+  ctaB: { en: "out loud.", hi: "देखिए।", te: "చూడండి." },
+  ctaSub: { en: "Any of our languages. No login. One tap.", hi: "हमारी कोई भी भाषा। कोई लॉगिन नहीं। बस एक टैप।", te: "మా ఏ భాషైనా. లాగిన్ అవసరం లేదు. ఒక్క ట్యాప్." },
+
+  // ---- sign-in (DigiLocker / phone OTP are switched by GET /api/config)
+  signIn: { en: "Sign in", hi: "साइन इन", te: "సైన్ ఇన్" },
+  signInTitle: { en: "Sign in to Anvaya", hi: "Anvaya में साइन इन करें", te: "Anvaya లో సైన్ ఇన్ చేయండి" },
+  signInSub: {
+    en: "You don’t need an account to check schemes.",
+    hi: "योजनाएँ देखने के लिए खाते की ज़रूरत नहीं।",
+    te: "పథకాలు చూడటానికి ఖాతా అవసరం లేదు.",
+  },
+  continueAnon: { en: "Continue without account", hi: "बिना खाते के आगे बढ़ें", te: "ఖాతా లేకుండా కొనసాగండి" },
+  orSignIn: { en: "or sign in", hi: "या साइन इन करें", te: "లేదా సైన్ ఇన్ చేయండి" },
+  dlButton: { en: "Sign in with Meri Pehchaan (DigiLocker)", hi: "मेरी पहचान (DigiLocker) से साइन इन करें", te: "మేరీ పెహచాన్ (DigiLocker) తో సైన్ ఇన్ చేయండి" },
+  phoneButton: { en: "Sign in with phone OTP", hi: "फ़ोन OTP से साइन इन करें", te: "ఫోన్ OTP తో సైన్ ఇన్ చేయండి" },
+  comingSoon: { en: "Coming soon", hi: "जल्द आ रहा है", te: "త్వరలో" },
+  dlSoonSub: { en: "Verified sign-in with DigiLocker is being integrated.", hi: "DigiLocker से सत्यापित साइन-इन जोड़ा जा रहा है।", te: "DigiLocker తో ధృవీకరించిన సైన్ ఇన్ అనుసంధానం జరుగుతోంది." },
+  phoneSoonSub: { en: "Phone sign-in is being integrated.", hi: "फ़ोन से साइन-इन जोड़ा जा रहा है।", te: "ఫోన్ సైన్ ఇన్ అనుసంధానం జరుగుతోంది." },
+  dlOnSub: {
+    en: "Name, date of birth and gender come verified from DigiLocker. We never ask for your Aadhaar number.",
+    hi: "नाम, जन्मतिथि और लिंग DigiLocker से सत्यापित आते हैं। हम आपका आधार नंबर कभी नहीं माँगते।",
+    te: "పేరు, పుట్టిన తేదీ, లింగం DigiLocker నుండి ధృవీకరించబడి వస్తాయి. మేము మీ ఆధార్ నంబర్ ఎప్పుడూ అడగము.",
+  },
+  phoneOnSub: { en: "We’ll text you a 6-digit code.", hi: "हम आपको 6 अंकों का कोड भेजेंगे।", te: "మేము మీకు 6 అంకెల కోడ్ పంపుతాము." },
+  phoneLabel: { en: "Mobile number", hi: "मोबाइल नंबर", te: "మొబైల్ నంబర్" },
+  sendCode: { en: "Send code", hi: "कोड भेजें", te: "కోడ్ పంపండి" },
+  kioskVerifiedOff: {
+    en: "Shared device: DigiLocker and phone sign-in are turned off here.",
+    hi: "साझा डिवाइस: यहाँ DigiLocker और फ़ोन साइन-इन बंद हैं।",
+    te: "భాగస్వామ్య పరికరం: ఇక్కడ DigiLocker, ఫోన్ సైన్ ఇన్ ఆఫ్‌లో ఉన్నాయి.",
+  },
+  featureUnavailable: { en: "This sign-in option isn’t available yet.", hi: "यह साइन-इन विकल्प अभी उपलब्ध नहीं है।", te: "ఈ సైన్ ఇన్ ఎంపిక ఇంకా అందుబాటులో లేదు." },
+
+  // ---- /auth/digilocker/callback
+  cbLoading: { en: "Verifying with DigiLocker…", hi: "DigiLocker से सत्यापित कर रहे हैं…", te: "DigiLocker తో ధృవీకరిస్తున్నాము…" },
+  cbLoadingSub: { en: "This takes a few seconds. Please don’t close this page.", hi: "इसमें कुछ सेकंड लगते हैं। कृपया यह पेज बंद न करें।", te: "దీనికి కొన్ని సెకన్లు పడుతుంది. దయచేసి ఈ పేజీని మూసివేయకండి." },
+  cbCancelled: { en: "You cancelled DigiLocker sign-in", hi: "आपने DigiLocker साइन-इन रद्द किया", te: "మీరు DigiLocker సైన్ ఇన్ రద్దు చేశారు" },
+  cbCancelledSub: { en: "Nothing was shared with Anvaya.", hi: "Anvaya के साथ कुछ भी साझा नहीं हुआ।", te: "Anvaya తో ఏదీ పంచుకోబడలేదు." },
+  cbInvalid: { en: "This sign-in link has expired", hi: "यह साइन-इन लिंक समाप्त हो गया है", te: "ఈ సైన్ ఇన్ లింక్ గడువు ముగిసింది" },
+  cbInvalidSub: {
+    en: "A link works once and only for a few minutes. Start again to get a fresh one.",
+    hi: "लिंक एक ही बार और कुछ ही मिनट चलता है। नया लिंक पाने के लिए फिर से शुरू करें।",
+    te: "లింక్ ఒక్కసారి, కొన్ని నిమిషాలు మాత్రమే పనిచేస్తుంది. కొత్త లింక్ కోసం మళ్లీ ప్రారంభించండి.",
+  },
+  cbConflict: { en: "This DigiLocker is linked to another account", hi: "यह DigiLocker किसी दूसरे खाते से जुड़ा है", te: "ఈ DigiLocker మరో ఖాతాతో లింక్ అయి ఉంది" },
+  cbConflictSub: {
+    en: "Sign in to that account instead, or unlink DigiLocker there first.",
+    hi: "उस खाते से साइन इन करें, या पहले वहाँ से DigiLocker हटाएँ।",
+    te: "ఆ ఖాతాతో సైన్ ఇన్ చేయండి, లేదా ముందు అక్కడ DigiLocker అన్‌లింక్ చేయండి.",
+  },
+  cbUnavailable: { en: "DigiLocker isn’t responding right now", hi: "DigiLocker अभी जवाब नहीं दे रहा", te: "DigiLocker ప్రస్తుతం స్పందించడం లేదు" },
+  cbUnavailableSub: {
+    en: "Try again in a few minutes, or continue another way.",
+    hi: "कुछ मिनट बाद फिर कोशिश करें, या दूसरे तरीके से आगे बढ़ें।",
+    te: "కొన్ని నిమిషాల తర్వాత మళ్లీ ప్రయత్నించండి, లేదా వేరే విధంగా కొనసాగండి.",
+  },
+  tryAgain: { en: "Try again", hi: "फिर कोशिश करें", te: "మళ్లీ ప్రయత్నించండి" },
+  anotherWay: { en: "Continue another way", hi: "दूसरे तरीके से आगे बढ़ें", te: "వేరే విధంగా కొనసాగండి" },
+
+  // ---- profile
+  profileTitle: { en: "Your profile", hi: "आपकी प्रोफ़ाइल", te: "మీ ప్రొఫైల్" },
+  identity: { en: "Identity", hi: "पहचान", te: "గుర్తింపు" },
+  verifiedChip: { en: "Verified via DigiLocker", hi: "DigiLocker से सत्यापित", te: "DigiLocker ద్వారా ధృవీకరించబడింది" },
+  lockedNote: { en: "To change these, unlink DigiLocker first.", hi: "इन्हें बदलने के लिए पहले DigiLocker हटाएँ।", te: "వీటిని మార్చడానికి ముందుగా DigiLocker అన్‌లింక్ చేయండి." },
+  linkDl: { en: "Link DigiLocker", hi: "DigiLocker जोड़ें", te: "DigiLocker లింక్ చేయండి" },
+  linkDlSub: { en: "Adds a verified tag to your name, date of birth and gender.", hi: "आपके नाम, जन्मतिथि और लिंग पर सत्यापित टैग लग जाएगा।", te: "మీ పేరు, పుట్టిన తేదీ, లింగంపై ధృవీకరించిన ట్యాగ్ వస్తుంది." },
+  unlinkDl: { en: "Unlink DigiLocker", hi: "DigiLocker हटाएँ", te: "DigiLocker అన్‌లింక్ చేయండి" },
+  unlinkTitle: { en: "Unlink DigiLocker?", hi: "DigiLocker हटाएँ?", te: "DigiLocker అన్‌లింక్ చేయాలా?" },
+  unlinkBody: {
+    en: "Your name, date of birth and gender will lose the verified tag and become editable. You can link again later.",
+    hi: "आपके नाम, जन्मतिथि और लिंग से सत्यापित टैग हट जाएगा और इन्हें बदला जा सकेगा। आप बाद में फिर जोड़ सकते हैं।",
+    te: "మీ పేరు, పుట్టిన తేదీ, లింగంపై ధృవీకరించిన ట్యాగ్ తొలగిపోతుంది, వాటిని మార్చవచ్చు. తర్వాత మళ్లీ లింక్ చేయవచ్చు.",
+  },
+  unlinkConfirm: { en: "Unlink", hi: "हटाएँ", te: "అన్‌లింక్" },
+  dobLabel: { en: "Date of birth", hi: "जन्मतिथि", te: "పుట్టిన తేదీ" },
+  nameLabel: { en: "Name", hi: "नाम", te: "పేరు" },
+  noVerifiedYet: { en: "No verified details yet.", hi: "अभी कोई सत्यापित जानकारी नहीं।", te: "ఇంకా ధృవీకరించిన వివరాలు లేవు." },
 } as const;
+
+// ---- Rotating hero headline. One entry per language: add a line here and it joins the rotation.
+// `uiLang` is the site language a click switches to (Hinglish has no UI of its own, so it uses Hindi).
+export type HeroLine = {
+  id: string; lang: string; label: string; uiLang: Lang; script: "latin" | "indic"; mic: string;
+  parts: { t: string; em?: boolean }[];
+};
+export const HERO_LINES: HeroLine[] = [
+  { id: "hinglish", lang: "hi-Latn", label: "Hinglish", uiLang: "hi", script: "latin", mic: "Tap karke boliye",
+    parts: [{ t: "Bolo, aur " }, { t: "jaano", em: true }, { t: " kaunsi yojana aapki hai." }] },
+  { id: "hi", lang: "hi", label: "हिंदी", uiLang: "hi", script: "indic", mic: "दबाइए और बोलिए",
+    parts: [{ t: "बोलिए, और " }, { t: "जानिए", em: true }, { t: " कौन-सी योजना आपकी है।" }] },
+  { id: "en", lang: "en", label: "English", uiLang: "en", script: "latin", mic: "Tap and speak",
+    parts: [{ t: "Speak, and " }, { t: "find", em: true }, { t: " the schemes that are yours." }] },
+  { id: "te", lang: "te", label: "తెలుగు", uiLang: "te", script: "indic", mic: "నొక్కి మాట్లాడండి",
+    parts: [{ t: "మాట్లాడండి, మీకు ఏ పథకాలు వర్తిస్తాయో " }, { t: "తెలుసుకోండి.", em: true }] },
+];
+export const heroText = (l: HeroLine) => l.parts.map((p) => p.t).join("");
+/** Line shown (and used for the static <h1>) for a site language. */
+export const heroIndexForLang = (lang: Lang) => Math.max(0, HERO_LINES.findIndex((l) => l.id === lang));
 
 export type Key = keyof typeof S;
 export const t = (k: Key, lang: Lang) => S[k][lang] ?? S[k].en;
