@@ -1,9 +1,7 @@
 """Database-backed rate limits, scheduled jobs (/internal/jobs/run, job_runs, locks) and cache headers."""
-import time
-
 import pytest
 
-from anvaya import create_app, jobs
+from anvaya import create_app, jobs, ratelimit
 from anvaya.db import connect
 from conftest import db_config, staff
 
@@ -124,8 +122,9 @@ def test_expired_counters_are_deleted_by_retention(app):
     db = connect(app.config)
     try:
         db.execute("INSERT INTO rate_limits(bucket, window_start, hits, expires_at) VALUES ('x:old', 1, 3, 60)")
+        now = ratelimit.now_s()
         db.execute("INSERT INTO rate_limits(bucket, window_start, hits, expires_at) VALUES ('x:new', ?, 3, ?)",
-                   (int(time.time()), int(time.time()) + 600))
+                   (now, now + 600))
         db.commit()
     finally:
         db.close()

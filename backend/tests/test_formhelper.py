@@ -170,7 +170,9 @@ def test_no_aadhaar_or_bank_numbers_in_the_pdf_or_the_view(client):
     assert not re.search(r"\d{4}\s?\d{4}\s?\d{4}|\d{9,}", name_field["value"]) and "Lakshmi" in name_field["value"]
     for lang in ("en", "hi", "te"):
         text = pdf_text(client.get(f"/api/v1/drafts/{d['draft_id']}/pdf?language={lang}", headers=owner(sid)).data)
-        digits = re.sub(r"[\s-]", "", text)
+        # System ids are random hex (a draft id such as DRF_500751682826 can contain a run of 9+ digits by chance) and are
+        # not citizen numbers: drop them before looking for long digit runs.
+        digits = re.sub(r"[\s-]", "", re.sub(r"(?:DRF|SES|CASE|CIT|F)[-_][0-9A-Za-z-]+", "", text))
         assert not re.search(r"[0-9]{9,}", digits)
         assert "123456789012" not in digits and "000123456789" not in digits and "1234 5678 9012" not in text
     office = {o["key"] for o in view["office_only"]}

@@ -13,6 +13,12 @@ from .common import ApiError, sha256
 from .db import get_db
 
 
+def now_s() -> int:
+    """Seconds since the epoch; one place to read the clock, so tests can pin it (a window boundary mid-test would reset a
+    counter and make the test flaky)."""
+    return int(time.time())
+
+
 def client_key() -> str:
     """The caller's IP address, peppered and hashed (never stored raw)."""
     from .accounts import pepper
@@ -20,7 +26,7 @@ def client_key() -> str:
 
 
 def _window(window_s: int) -> tuple[int, int]:
-    t = int(time.time())
+    t = now_s()
     return t - t % window_s, t
 
 
@@ -61,4 +67,4 @@ def limit_per_minute(bucket: str, limit: int, message: str = "Too many requests.
 
 
 def purge_expired(db) -> int:
-    return db.execute("DELETE FROM rate_limits WHERE expires_at < ?", (int(time.time()),)).rowcount
+    return db.execute("DELETE FROM rate_limits WHERE expires_at < ?", (now_s(),)).rowcount

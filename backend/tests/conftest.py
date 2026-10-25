@@ -126,6 +126,17 @@ def client(app):
     return app.test_client()
 
 
+@pytest.fixture(autouse=True)
+def _pinned_rate_limit_clock(monkeypatch):
+    """Rate-limit windows are 60 s and 15 min. A test that sends a few requests must not see a window roll over halfway
+    through (on a slow CI machine that happens), so the limiter's clock is pinned to the middle of a 15-minute window."""
+    import time as _time
+
+    from anvaya import ratelimit
+    base = int(_time.time()) // 900 * 900 + 450
+    monkeypatch.setattr(ratelimit, "now_s", lambda: base)
+
+
 @pytest.fixture()
 def config(app):
     """Change app.config for one test and put it back afterwards."""
