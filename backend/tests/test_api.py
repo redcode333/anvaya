@@ -381,3 +381,37 @@ def test_no_user_facing_string_promises_eligibility_or_approval():
     texts = [s for table in tables for entry in table.values() for s in entry.values()]
     texts += [s for entry in i18n.DOCUMENTS.values() for pair in entry.values() for s in pair]
     assert texts and [s for s in texts if promise.search(s)] == []
+
+
+# ---------------------------------------------------------------- sound-alike numbers heard by speech recognition
+
+def voice_turn(client, utterance, lang="hi"):
+    sid = client.post("/api/v1/sessions", json={"mode": "personal", "language": lang}).json["session_id"]
+    r = client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": utterance, "channel": "voice", "language": lang})
+    assert r.status_code == 200, r.json
+    return sid, r.json
+
+
+def test_voice_heard_sat_is_offered_as_seven_or_sixty(client):
+    sid, r = voice_turn(client, "मेरी उम्र सात साल है और मैं बिहार में रहता हूँ")
+    age = next(f for f in r["extracted"] if f["attribute"] == "age")
+    assert age["value"] == 7 and age["alternatives"] == [7, 60] and age["disputed"] and not age["confirmed"]
+    # confirming without choosing is refused: the citizen has to pick one of the two
+    assert client.patch(f"/api/v1/sessions/{sid}/profile/facts/{age['fact_id']}", json={"confirmed": True}).status_code == 409
+    fixed = client.patch(f"/api/v1/sessions/{sid}/profile/facts/{age['fact_id']}", json={"value": 60})
+    assert fixed.status_code == 200 and fixed.json["fact"]["value"] == 60 and fixed.json["fact"]["confirmed"]
+
+
+def test_voice_heard_sixty_also_offers_its_sound_alikes_first(client):
+    _, r = voice_turn(client, "मेरी उम्र साठ साल है", "hi")
+    age = next(f for f in r["extracted"] if f["attribute"] == "age")
+    assert age["alternatives"][0] == 60 and set(age["alternatives"]) == {60, 70, 7}
+
+
+def test_typed_numbers_and_digits_are_not_turned_into_choices(client):
+    sid = client.post("/api/v1/sessions", json={"mode": "personal", "language": "hi"}).json["session_id"]
+    typed = client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": "मेरी उम्र सात साल है"}).json
+    age = next(f for f in typed["extracted"] if f["attribute"] == "age")
+    assert age["confusable"] and not age["alternatives"]  # still confirmed one by one, but no extra choices for typing
+    _, spoken_digits = voice_turn(client, "मेरी उम्र 60 साल है")
+    assert not next(f for f in spoken_digits["extracted"] if f["attribute"] == "age")["alternatives"]

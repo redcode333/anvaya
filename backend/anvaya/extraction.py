@@ -415,6 +415,24 @@ def _is_monthly(clause: str, at: int) -> bool:
     return month is not None and (year is None or month <= year)
 
 
+# Attributes where a single spoken number word is the whole value (an income like "साठ हज़ार" carries a unit, so its
+# sound-alike would have a different scale and is not offered).
+SOUND_ALIKE_ATTRS = {"age", "household_size"}
+
+
+def sound_alike_values(fact: dict) -> list[int] | None:
+    """[heard value, then the values of the words it can be mistaken for] for a confusable spoken number such as "सात"
+    (7), which speech recognition often returns for "साठ" (60). None when there is nothing to offer."""
+    if fact.get("attribute") not in SOUND_ALIKE_ATTRS or not fact.get("confusable")             or len((fact.get("heard_as") or "").split()) != 1 or not isinstance(fact.get("value"), int):
+        return None
+    values = [fact["value"]]
+    for word in fact.get("confusable_with") or []:
+        for r in numerize(word)[1]:
+            if r["spoken"] and r["value"] not in values:
+                values.append(r["value"])
+    return values if len(values) > 1 else None
+
+
 def _heard(fact: dict, digits: str, rewrites: list[dict]) -> dict:
     """Attach the spoken words behind a number; confusable number words lower confidence and need confirmation."""
     rw = next((r for r in rewrites if r["digits"] == digits.replace(",", "") and r["spoken"]), None)

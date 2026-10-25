@@ -462,6 +462,14 @@ def _traced_llm_turn(tr, utterance: str, det_facts: list[dict], other_people: li
     return candidates, {**summary, "merge": merged["outcomes"], "disputed": merged["disputed"]}
 
 
+def _valid(attribute: str, value) -> bool:
+    try:
+        validate_value(attribute, value)
+        return True
+    except ApiError:
+        return False
+
+
 def handle_turn(session_id: str, utterance: str, channel: str = "text", language: str | None = None,
                 needed: set[str] | None = None) -> dict:
     session, facts, _ = load(session_id)
@@ -482,12 +490,19 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
         # confirmation; voice-derived and LLM-proposed facts all do.
         auto_confirm = channel == "text" and not cand.get("high_impact") and not cand.get("inferred") \
             and not cand.get("confusable") and not cand.get("hold") and cand.get("source") != "llm"
+        alternatives = cand.get("alternatives")
+        if channel == "voice" and not alternatives:
+            # Speech recognition confuses sound-alike numbers (साठ 60 / सात 7): offer them as one-tap choices.
+            alternatives = [v for v in (extraction.sound_alike_values(cand) or [])
+                            if _valid(cand["attribute"], v)] or None
+            if alternatives and len(alternatives) < 2:
+                alternatives = None
         try:
             res = upsert_fact(session_id, cand["attribute"], cand["value"],
                               source=cand.get("source") or channel, raw_text=cand.get("raw_text"),
                               confidence=cand.get("confidence", 0.9) * (0.85 if channel == "voice" else 1.0),
                               inferred=cand.get("inferred", False), note=cand.get("note"), confirmed=auto_confirm,
-                              confusable=bool(cand.get("confusable")), alternatives=cand.get("alternatives"),
+                              confusable=bool(cand.get("confusable")), alternatives=alternatives,
                               facts=facts)
         except ApiError:
             continue

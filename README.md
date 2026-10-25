@@ -17,7 +17,7 @@ working offline.
 | **Catalogue** | 3,534 schemes in 37 jurisdictions (searchable) · **17 curated, quoted rules** that are screened automatically |
 | **Surfaces** | Citizen (phone) · **Kiosk** (operator-assisted, offline-capable) · Reviewer · Admin (catalogue, security, background jobs) · Official scenarios TC1–TC5 |
 | **Stack** | React + Vite PWA · Flask API (gunicorn) · Supabase (Postgres with Row Level Security, Auth with TOTP for staff, private Storage) · VerbX speech · optional Groq → Gemini LLM · Langfuse tracing · Prometheus + Grafana · GitHub Actions |
-| **Verified by** | 382 backend tests on SQLite and 383 on Postgres 16 · 93 frontend tests · TC1–TC5 against the live Supabase project (checks 6/6, 6/6, 7/7, 7/7, 8/8) — re-run on 2026-10-25 against the merged code, all passing |
+| **Verified by** | 385 backend tests on SQLite and 386 on Postgres 16 · 93 frontend tests · TC1–TC5 against the live Supabase project (checks 6/6, 6/6, 7/7, 7/7, 8/8) — re-run on 2026-10-25 against the merged code, all passing |
 | **Runs on** | A sleeping free tier (Render) with no Redis, queue, gateway or separate worker — see [Scaling](#scaling) |
 
 **Contents:**
@@ -1287,6 +1287,11 @@ Voice is the interface, so its limits are the product's limits.
   high-impact facts (age, income, state, area, household size) are read back in digits, confirmed one by one, and
   never bulk-confirmed. Confusable number words (साठ/सत्तर, sixteen/sixty) are flagged. Speech-recognition
   confidence is not used to decide anything.
+  **Sound-alike numbers heard by voice become one-tap choices.** When a spoken number word is one speech recognition
+  confuses (साठ 60 / सात 7 / सत्तर 70 / सत्रह 17, sixty / sixteen, అరవై / డెబ్బై) and it is an age or household size, the
+  screen asks "Age: 7 years or 60 years? Please choose the right one." with a button for each value (the heard value first)
+  instead of a bare "Is 7 right?". Confirming without choosing is refused. Typed numbers and digits are unchanged. VerbX's
+  `hints` option (a list of words) is accepted but did not change what it heard in a live test, so it is not used.
 * **Noisy rooms and several speakers.** A busy office, a fan or a family talking at once degrade recognition, and the
   app does not separate speakers: whatever is heard is attributed to the applicant until the citizen corrects it.
 * **Code-switching and dialect.** Telugu–English or Hindi–English mixes and strong regional pronunciations are the
