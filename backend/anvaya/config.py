@@ -36,7 +36,15 @@ STAFF_ACCOUNTS = {
 
 
 class Config:
+    # DATABASE_URL set → PostgreSQL (e.g. Supabase through its Session pooler); unset → the SQLite file DB_PATH.
+    # The URL holds a password: it is never logged or returned (/ready shows only "sqlite" / "postgres").
+    DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
     DB_PATH = os.environ.get("ANVAYA_DB", str(BACKEND_DIR / "instance" / "anvaya.db"))
+    DB_SCHEMA = ""  # Postgres schema; empty = the connection's default (public). Tests use one schema per app.
+    DB_POOL_MAX = _num("ANVAYA_DB_POOL_MAX", 5, int)
+    # In-memory copies of read-mostly data (rules, catalogue facets, TTS index) re-check their version row at most
+    # this often, so most requests read them with no database round trip.
+    DB_CACHE_CHECK_S = _num("ANVAYA_DB_CACHE_CHECK_S", 5.0)
     DATASET_CSV = os.environ.get(
         "ANVAYA_DATASET",
         str(PROJECT_DIR / "data" / "raw" / "structured_govt_schemes_converted.csv"),

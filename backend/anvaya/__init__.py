@@ -9,7 +9,7 @@ from flask import Flask, Response, g, jsonify, request, send_from_directory
 
 from . import metrics
 from .config import PROJECT_DIR, Config
-from .db import close_db, connect, init_schema
+from .db import close_db, connect
 
 
 def create_app(overrides: dict | None = None) -> Flask:
@@ -24,14 +24,15 @@ def create_app(overrides: dict | None = None) -> Flask:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     log = logging.getLogger("anvaya.http")
 
-    from . import startup
+    from . import migrations, startup
     from .ingest import seed_users
-    conn = connect(app.config["DB_PATH"])
+    db = connect(app.config)
     try:
-        init_schema(conn)
-        demo_users = seed_users(conn)
+        applied = migrations.migrate(db)
+        demo_users = seed_users(db)
     finally:
-        conn.close()
+        db.close()
+    log.info("database: %s%s", db.dialect, f" (applied migrations {applied})" if applied else "")
     app.extensions["anvaya.startup"] = startup.check(app.config, demo_users)
     if app.config["LANGFUSE_PUBLIC_KEY"] and app.config["LANGFUSE_SECRET_KEY"] and app.config["LANGFUSE_BASE_URL"]:
         from .llm import tracing
@@ -55,8 +56,13 @@ def create_app(overrides: dict | None = None) -> Flask:
             route = request.url_rule.rule if request.url_rule else "unmatched"
             metrics.HTTP_REQUESTS.labels(request.method, route, str(resp.status_code)).inc()
             metrics.HTTP_LATENCY.labels(request.method, route).observe(elapsed)
-            # Path + status + timing only: no bodies, no query strings, no PII.
-            log.info("rid=%s %s %s %s %.1fms", g.get("request_id"), request.method, route, resp.status_code, elapsed * 1000)
+            db = g.get("db")
+            queries, roundtrips, db_ms = (db.queries, db.roundtrips, db.ms) if db else (0, 0, 0.0)
+            metrics.DB_QUERIES.labels(request.method, route).observe(queries)
+            metrics.DB_ROUNDTRIPS.labels(request.method, route).observe(roundtrips)
+            # Path + status + timing + DB counts only: no bodies, no query strings, no SQL, no PII.
+            log.info("rid=%s %s %s %s %.1fms db_queries=%d db_roundtrips=%d db_ms=%.1f", g.get("request_id"),
+                     request.method, route, resp.status_code, elapsed * 1000, queries, roundtrips, db_ms)
         return resp
 
     app.teardown_appcontext(close_db)

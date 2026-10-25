@@ -2,10 +2,9 @@ from functools import wraps
 
 from flask import Blueprint, current_app, g, jsonify, request
 
-from . import cases, catalogue, i18n, llm, profile, sync, testrunner, translation, voice
-from .common import (ApiError, audit, current_user, idem_lookup, idem_store, idempotency_key, login,
-                     require_role)
-from .db import get_db, iso
+from . import cases, catalogue, i18n, llm, migrations, profile, sync, testrunner, translation, voice
+from .common import ApiError, audit, current_user, idempotency_key, idempotent, login, require_role
+from .db import bump, get_db, iso
 
 bp = Blueprint("api", __name__, url_prefix="/api/v1")
 
@@ -38,17 +37,31 @@ def health():
 @bp.get("/ready")
 def ready():
     db = get_db()
-    schemes = db.execute("SELECT COUNT(*) FROM schemes").fetchone()[0]
-    rules = db.execute("SELECT COUNT(*) FROM rules WHERE active=1").fetchone()[0]
-    ok = schemes > 0 and rules > 0
+    schemes = rules = 0
+    database = {"backend": db.dialect, "status": "ok"}
+    try:
+        checks = [("SELECT COUNT(*) FROM schemes", ()), ("SELECT COUNT(*) FROM rules WHERE active=1", ())]
+        if db.dialect == "postgres":
+            checks.append((migrations.TABLES_WITHOUT_RLS, ()))
+        res = db.query_many(checks)
+        schemes, rules = res[0].fetchone()[0], res[1].fetchone()[0]
+        if db.dialect == "postgres":
+            # Every table must have Row Level Security on (no policies), so Supabase's REST API cannot reach it.
+            database["rls"] = "ok" if res[2].fetchone()[0] == 0 else "error"
+    except Exception as e:  # noqa: BLE001 - report, never raise; the error class only (no URL, no SQL)
+        current_app.logger.warning("ready: database check failed (%s)", type(e).__name__)
+        database["status"] = "error"
+    ok = schemes > 0 and rules > 0 and database["status"] == "ok" and database.get("rls", "ok") == "ok"
     boot = current_app.extensions["anvaya.startup"]
-    # Readiness depends on the catalogue only: every integration is optional and reported, never required.
-    return jsonify({"ready": ok, "schemes": schemes, "rules": rules,
+    # Readiness depends on the database and catalogue only: every integration is optional and reported, never required.
+    return jsonify({"ready": ok, "db": database, "schemes": schemes, "rules": rules,
                     "bundle_version": current_app.config["RULE_BUNDLE_VERSION"],
                     "integrations": {k: {"status": v["status"], "missing": v["missing"]}
                                      for k, v in boot["integrations"].items()},
-                    "warnings": boot["warnings"], "tts_cache": voice.cache_stats(),
-                    "voice": voice.status(), "llm_extraction": llm.status()}), (200 if ok else 503)
+                    "warnings": boot["warnings"],
+                    "tts_cache": voice.cache_stats() if database["status"] == "ok" else None,
+                    "voice": voice.status(),
+                    "llm_extraction": llm.status() if database["status"] == "ok" else None}), (200 if ok else 503)
 
 
 @bp.get("/auth/demo-accounts")
@@ -127,27 +140,29 @@ def turn(sid):
 
 @bp.patch("/sessions/<sid>/profile/facts/<fact_id>")
 def patch_fact(sid, fact_id):
-    res = profile.patch_fact(sid, fact_id, body())
-    return {**res, "profile": profile.profile_view(sid)}
+    loaded = []
+    res = profile.patch_fact(sid, fact_id, body(), loaded)
+    return {**res, "profile": profile.profile_view(sid, loaded)}
 
 
 @bp.post("/sessions/<sid>/profile/facts")
 def add_fact(sid):
     """Typed entry from the profile card (citizen or operator); confirmed by the act of entering it."""
     b = body()
-    profile.get_session(sid)
+    session, facts, _ = profile.load(sid)
     res = profile.upsert_fact(sid, b.get("attribute"), b.get("value"), source=b.get("source", "text_form"),
-                              raw_text="entered on profile card", confirmed=True)
+                              raw_text="entered on profile card", confirmed=True, facts=facts)
     audit("profile.fact_entered", session_id=sid, details={"fact_id": res["fact"]["fact_id"], "attribute": b.get("attribute")})
-    profile.refresh_workflow_state(sid)
+    profile.refresh_workflow_state(sid, session, facts)
     get_db().commit()
-    return {**res, "profile": profile.profile_view(sid)}, 201
+    return {**res, "profile": profile.profile_view(sid, [session, facts])}, 201
 
 
 @bp.post("/sessions/<sid>/profile/confirm-all")
 def confirm_all(sid):
-    res = profile.confirm_all(sid)
-    return {**profile.profile_view(sid), **res}
+    loaded = []
+    res = profile.confirm_all(sid, loaded)
+    return {**profile.profile_view(sid, loaded), **res}
 
 
 @bp.post("/sessions/<sid>/voice/transcribe")
@@ -182,9 +197,10 @@ def translate(sid):
     return translation.translate_text(b.get("text") or "", b.get("source_lang", "en"), b.get("target_lang", s["language"]))
 
 
-def with_summary(ev: dict, sid: str, lang: str) -> dict:
+def with_summary(ev: dict, sid: str, lang: str, marks: dict | None = None) -> dict:
     names = translation.localize_scheme_names(ev, lang)
-    ev["voice_summary_segments"] = voice.summary_parts(ev, lang, catalogue.doc_marks(sid), names)
+    marks = catalogue.doc_marks(sid) if marks is None else marks
+    ev["voice_summary_segments"] = voice.summary_parts(ev, lang, marks, names)
     ev["voice_summary"] = " ".join(ev["voice_summary_segments"])
     ev["voice_summary_machine_translated"] = any(
         r["scheme_name_machine_translated"] for r in ev["results"] if r["outcome"] in ("MATCH", "PROVISIONAL"))
@@ -205,9 +221,9 @@ def session_search(sid):
 
 @bp.post("/sessions/<sid>/eligibility/evaluate")
 def evaluate(sid):
-    ev = catalogue.evaluate_session(sid)
-    s = profile.get_session(sid)
-    return with_summary(ev, sid, s["language"])
+    loaded = {}
+    ev = catalogue.evaluate_session(sid, loaded=loaded)
+    return with_summary(ev, sid, loaded["session"]["language"], loaded["marks"])
 
 
 @bp.get("/sessions/<sid>/eligibility/latest")
@@ -267,15 +283,8 @@ def scheme_documents(scheme_id):
 
 @bp.post("/sessions/<sid>/drafts")
 def create_draft(sid):
-    key = idempotency_key()
-    scope = f"draft:{sid}"
-    replay = idem_lookup(scope, key)
-    if replay:
-        return replay[0], replay[1]
-    d = cases.save_draft(sid, body().get("scheme_id", ""))
-    idem_store(scope, key, d, 201)
-    get_db().commit()
-    return d, 201
+    scheme_id = body().get("scheme_id", "")
+    return idempotent(f"draft:{sid}", idempotency_key(), lambda: (cases.save_draft(sid, scheme_id), 201))
 
 
 @bp.get("/drafts/<draft_id>")
@@ -294,15 +303,9 @@ def edit_draft(draft_id):
 
 @bp.post("/drafts/<draft_id>/handoff")
 def handoff(draft_id):
-    key = idempotency_key()
-    scope = f"handoff:{draft_id}"
-    replay = idem_lookup(scope, key)
-    if replay:
-        return replay[0], replay[1]
-    res = cases.handoff(draft_id, session_header(), body().get("consent") or {})
-    idem_store(scope, key, res, 201)
-    get_db().commit()
-    return res, 201
+    consent = body().get("consent") or {}
+    return idempotent(f"handoff:{draft_id}", idempotency_key(),
+                      lambda: (cases.handoff(draft_id, session_header(), consent), 201))
 
 
 @bp.post("/cases/status")
@@ -393,6 +396,7 @@ def verify_rule(rule_id):
         raise ApiError("RULE_NOT_FOUND", "Rule not found.", 404)
     db.execute("UPDATE rules SET source_verified_at=?, source_verified_by=? WHERE rule_id=?",
                (iso(), g.user["username"], rule_id))
+    bump(db, "catalogue")
     audit("admin.rule_verified", details={"rule_id": rule_id, "checked_source_url": b["checked_source_url"],
                                           "note": (b.get("note") or "")[:500]})
     db.commit()

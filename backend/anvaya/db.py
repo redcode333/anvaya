@@ -1,282 +1,34 @@
+"""Database access for SQLite (the default) and PostgreSQL (when DATABASE_URL is set).
+
+SQL is written once, SQLite-style ("?" placeholders, LIKE, rowid) and translated per dialect: for Postgres "?" becomes
+"%s", LIKE becomes ILIKE (SQLite's LIKE ignores ASCII case), rowid becomes the identity column `seq`, and text columns
+use the "C" collation so sorting matches SQLite byte for byte. Timestamps stay ISO-8601 TEXT and JSON stays TEXT.
+
+A `Database` is one unit of work (one per request, via get_db()) on one connection. To keep round trips low on a
+remote Postgres:
+- reads run immediately; plain INSERT/UPDATE/DELETE (no RETURNING) are queued and sent together with the next read
+  or with COMMIT in one pipeline, so a request's writes plus its COMMIT cost one round trip. A read always sees the
+  request's own earlier writes, because queued writes go out ahead of it.
+- query_many() sends several reads in one round trip.
+- the first queued write opens a transaction; commit() sends the queue plus COMMIT. Inside `with db.transaction():`
+  nested commit() calls are deferred to the end of the block, and an exception rolls the whole block back.
+Request statistics (queries, round trips, milliseconds; never SQL text or values) are logged per request.
+"""
 import json
+import logging
+import re
 import sqlite3
+import threading
+import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 
 from flask import current_app, g
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS source_artifacts (
-    artifact_id TEXT PRIMARY KEY,
-    filename TEXT NOT NULL,
-    sha256 TEXT NOT NULL,
-    row_count INTEGER NOT NULL,
-    imported_at TEXT NOT NULL,
-    report_json TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS schemes (
-    scheme_id TEXT PRIMARY KEY,
-    slug TEXT,
-    name TEXT NOT NULL,
-    short_title TEXT,
-    state_raw TEXT,
-    state TEXT,
-    level_raw TEXT,
-    level TEXT,
-    department TEXT,
-    categories TEXT,
-    subcategories TEXT,
-    tags TEXT,
-    beneficiaries TEXT,
-    brief_description TEXT,
-    description TEXT,
-    benefits TEXT,
-    eligibility_text TEXT,
-    application_process TEXT,
-    documents_text TEXT,
-    source_urls_json TEXT,
-    source_url TEXT,
-    faqs TEXT,
-    source_artifact_id TEXT,
-    imported_at TEXT,
-    retrieved_at TEXT,
-    verified_at TEXT,
-    review_status TEXT NOT NULL,
-    confidence TEXT NOT NULL,
-    quality_flags_json TEXT NOT NULL,
-    search_text TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_schemes_state ON schemes(state);
-CREATE INDEX IF NOT EXISTS idx_schemes_level ON schemes(level);
-
-CREATE TABLE IF NOT EXISTS kg_nodes (
-    node_id TEXT PRIMARY KEY,
-    node_type TEXT NOT NULL,
-    label TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS kg_edges (
-    src TEXT NOT NULL,
-    rel TEXT NOT NULL,
-    dst TEXT NOT NULL,
-    PRIMARY KEY (src, rel, dst)
-);
-CREATE INDEX IF NOT EXISTS idx_kg_edges_dst ON kg_edges(dst, rel);
-
-CREATE TABLE IF NOT EXISTS rules (
-    rule_id TEXT PRIMARY KEY,
-    scheme_id TEXT NOT NULL,
-    version INTEGER NOT NULL,
-    bundle_version TEXT NOT NULL,
-    rule_json TEXT NOT NULL,
-    review_status TEXT NOT NULL,
-    reviewed_at TEXT,
-    source_verified_at TEXT,
-    source_verified_by TEXT,
-    active INTEGER NOT NULL DEFAULT 1
-);
-
-CREATE TABLE IF NOT EXISTS users (
-    user_id TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL,
-    display_name TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS auth_tokens (
-    token_hash TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    expires_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS sessions (
-    session_id TEXT PRIMARY KEY,
-    mode TEXT NOT NULL,
-    language TEXT NOT NULL,
-    workflow_state TEXT NOT NULL,
-    device_id TEXT,
-    operator_id TEXT,
-    is_test INTEGER NOT NULL DEFAULT 0,
-    is_demo INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL,
-    expires_at TEXT NOT NULL,
-    ended_at TEXT
-);
-
-CREATE TABLE IF NOT EXISTS facts (
-    fact_id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    attribute TEXT NOT NULL,
-    value_json TEXT NOT NULL,
-    raw_text TEXT,
-    source TEXT NOT NULL,
-    confidence REAL NOT NULL,
-    confirmed INTEGER NOT NULL DEFAULT 0,
-    inferred INTEGER NOT NULL DEFAULT 0,
-    note TEXT,
-    captured_at TEXT NOT NULL,
-    confirmed_at TEXT,
-    superseded_by TEXT,
-    confusable INTEGER NOT NULL DEFAULT 0,
-    alternatives_json TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_facts_session ON facts(session_id, attribute);
-
-CREATE TABLE IF NOT EXISTS turns (
-    turn_id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    language TEXT NOT NULL,
-    utterance TEXT NOT NULL,
-    channel TEXT NOT NULL,
-    extracted_json TEXT NOT NULL,
-    reply TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS doc_marks (
-    session_id TEXT NOT NULL,
-    doc_key TEXT NOT NULL,
-    status TEXT NOT NULL,
-    marked_by TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (session_id, doc_key)
-);
-
-CREATE TABLE IF NOT EXISTS evaluations (
-    eval_id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    bundle_version TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    fact_ids_json TEXT NOT NULL,
-    results_json TEXT NOT NULL,
-    origin TEXT NOT NULL DEFAULT 'online'
-);
-
-CREATE TABLE IF NOT EXISTS drafts (
-    draft_id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    scheme_id TEXT NOT NULL,
-    eval_id TEXT,
-    version INTEGER NOT NULL,
-    fields_json TEXT NOT NULL,
-    status TEXT NOT NULL,
-    origin TEXT NOT NULL DEFAULT 'online',
-    bundle_version TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE (session_id, scheme_id)
-);
-
-CREATE TABLE IF NOT EXISTS cases (
-    case_id TEXT PRIMARY KEY,
-    draft_id TEXT UNIQUE NOT NULL,
-    session_id TEXT NOT NULL,
-    code_hash TEXT,
-    code_expires_at TEXT,
-    consent_json TEXT NOT NULL,
-    status TEXT NOT NULL,
-    review_outcome TEXT,
-    reviewer_note TEXT,
-    language TEXT NOT NULL,
-    origin TEXT NOT NULL DEFAULT 'online',
-    recheck_json TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS idempotency (
-    scope TEXT NOT NULL,
-    idem_key TEXT NOT NULL,
-    response_json TEXT NOT NULL,
-    status_code INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY (scope, idem_key)
-);
-
-CREATE TABLE IF NOT EXISTS sync_events (
-    event_id TEXT PRIMARY KEY,
-    device_id TEXT NOT NULL,
-    idempotency_key TEXT UNIQUE NOT NULL,
-    session_id TEXT,
-    event_type TEXT NOT NULL,
-    local_created_at TEXT,
-    bundle_version TEXT,
-    rule_version TEXT,
-    schema_version INTEGER NOT NULL,
-    payload_json TEXT NOT NULL,
-    server_result_json TEXT NOT NULL,
-    received_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS audit_events (
-    event_id TEXT PRIMARY KEY,
-    actor_id TEXT NOT NULL,
-    actor_role TEXT NOT NULL,
-    case_id TEXT,
-    session_id TEXT,
-    action TEXT NOT NULL,
-    ts TEXT NOT NULL,
-    request_id TEXT,
-    object_version INTEGER,
-    details_json TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_audit_case ON audit_events(case_id);
-
-CREATE TABLE IF NOT EXISTS test_runs (
-    run_id TEXT PRIMARY KEY,
-    tc_id TEXT NOT NULL,
-    ran_at TEXT NOT NULL,
-    passed INTEGER NOT NULL,
-    evidence_json TEXT NOT NULL
-);
-
--- Machine translations from VerbX, so each text is translated once.
-CREATE TABLE IF NOT EXISTS translations (
-    source_lang TEXT NOT NULL,
-    target_lang TEXT NOT NULL,
-    source_text TEXT NOT NULL,
-    translated_text TEXT NOT NULL,
-    provider TEXT NOT NULL,
-    model TEXT,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY (source_lang, target_lang, source_text)
-);
-
--- Synthesized speech keyed by sha256(text, language, voice); the text itself is not stored. pinned=1 rows are the
--- prerendered fixed prompts (manage prerender-audio) and are kept; other rows may hold profile details read back to
--- a citizen and are removed by `manage cleanup` after ANVAYA_SESSION_TTL_HOURS.
-CREATE TABLE IF NOT EXISTS tts_cache (
-    cache_key TEXT PRIMARY KEY,
-    language TEXT NOT NULL,
-    voice TEXT NOT NULL,
-    mime_type TEXT NOT NULL,
-    audio BLOB NOT NULL,
-    synth_ms INTEGER,
-    pinned INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
-);
-
--- LLM provider quota state, so an exhausted free tier stays skipped across restarts until its reset.
-CREATE TABLE IF NOT EXISTS llm_provider_state (
-    provider TEXT PRIMARY KEY,
-    exhausted_until TEXT,
-    day TEXT,
-    requests_today INTEGER NOT NULL DEFAULT 0,
-    last_result TEXT,
-    updated_at TEXT NOT NULL
-);
-
--- Validated LLM extraction results keyed by sha256(provider + model + prompt); the prompt itself is not stored.
-CREATE TABLE IF NOT EXISTS llm_cache (
-    cache_key TEXT PRIMARY KEY,
-    provider TEXT NOT NULL,
-    model TEXT NOT NULL,
-    prompt_version TEXT NOT NULL,
-    response_json TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
-"""
+log = logging.getLogger(__name__)
 
 
 def now() -> datetime:
@@ -303,32 +55,421 @@ def dumps(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, sort_keys=True)
 
 
-def connect(path: str) -> sqlite3.Connection:
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path, timeout=15)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
-    return conn
+# ---------------------------------------------------------------- SQL dialects
+
+_LITERAL = re.compile(r"('(?:[^']|'')*')")
+_FOR_UPDATE = re.compile(r"\s+FOR UPDATE(\s+OF\s+\w+)?\s*$", re.IGNORECASE)
+_CONTROL = ("BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE")
 
 
-# Columns added after the first release: (table, column, DDL) applied to databases created before them.
-MIGRATIONS = [("facts", "confusable", "ALTER TABLE facts ADD COLUMN confusable INTEGER NOT NULL DEFAULT 0"),
-              ("facts", "alternatives_json", "ALTER TABLE facts ADD COLUMN alternatives_json TEXT"),
-              ("sessions", "is_demo", "ALTER TABLE sessions ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0")]
+@lru_cache(maxsize=2048)
+def to_postgres(sql: str) -> str:
+    parts = _LITERAL.split(sql.replace("%", "%%"))  # psycopg reads "%" everywhere, string literals included
+    for i in range(0, len(parts), 2):  # even parts are outside string literals
+        p = parts[i].replace("?", "%s")
+        p = re.sub(r"\browid\b", "seq", p)
+        parts[i] = re.sub(r"\bLIKE\b", "ILIKE", p)
+    return "".join(parts)
 
 
-def init_schema(conn: sqlite3.Connection) -> None:
-    conn.executescript(SCHEMA)
-    for table, column, ddl in MIGRATIONS:
-        if column not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
-            conn.execute(ddl)
-    conn.commit()
+@lru_cache(maxsize=2048)
+def to_sqlite(sql: str) -> str:
+    if sql == "BEGIN":
+        return "BEGIN IMMEDIATE"  # take the write lock up front: no lock upgrade (SQLITE_BUSY) mid-transaction
+    return _FOR_UPDATE.sub("", sql)
 
 
-def get_db() -> sqlite3.Connection:
+def _is_queued_write(sql: str) -> bool:
+    head = sql.lstrip()[:7].upper()
+    return head.startswith(("INSERT", "UPDATE", "DELETE")) and "RETURNING" not in sql.upper()
+
+
+class Row(tuple):
+    """A Postgres row that behaves like sqlite3.Row: r[0], r["column"], keys(), dict(r), tuple unpacking."""
+
+    def __new__(cls, values, index):
+        r = super().__new__(cls, values)
+        r._index = index
+        return r
+
+    def __getitem__(self, k):
+        return tuple.__getitem__(self, self._index[k] if isinstance(k, str) else k)
+
+    def keys(self):
+        return list(self._index)
+
+
+def _pg_rows(cursor):
+    index: dict[str, int] = {}
+    for i, d in enumerate(cursor.description or ()):
+        index.setdefault(d.name, i)  # duplicate names resolve to the first column, as in sqlite3.Row
+    return lambda values: Row(values, index)
+
+
+# ---------------------------------------------------------------- backends (one per database, shared by apps)
+
+class Backend:
+    dialect = ""
+
+    def __init__(self, cache_check_s: float):
+        self.lock = threading.Lock()
+        self.cache_check_s = cache_check_s
+        self.versions: dict[str, int] = {}
+        self.versions_at = float("-inf")
+        self.cache: dict[str, tuple[int, object]] = {}
+        self.memo: dict = {}  # immutable entries (translations, prerendered audio); see reset_caches()
+
+
+class SqliteBackend(Backend):
+    dialect = "sqlite"
+
+    def __init__(self, path: str, cache_check_s: float):
+        super().__init__(cache_check_s)
+        self.path = path
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+    def acquire(self):
+        conn = sqlite3.connect(self.path, timeout=15, isolation_level=None, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        return conn
+
+    def release(self, conn, broken: bool = False) -> None:
+        conn.close()
+
+    def close(self) -> None:
+        pass
+
+
+class PostgresBackend(Backend):
+    """A psycopg 3 pool: at most DB_POOL_MAX connections, 10 s connect timeout, 10 s statement timeout, TLS required
+    unless the URL sets sslmode, no server-side prepared statements (prepare_threshold=None) so it works through
+    Supabase's Supavisor pooler. Never logs the URL."""
+    dialect = "postgres"
+
+    def __init__(self, url: str, schema: str | None, pool_max: int, cache_check_s: float):
+        super().__init__(cache_check_s)
+        import psycopg
+        from psycopg.conninfo import conninfo_to_dict
+        from psycopg_pool import ConnectionPool
+        self.schema = schema
+        kwargs = {"autocommit": True, "prepare_threshold": None, "row_factory": _pg_rows, "connect_timeout": 10}
+        if "sslmode" not in conninfo_to_dict(url):
+            kwargs["sslmode"] = "require"
+        self.errors = (psycopg.Error,)
+        self.pool = ConnectionPool(url, min_size=1, max_size=pool_max, kwargs=kwargs, configure=self._configure,
+                                   timeout=10, max_idle=300, name="anvaya-db", open=True)
+
+    def _configure(self, conn) -> None:
+        sql = "SET statement_timeout = '10s'"
+        if self.schema:
+            sql += f'; SET search_path TO "{self.schema}"'
+        conn.execute(sql)
+
+    def acquire(self):
+        return self.pool.getconn()
+
+    def release(self, conn, broken: bool = False) -> None:
+        if broken:
+            conn.close()
+        self.pool.putconn(conn)
+
+    def close(self) -> None:
+        self.pool.close()
+
+
+_backends: dict[tuple, Backend] = {}
+_backends_lock = threading.Lock()
+
+
+def _key(target) -> tuple:
+    if isinstance(target, (str, Path)):
+        return ("sqlite", str(Path(target).resolve()))
+    if target.get("DATABASE_URL"):
+        return ("postgres", target["DATABASE_URL"], target.get("DB_SCHEMA") or None)
+    return ("sqlite", str(Path(target["DB_PATH"]).resolve()))
+
+
+def backend(target) -> Backend:
+    """The shared backend for an app config (DATABASE_URL set → Postgres, else the SQLite file DB_PATH) or a path."""
+    key = _key(target)
+    with _backends_lock:
+        b = _backends.get(key)
+        if b is None:
+            check = 5.0 if isinstance(target, (str, Path)) else float(target.get("DB_CACHE_CHECK_S", 5.0))
+            if key[0] == "postgres":
+                b = PostgresBackend(key[1], key[2], int(target.get("DB_POOL_MAX", 5)), check)
+            else:
+                b = SqliteBackend(key[1], check)
+            _backends[key] = b
+        return b
+
+
+def dispose(target) -> None:
+    """Close the backend's pool (tests: simulate an app restart)."""
+    with _backends_lock:
+        b = _backends.pop(_key(target), None)
+    if b:
+        b.close()
+
+
+def dialect(target) -> str:
+    return _key(target)[0]
+
+
+# ---------------------------------------------------------------- unit of work
+
+class _Stmt:
+    __slots__ = ("sql", "params", "many", "control", "rows", "rowcount", "done")
+
+    def __init__(self, sql, params=None, many=False, control=False):
+        self.sql, self.params, self.many, self.control = sql, params, many, control
+        self.rows, self.rowcount, self.done = None, -1, False
+
+
+class Result:
+    """Rows of one statement. For a queued write, reading rowcount sends the queue first."""
+
+    def __init__(self, db: "Database", stmt: _Stmt):
+        self._db, self._stmt, self._pos = db, stmt, 0
+
+    def _ready(self) -> _Stmt:
+        if not self._stmt.done:
+            self._db.flush()
+        return self._stmt
+
+    @property
+    def rowcount(self) -> int:
+        return self._ready().rowcount
+
+    def fetchone(self):
+        rows = self._ready().rows or []
+        if self._pos >= len(rows):
+            return None
+        self._pos += 1
+        return rows[self._pos - 1]
+
+    def fetchall(self) -> list:
+        rows = self._ready().rows or []
+        out, self._pos = rows[self._pos:], len(rows)
+        return out
+
+    def __iter__(self):
+        return iter(self.fetchall())
+
+
+class Database:
+    def __init__(self, backend_: Backend):
+        self.backend = backend_
+        self.dialect = backend_.dialect
+        self._conn = None
+        self._queue: list[_Stmt] = []
+        self._open = False       # a transaction is open (its BEGIN queued or sent)
+        self._server_tx = False  # ...and its BEGIN has reached the server
+        self._depth = 0          # nesting of transaction() blocks
+        self._savepoints = 0
+        self.queries = 0         # statements sent, excluding BEGIN/COMMIT/ROLLBACK/SAVEPOINT; executemany counts once
+        self.roundtrips = 0
+        self.ms = 0.0
+
+    # -- statements
+
+    def execute(self, sql: str, params=()) -> Result:
+        if _is_queued_write(sql):
+            return self._queue_write(_Stmt(sql, tuple(params)))
+        stmt = _Stmt(sql, tuple(params))
+        self._send([stmt])
+        return Result(self, stmt)
+
+    def executemany(self, sql: str, seq) -> Result:
+        seq = [tuple(p) for p in seq]
+        stmt = _Stmt(sql, seq, many=True)
+        if not seq:
+            stmt.done, stmt.rowcount = True, 0
+            return Result(self, stmt)
+        return self._queue_write(stmt)
+
+    def query_many(self, statements) -> list[Result]:
+        """Run several statements in one round trip (after any queued writes); one Result per statement."""
+        stmts = [_Stmt(sql, tuple(params)) for sql, params in statements]
+        self._send(stmts)
+        return [Result(self, s) for s in stmts]
+
+    def flush(self) -> None:
+        self._send([])
+
+    # -- transactions
+
+    def _queue_write(self, stmt: _Stmt) -> Result:
+        if not self._open:
+            self._queue.append(_Stmt("BEGIN", control=True))
+            self._open = True
+        last = self._queue[-1] if self._queue else None
+        if last is not None and not stmt.control and not last.control and last.sql == stmt.sql:
+            # The same write queued again right after itself (e.g. one INSERT per extracted fact) becomes one batched
+            # statement, run in the same order. Its rowcount is the batch total.
+            if not last.many:
+                last.params, last.many = [last.params], True
+            last.params.extend(stmt.params if stmt.many else [stmt.params])
+            return Result(self, last)
+        self._queue.append(stmt)
+        return Result(self, stmt)
+
+    def commit(self) -> None:
+        if self._depth or not self._open:
+            return
+        self._queue.append(_Stmt("COMMIT", control=True))
+        self._send([])
+
+    def rollback(self) -> None:
+        self._queue.clear()
+        self._savepoints = 0
+        if self._server_tx and self._conn is not None:
+            try:
+                self._send([_Stmt("ROLLBACK", control=True)])
+            except Exception:  # noqa: BLE001 - the connection is gone; the server rolled back already
+                self._drop_connection(broken=True)
+        self._open = self._server_tx = False
+
+    @contextmanager
+    def transaction(self):
+        """All statements in the block commit together; nested commit() calls wait for the end of the block."""
+        outer = self._depth == 0
+        if outer and not self._open:
+            self._queue.append(_Stmt("BEGIN", control=True))
+            self._open = True
+        self._depth += 1
+        try:
+            yield self
+        except BaseException:
+            self._depth -= 1
+            if outer:
+                self.rollback()
+            raise
+        self._depth -= 1
+        if outer:
+            self.commit()
+
+    @contextmanager
+    def savepoint(self):
+        """Inside a transaction: an exception undoes only the statements since the savepoint, then propagates."""
+        self._savepoints += 1
+        name = f"sp{self._savepoints}"
+        self._queue_write(_Stmt(f"SAVEPOINT {name}", control=True))
+        try:
+            yield self
+        except BaseException:
+            if self._open:  # a database error already rolled the whole transaction back
+                self._queue_write(_Stmt(f"ROLLBACK TO SAVEPOINT {name}", control=True))
+            raise
+        self._queue_write(_Stmt(f"RELEASE SAVEPOINT {name}", control=True))
+
+    def close(self) -> None:
+        if self._open:
+            self.rollback()
+        self._drop_connection()
+
+    # -- transport
+
+    def _connection(self):
+        if self._conn is None:
+            self._conn = self.backend.acquire()
+        return self._conn
+
+    def _drop_connection(self, broken: bool = False) -> None:
+        if self._conn is not None:
+            conn, self._conn = self._conn, None
+            self.backend.release(conn, broken=broken)
+
+    def _send(self, extra: list[_Stmt]) -> None:
+        batch, self._queue = self._queue + extra, []
+        if not batch:
+            return
+        ends_tx = any(s.sql in ("COMMIT", "ROLLBACK") for s in batch)
+        t0 = time.perf_counter()
+        try:
+            if self.dialect == "postgres":
+                # A dropped connection is retried once, but only when nothing in this transaction reached the server
+                # before and the batch does not commit (so a retry can never apply writes twice).
+                self._run_postgres(batch, retry=not self._server_tx and not ends_tx)
+            else:
+                self._run_sqlite(batch)
+        except Exception:
+            self._queue.clear()
+            if batch[-1].sql != "ROLLBACK":
+                self._after_error()
+            raise
+        finally:
+            self.ms += (time.perf_counter() - t0) * 1000
+            self.roundtrips += 1
+            self.queries += sum(1 for s in batch if not s.control)
+        if any(s.sql == "BEGIN" for s in batch):
+            self._server_tx = True
+        if ends_tx:
+            self._open = self._server_tx = False
+
+    def _after_error(self) -> None:
+        """A failed statement aborts the transaction: roll it back so the connection is clean for the next one."""
+        self._savepoints = 0
+        if self._open or self._server_tx:
+            self._server_tx = True
+            self._open = True
+            self.rollback()
+
+    def _run_sqlite(self, batch: list[_Stmt]) -> None:
+        conn = self._connection()
+        for s in batch:
+            sql = to_sqlite(s.sql)
+            cur = conn.executemany(sql, s.params) if s.many else conn.execute(sql, s.params or ())
+            s.rows = cur.fetchall() if cur.description else None
+            s.rowcount, s.done = cur.rowcount, True
+
+    def _run_postgres(self, batch: list[_Stmt], retry: bool) -> None:
+        import psycopg
+        for attempt in (1, 2):
+            conn = self._connection()
+            try:
+                cursors = []
+                if len(batch) == 1:
+                    cursors.append(self._pg_exec(conn, batch[0]))
+                else:
+                    with conn.pipeline():
+                        cursors = [self._pg_exec(conn, s) for s in batch]
+                for s, cur in zip(batch, cursors):
+                    s.rows = cur.fetchall() if cur.description else None
+                    s.rowcount, s.done = cur.rowcount, True
+                return
+            except psycopg.OperationalError:
+                if attempt == 1 and retry and (conn.broken or conn.closed):
+                    log.warning("db: connection dropped; retrying once on a new connection")
+                    self._drop_connection(broken=True)
+                    continue
+                if conn.broken or conn.closed:
+                    self._drop_connection(broken=True)
+                raise
+
+    @staticmethod
+    def _pg_exec(conn, s: _Stmt):
+        cur = conn.cursor()
+        if s.control:
+            cur.execute(s.sql)
+        elif s.many:
+            cur.executemany(to_postgres(s.sql), s.params)
+        else:
+            cur.execute(to_postgres(s.sql), s.params)
+        return cur
+
+
+def connect(target) -> Database:
+    """A unit of work outside a request (startup, CLI, tests). `target` is an app config or a SQLite file path.
+    Call close() when done."""
+    return Database(backend(target))
+
+
+def get_db() -> Database:
     if "db" not in g:
-        g.db = connect(current_app.config["DB_PATH"])
+        g.db = Database(backend(current_app.config))
     return g.db
 
 
@@ -338,5 +479,43 @@ def close_db(_exc=None) -> None:
         db.close()
 
 
-def row_to_dict(row: sqlite3.Row | None) -> dict | None:
+def row_to_dict(row) -> dict | None:
     return dict(row) if row is not None else None
+
+
+# ---------------------------------------------------------------- versioned in-memory caches
+
+def cached(db: Database, name: str, key: str, loader):
+    """Read-mostly data (rules, catalogue facets, TTS index) kept in memory per database. It is reloaded when the
+    `name` row of data_versions changes; that small table is read at most every DB_CACHE_CHECK_S seconds, so most
+    requests get these values with no database round trip. Writers call bump(db, name) in the same transaction."""
+    b = db.backend
+    if time.monotonic() - b.versions_at >= b.cache_check_s:
+        versions = {r[0]: r[1] for r in db.execute("SELECT name, version FROM data_versions")}
+        with b.lock:
+            b.versions, b.versions_at = versions, time.monotonic()
+    version = b.versions.get(name, 0)
+    hit = b.cache.get(f"{name}:{key}")
+    if hit and hit[0] == version:
+        return hit[1]
+    value = loader()
+    with b.lock:
+        b.cache[f"{name}:{key}"] = (version, value)
+    return value
+
+
+def bump(db: Database, name: str) -> None:
+    db.execute("UPDATE data_versions SET version = version + 1 WHERE name=?", (name,))
+    b = db.backend
+    with b.lock:
+        b.cache = {k: v for k, v in b.cache.items() if not k.startswith(f"{name}:")}
+        b.versions_at = float("-inf")
+
+
+def reset_caches(db: Database) -> None:
+    """Tests that change tables directly: forget every in-memory copy."""
+    b = db.backend
+    with b.lock:
+        b.cache.clear()
+        b.memo.clear()
+        b.versions_at = float("-inf")

@@ -104,22 +104,24 @@ def idempotency_key(required: bool = True) -> str | None:
     return key
 
 
-def idem_lookup(scope: str, key: str | None):
-    if not key:
-        return None
-    row = get_db().execute("SELECT response_json, status_code FROM idempotency WHERE scope=? AND idem_key=?",
-                           (scope, key)).fetchone()
-    if row:
-        body = json.loads(row["response_json"])
-        body["idempotent_replay"] = True
-        metrics.IDEMPOTENT_REPLAYS.labels(scope.split(":")[0]).inc()
-        return body, row["status_code"]
-    return None
-
-
-def idem_store(scope: str, key: str | None, body: dict, status: int) -> None:
-    if key:
-        get_db().execute(
-            "INSERT OR IGNORE INTO idempotency(scope, idem_key, response_json, status_code, created_at) VALUES (?,?,?,?,?)",
-            (scope, key, dumps(body), status, iso()),
-        )
+def idempotent(scope: str, key: str, fn) -> tuple[dict, int]:
+    """Run fn() -> (body, status) at most once per (scope, key), also when identical requests arrive together. The key
+    is claimed with INSERT ... ON CONFLICT DO NOTHING in the same transaction as fn's writes: a concurrent request with
+    the same key waits on that row until the first commits, then replays the stored response. If fn raises, the
+    transaction (claim included) rolls back and nothing is stored, so a retry runs again."""
+    db = get_db()
+    with db.transaction():
+        claimed = db.execute(
+            "INSERT INTO idempotency(scope, idem_key, response_json, status_code, created_at) VALUES (?,?,?,?,?)"
+            " ON CONFLICT DO NOTHING RETURNING status_code", (scope, key, "{}", 0, iso())).fetchone()
+        if not claimed:
+            row = db.execute("SELECT response_json, status_code FROM idempotency WHERE scope=? AND idem_key=?",
+                             (scope, key)).fetchone()
+            replay = json.loads(row["response_json"])
+            replay["idempotent_replay"] = True
+            metrics.IDEMPOTENT_REPLAYS.labels(scope.split(":")[0]).inc()
+            return replay, row["status_code"]
+        body, status = fn()
+        db.execute("UPDATE idempotency SET response_json=?, status_code=? WHERE scope=? AND idem_key=?",
+                   (dumps(body), status, scope, key))
+    return body, status

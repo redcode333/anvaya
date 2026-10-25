@@ -17,6 +17,9 @@ def get(cache_key: str) -> list[dict] | None:
 
 def put(cache_key: str, p: dict, prompt_version: str, items: list[dict]) -> None:
     db = get_db()
-    db.execute("INSERT OR REPLACE INTO llm_cache(cache_key, provider, model, prompt_version, response_json, created_at)"
-               " VALUES (?,?,?,?,?,?)", (cache_key, p["name"], p["model"], prompt_version, dumps(items), iso()))
+    db.execute("INSERT INTO llm_cache(cache_key, provider, model, prompt_version, response_json, created_at)"
+               " VALUES (?,?,?,?,?,?) ON CONFLICT (cache_key) DO UPDATE SET provider=excluded.provider,"
+               " model=excluded.model, prompt_version=excluded.prompt_version, response_json=excluded.response_json,"
+               " created_at=excluded.created_at",
+               (cache_key, p["name"], p["model"], prompt_version, dumps(items), iso()))
     db.commit()

@@ -5,7 +5,7 @@ import sys
 import time
 
 from . import create_app, ingest
-from .db import connect, iso
+from .db import connect, dispose, iso
 
 
 def _opt(argv: list[str], name: str, default: int) -> int:
@@ -13,10 +13,18 @@ def _opt(argv: list[str], name: str, default: int) -> int:
 
 
 def main(argv: list[str]) -> int:
-    cmd = argv[0] if argv else "init"
     app = create_app()
+    conn = connect(app.config)
+    try:
+        return _run(argv, app, conn)
+    finally:
+        conn.close()
+        dispose(app.config)
+
+
+def _run(argv: list[str], app, conn) -> int:
+    cmd = argv[0] if argv else "init"
     cfg = app.config
-    conn = connect(cfg["DB_PATH"])
     if cmd in ("init", "import"):
         res = ingest.bootstrap(conn, cfg["DATASET_CSV"], cfg["GOLDEN_RULES"], cfg["RULE_BUNDLE_VERSION"])
         cat = res["catalogue"]

@@ -22,6 +22,19 @@ jobs:
     name: Backend tests (pytest)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      # A throwaway Postgres for the second test run (never the hosted Supabase database).
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: anvaya
+          POSTGRES_PASSWORD: anvaya
+          POSTGRES_DB: anvaya_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U anvaya -d anvaya_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/dataset
@@ -33,8 +46,13 @@ jobs:
       - name: Install dependencies
         working-directory: backend
         run: pip install -r requirements.txt
-      - name: Run tests (rules engine, extraction, API contracts, TC1–TC4)
+      - name: Run tests on SQLite (rules engine, extraction, API contracts, TC1–TC4)
         working-directory: backend
+        run: python -m pytest -q
+      - name: Run tests on PostgreSQL 16
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgresql://anvaya:anvaya@localhost:5432/anvaya_test?sslmode=disable
         run: python -m pytest -q
 
   frontend:

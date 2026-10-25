@@ -12,6 +12,7 @@ import logging
 import threading
 import time
 import uuid
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -21,7 +22,7 @@ from flask import current_app
 
 from . import i18n, metrics
 from .common import ApiError
-from .db import get_db, iso
+from .db import bump, cached, get_db, iso
 
 log = logging.getLogger(__name__)
 
@@ -121,16 +122,41 @@ def tts_key(text: str, language: str, voice_id: str) -> str:
     return hashlib.sha256("".join((text, language, voice_id)).encode("utf-8")).hexdigest()
 
 
+# Prerendered (pinned) clips are fixed prompts with no personal data and are never purged, so each process keeps the
+# most recently used ones in memory (up to this many bytes) and serves them with no database round trip.
+AUDIO_MEMO_BYTES = 32 * 1024 * 1024
+
+
+def _audio_memo(db) -> OrderedDict:
+    return db.backend.memo.setdefault("tts_audio", OrderedDict())
+
+
 def _cached_audio(key: str) -> tuple[str, bytes] | None:
-    row = get_db().execute("SELECT mime_type, audio FROM tts_cache WHERE cache_key=?", (key,)).fetchone()
-    return (row[0], bytes(row[1])) if row else None
+    db = get_db()
+    memo = _audio_memo(db)
+    with db.backend.lock:
+        if key in memo:
+            memo.move_to_end(key)
+            return memo[key]
+    row = db.execute("SELECT mime_type, audio, pinned FROM tts_cache WHERE cache_key=?", (key,)).fetchone()
+    if not row:
+        return None
+    hit = (row[0], bytes(row[1]))
+    if row[2]:
+        with db.backend.lock:
+            memo[key] = hit
+            while sum(len(a) for _, a in memo.values()) > AUDIO_MEMO_BYTES and len(memo) > 1:
+                memo.popitem(last=False)
+    return hit
 
 
 def _store_audio(key: str, lang: str, voice_id: str, mime: str, audio: bytes, ms: int, pinned: bool) -> None:
     db = get_db()
     db.execute("INSERT INTO tts_cache(cache_key, language, voice, mime_type, audio, synth_ms, pinned, created_at)"
-               " VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET pinned=MAX(pinned, excluded.pinned)",
+               " VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET"
+               " pinned=CASE WHEN excluded.pinned > tts_cache.pinned THEN excluded.pinned ELSE tts_cache.pinned END",
                (key, lang, voice_id, mime, audio, ms, int(pinned), iso()))
+    bump(db, "tts")
     db.commit()
 
 
@@ -257,6 +283,7 @@ def prerender(items: list[tuple[str, str]], concurrency: int = 3, on_result=None
                 on_result(row)
     keys = [tts_key(r["text"], r["language"], voice_id) for r in out if r["result"] != "synthesized"]
     db.executemany("UPDATE tts_cache SET pinned=1 WHERE cache_key=?", [(k,) for k in keys])
+    bump(db, "tts")
     db.commit()
     return out
 
@@ -266,13 +293,19 @@ def purge_audio(conn, older_than_hours: float) -> int:
     prerendered (pinned) prompts stay."""
     cutoff = iso(datetime.now(timezone.utc) - timedelta(hours=older_than_hours))
     n = conn.execute("DELETE FROM tts_cache WHERE pinned=0 AND created_at < ?", (cutoff,)).rowcount
+    bump(conn, "tts")
     conn.commit()
     return n
 
 
 def cache_stats() -> dict:
-    n, pinned = get_db().execute("SELECT COUNT(*), COALESCE(SUM(pinned), 0) FROM tts_cache").fetchone()
-    return {"entries": n, "prerendered": pinned}
+    """Clip counts for /ready; kept in memory until the audio cache changes."""
+    db = get_db()
+
+    def load():
+        n, pinned = db.execute("SELECT COUNT(*), COALESCE(SUM(pinned), 0) FROM tts_cache").fetchone()
+        return {"entries": int(n), "prerendered": int(pinned)}
+    return dict(cached(db, "tts", "stats", load))
 
 
 # ---------------------------------------------------------------- translation

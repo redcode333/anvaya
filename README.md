@@ -228,12 +228,94 @@ read it, and `.env` is gitignored.
 | `ANVAYA_SESSION_TTL_HOURS`, `ANVAYA_CASE_CODE_TTL_HOURS`, `ANVAYA_AUTH_TOKEN_TTL_HOURS` | `12`, `72`, `8` | session, case-code and staff-token lifetimes |
 | `ANVAYA_CODE_LOOKUP_LIMIT` | `10` | case-code lookups per minute |
 | `ANVAYA_RULE_BUNDLE_VERSION`, `ANVAYA_DEFAULT_FRESHNESS_DAYS` | `rules-2026.10.1`, `180` | rule bundle label; source-freshness fallback |
+| `DATABASE_URL` | unset | set → PostgreSQL (Supabase Session pooler URI); unset → SQLite. See [Database](#database) |
+| `ANVAYA_DB_POOL_MAX`, `ANVAYA_DB_CACHE_CHECK_S` | `5`, `5` | Postgres connections per process; seconds between in-memory cache version checks |
 | `ANVAYA_DB`, `ANVAYA_DATASET`, `ANVAYA_FRONTEND_DIST` | `backend/instance/anvaya.db`, the CSV in `data/raw/`, `frontend/dist` | paths |
 | `GRAFANA_ADMIN_PASSWORD` | `anvaya-grafana` | Grafana `admin` password (applied when its data volume is first created) |
 | `GRAFANA_ANONYMOUS` | `true` | read-only anonymous dashboard viewing |
 | `PORT`, `PROMETHEUS_PORT`, `GRAFANA_PORT` | `5000`, `9090`, `3000` | no-Docker scripts only |
 
 A number that cannot be parsed falls back to its default, with a startup warning.
+
+---
+
+## Database
+
+The backend picks its database from `DATABASE_URL`:
+
+| `DATABASE_URL` | Database | Used by |
+|---|---|---|
+| unset (default) | SQLite file `ANVAYA_DB` (`backend/instance/anvaya.db`) | local development, tests, CI, the offline kiosk |
+| set | PostgreSQL (psycopg 3 + a connection pool) | the hosted deployment, on Supabase |
+
+Both run the same SQL, translated per dialect in `backend/anvaya/db.py`. Timestamps stay ISO-8601 text and JSON stays
+text, so the app behaves the same on both. The full test suite runs on both: `pytest` (SQLite), and
+`TEST_DATABASE_URL=postgresql://…@localhost:5432/… pytest` (a throwaway local `postgres:16`; CI starts one as a
+service). Tests never read `DATABASE_URL` and refuse a Supabase `TEST_DATABASE_URL`.
+
+**Schema and migrations.** Numbered migrations (`backend/anvaya/migrations.py`) are applied at startup and recorded in
+`schema_migrations`. On Postgres they run under an advisory lock, so several processes can start at once. An older
+SQLite file is upgraded in place. `python -m anvaya.manage init` is idempotent: it skips the catalogue import when
+the CSV's sha256 is unchanged, upserts the curated rules (keeping who verified them against the source), and
+creates staff accounts only if they are missing.
+
+**Supabase setup**
+
+1. Dashboard → **Connect** → **Session pooler**. Copy the URI
+   (`postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`) into `.env` as
+   `DATABASE_URL`. The direct connection is IPv6-only on the free plan; the Session pooler works over IPv4.
+   Session mode (port 5432) is used rather than transaction mode.
+2. Run `python -m anvaya.manage init` once. The first import over the network takes about 30 s; later runs take a
+   few seconds.
+3. Connection settings:
+   - TLS is required (`sslmode=require` is added unless the URL sets `sslmode`).
+   - Connect timeout 10 s, statement timeout 10 s, at most `ANVAYA_DB_POOL_MAX` (5) connections per process.
+   - `prepare_threshold=None`: no server-side prepared statements, which the pooler does not support.
+   - A dropped connection is retried once, but only when nothing in the transaction was sent yet.
+   - The URL and password are never logged. `/api/v1/ready` reports only
+     `"db": {"backend": "postgres", "status": "ok"|"error", "rls": "ok"|"error"}`.
+
+**Row Level Security.** After the migrations, every table has RLS enabled with **no policies**. Supabase's public
+REST API (the `anon` / `authenticated` roles behind the publishable key) can therefore read or write nothing:
+`GET /rest/v1/schemes` returns `[]`, and an insert fails with `42501`. The backend connects as the tables' owner,
+which RLS does not restrict. `/ready` is not ready (503) on Postgres if any table lacks RLS. Do not add policies and
+do not use the publishable key for app data.
+
+**Free plan pause.** A free Supabase project pauses after 7 days without activity, and the app then reports
+`db.status: "error"` until the project is resumed in the dashboard. A keep-alive is planned as the next step.
+
+**Latency.** The hosted database is in Seoul and the app runs on Render Singapore, about 70 ms per round trip.
+Requests are written to need as few round trips as possible:
+
+- One pooled connection and at most one write transaction per request.
+- A request's INSERT/UPDATE/DELETEs are queued and sent together with the next read or with `COMMIT`, in one
+  pipeline. The same insert repeated (one per extracted fact) becomes one batched statement.
+- Independent reads go in one round trip (`query_many`). Joins and `IN (…)` replace per-row lookups.
+- Rules, catalogue facets, the graph summary and TTS cache counts stay in memory, keyed by a `data_versions` row.
+  That row is re-checked at most every `ANVAYA_DB_CACHE_CHECK_S` (5) seconds. Prerendered audio clips and
+  translations are kept in memory too. UI strings (`i18n.py`) live in code and never touched the database.
+- Every API request logs `db_queries`, `db_roundtrips` and `db_ms` (no SQL, no values). Prometheus histograms:
+  `anvaya_db_queries_per_request`, `anvaya_db_roundtrips_per_request`.
+
+Queries per request (statements, excluding BEGIN/COMMIT; a batched insert counts once). "Before" is the previous code
+traced on SQLite; on Postgres each of its statements, plus BEGIN and COMMIT, would have been a round trip:
+
+| Request | Before: queries (round trips on Postgres) | After: queries / round trips |
+|---|---|---|
+| create session | 3 (5) | 2 / 1 |
+| conversation turn (TC1 sentence, 9 facts) | 53 (55) | 6 / 2 (+1 / +1 with LLM extraction on: cache lookup) |
+| evaluate | 11 (13) | 7 / 2 (8 / 3 when the cache version check is due) |
+| create draft | 12 (16) | 10 / 4 |
+| hand-off | 13 (17) | 10 / 3 |
+
+**Concurrency.** Draft and hand-off idempotency keys, case-code issuance and offline-sync dedupe use unique
+constraints with `INSERT … ON CONFLICT DO NOTHING RETURNING`, never read-then-write:
+- The key (or sync event) is claimed in the same transaction as the work. A concurrent duplicate waits for that
+  commit, then replays the stored response.
+- Hand-off locks the draft row (`SELECT … FOR UPDATE`).
+- Case codes have a unique index.
+- `tests/test_db.py` sends 10 identical hand-offs in parallel and checks that exactly one case and one code result,
+  on both databases.
 
 ---
 
@@ -412,7 +494,9 @@ Gunicorn runs one worker with threads so the in-process counters stay complete.
 * **Errors:** responses are JSON (`code`, `message`, `request_id`) and never contain stack traces.
 * **Audio:** no recorded (STT) audio is stored. `manage cleanup` deletes cached TTS clips of personal sentences once
   they are older than the session lifetime.
-* **Secrets:** keys live only in the gitignored `.env` and are never logged.
+* **Secrets:** keys live only in the gitignored `.env` and are never logged, including `DATABASE_URL`.
+* **Hosted database:** Row Level Security is on for every table with no policies, so Supabase's public REST API
+  cannot read or write app data (see [Database](#database)).
 * **Langfuse:** receives input/output only for demo/test data, and metadata only otherwise (enforced by the SDK
   masking hook, which fails closed).
 
@@ -522,10 +606,10 @@ questions and summaries play from the cache.
   schedules it.
 * **Some caches never expire:** prerendered audio, including clips for wording that has since changed, and validated
   LLM answers stay until deleted by hand. Both hold demo data only by default.
-* **No backups** are configured for the SQLite volume.
+* **No backups** are configured for the SQLite volume. (A hosted Supabase database gets Supabase's own daily backups on paid plans only.)
 
 ### Operations and scale
-* **Single node:** SQLite and one gunicorn worker with threads. Prometheus counters are per process, so more workers
+* **Single node:** one gunicorn worker with threads (SQLite locally, or Postgres via `DATABASE_URL`). Prometheus counters are per process, so more workers
   need `prometheus_client` multiprocess mode. The LLM circuit breaker and the TTS background queue are also per
   process.
 * **Live checks are manual:** CI runs the mocked suite only. The live VerbX, LLM and Langfuse checks

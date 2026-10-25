@@ -3,16 +3,19 @@ import logging
 
 from werkzeug.security import check_password_hash
 
+from conftest import db_config
+
 from anvaya import create_app, ingest
 from anvaya.db import connect
 from anvaya.llm.providers import load_providers
+from anvaya.migrations import migrate
 
 SECRET = "sk-test-value-never-logged"
 
 
 def boot(tmp_path, caplog, **cfg):
     with caplog.at_level(logging.INFO, logger="anvaya.startup"):
-        app = create_app({"DB_PATH": str(tmp_path / "boot.db"), "TESTING": True, "LANGFUSE_PUBLIC_KEY": "",
+        app = create_app({**db_config(tmp_path / "boot.db"), "TESTING": True, "LANGFUSE_PUBLIC_KEY": "",
                           "LANGFUSE_SECRET_KEY": "", "LANGFUSE_BASE_URL": "", **cfg})
     return app, [r.getMessage() for r in caplog.records if r.name == "anvaya.startup"]
 
@@ -34,7 +37,7 @@ def test_one_line_per_integration_and_never_a_value(tmp_path, caplog):
 
 def test_missing_optional_keys_do_not_stop_the_app_and_ready_reports_them(tmp_path, caplog):
     app, _ = boot(tmp_path, caplog, VERBX_BASE_URL="", VERBX_API_KEY="", LLM_PROVIDERS=[], METRICS_TOKEN="")
-    conn = connect(app.config["DB_PATH"])
+    conn = connect(app.config)
     ingest.bootstrap(conn, app.config["DATASET_CSV"], app.config["GOLDEN_RULES"], app.config["RULE_BUNDLE_VERSION"])
     conn.close()
     r = app.test_client().get("/api/v1/ready")
@@ -55,9 +58,8 @@ def test_bad_numbers_fall_back_to_defaults_with_a_warning():
 
 
 def test_staff_passwords_come_from_env_and_replace_demo_ones(tmp_path):
-    conn = connect(str(tmp_path / "users.db"))
-    from anvaya.db import init_schema
-    init_schema(conn)
+    conn = connect(db_config(tmp_path / "users.db"))
+    migrate(conn)
     assert ingest.seed_users(conn, {}) == ["reviewer", "operator", "admin"]
     hashes = dict(conn.execute("SELECT username, password_hash FROM users"))
     assert check_password_hash(hashes["admin"], "admin123")

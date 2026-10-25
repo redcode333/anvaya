@@ -73,7 +73,11 @@ fi
 export ANVAYA_DB="${ANVAYA_DB:-$STATE/anvaya.db}"
 mkdir -p "$(dirname "$ANVAYA_DB")"
 cd "$REPO/backend"
-if "$PY" - "$ANVAYA_DB" <<'EOF' 2>/dev/null
+if [ -n "${DATABASE_URL:-}" ]; then
+  # Postgres: `manage init` is idempotent (skips an unchanged catalogue), so run it on every start.
+  log "initialising the Postgres database from DATABASE_URL (catalogue import is skipped if unchanged)"
+  "$PY" -m anvaya.manage init
+elif "$PY" - "$ANVAYA_DB" <<'EOF' 2>/dev/null
 import sqlite3, sys
 c = sqlite3.connect(sys.argv[1])
 sys.exit(0 if c.execute("SELECT COUNT(*) FROM rules WHERE active=1").fetchone()[0] else 1)

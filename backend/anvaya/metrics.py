@@ -5,6 +5,13 @@ HTTP_REQUESTS = Counter("anvaya_http_requests_total", "API requests", ["method",
 HTTP_LATENCY = Histogram("anvaya_http_request_duration_seconds", "API request latency", ["method", "route"],
                          buckets=(.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5))
 
+# Statements per API request (BEGIN/COMMIT not counted; a batched insert counts once) and network round trips per
+# request (queued writes, several reads, or writes + COMMIT travel together in one round trip).
+DB_QUERIES = Histogram("anvaya_db_queries_per_request", "Database queries per API request", ["method", "route"],
+                       buckets=(0, 1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30, 50))
+DB_ROUNDTRIPS = Histogram("anvaya_db_roundtrips_per_request", "Database round trips per API request",
+                          ["method", "route"], buckets=(0, 1, 2, 3, 4, 5, 6, 8, 10, 15, 20))
+
 EVALUATIONS = Counter("anvaya_eligibility_evaluations_total", "Screening runs", ["origin"])
 OUTCOMES = Counter("anvaya_eligibility_outcomes_total", "Per-scheme screening outcomes", ["rule_id", "outcome"])
 RULE_EVAL_SECONDS = Histogram("anvaya_rule_evaluation_seconds", "Deterministic rule evaluation time per screening",
@@ -39,19 +46,25 @@ ACTIVE_SESSIONS = Gauge("anvaya_active_sessions", "Sessions not ended or expired
 
 
 def refresh_gauges(db, now_iso: str) -> None:
+    cases, schemes, rules, verified, active = db.query_many([
+        ("SELECT c.status, COUNT(*) FROM cases c JOIN sessions s ON s.session_id=c.session_id WHERE s.is_test=0"
+         " GROUP BY c.status", ()),
+        ("SELECT COUNT(*) FROM schemes", ()),
+        ("SELECT COUNT(*) FROM rules WHERE active=1", ()),
+        ("SELECT COUNT(*) FROM rules WHERE active=1 AND source_verified_at IS NOT NULL", ()),
+        ("SELECT mode, COUNT(*) FROM sessions WHERE is_test=0 AND ended_at IS NULL AND expires_at > ? GROUP BY mode",
+         (now_iso,)),
+    ])
     for status in ("PENDING_REVIEW", "CORRECTION_REQUESTED", "REVIEWED"):
         CASES_BY_STATUS.labels(status).set(0)
-    for status, n in db.execute(
-        "SELECT c.status, COUNT(*) FROM cases c JOIN sessions s ON s.session_id=c.session_id WHERE s.is_test=0 GROUP BY c.status"):
+    for status, n in cases:
         CASES_BY_STATUS.labels(status).set(n)
-    CATALOGUE.labels("schemes").set(db.execute("SELECT COUNT(*) FROM schemes").fetchone()[0])
-    CATALOGUE.labels("curated_rules").set(db.execute("SELECT COUNT(*) FROM rules WHERE active=1").fetchone()[0])
-    CATALOGUE.labels("rules_source_verified").set(
-        db.execute("SELECT COUNT(*) FROM rules WHERE active=1 AND source_verified_at IS NOT NULL").fetchone()[0])
+    CATALOGUE.labels("schemes").set(schemes.fetchone()[0])
+    CATALOGUE.labels("curated_rules").set(rules.fetchone()[0])
+    CATALOGUE.labels("rules_source_verified").set(verified.fetchone()[0])
+    by_mode = dict(active.fetchall())
     for mode in ("personal", "kiosk"):
-        ACTIVE_SESSIONS.labels(mode).set(db.execute(
-            "SELECT COUNT(*) FROM sessions WHERE mode=? AND is_test=0 AND ended_at IS NULL AND expires_at > ?",
-            (mode, now_iso)).fetchone()[0])
+        ACTIVE_SESSIONS.labels(mode).set(by_mode.get(mode, 0))
 
 
 def render(db, now_iso: str) -> tuple[bytes, str]:

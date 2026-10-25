@@ -70,7 +70,7 @@ for k in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL", "LA
 import tempfile
 from anvaya import create_app
 from anvaya.llm import tracing
-app = create_app({"DB_PATH": tempfile.mkdtemp() + "/t.db", "TESTING": True})
+app = create_app({"DB_PATH": tempfile.mkdtemp() + "/t.db", "DATABASE_URL": "", "TESTING": True})
 with app.test_request_context():
     with tracing.turn("SES_x", True, "hello", "extract-v1.1") as tr:
         assert not tr and tr.llm_call({"name": "groq", "model": "m"}, 1, []).end("ok") is not None

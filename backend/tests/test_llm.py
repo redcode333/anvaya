@@ -8,7 +8,7 @@ import pytest
 import requests
 
 from anvaya import metrics, testrunner
-from anvaya.db import get_db
+from anvaya.db import get_db, reset_caches
 from anvaya.llm import client as llm_client
 from anvaya.llm import merge, state
 from anvaya.llm import validate
@@ -85,6 +85,7 @@ def fake(app, monkeypatch):
         for table in ("llm_cache", "llm_provider_state", "translations"):
             db.execute(f"DELETE FROM {table}")
         db.commit()
+        reset_caches(db)
     state.reset_memory()
     llm_client._NO_JSON_MODE.clear()
     yield http

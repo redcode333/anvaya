@@ -9,22 +9,30 @@ from .common import ApiError
 from .db import get_db, iso
 
 
+def _memo(db) -> dict:
+    """Stored translations never change, so each process keeps the ones it has seen: (source, target, text) → text."""
+    return db.backend.memo.setdefault("translations", {})
+
+
 def _cached(texts: list[str], source: str, target: str) -> dict[str, str]:
     db = get_db()
-    out = {}
-    for t in texts:
-        row = db.execute("SELECT translated_text FROM translations WHERE source_lang=? AND target_lang=? AND source_text=?",
-                         (source, target, t)).fetchone()
-        if row:
-            out[t] = row[0]
+    memo = _memo(db)
+    out = {t: memo[(source, target, t)] for t in texts if (source, target, t) in memo}
+    missing = [t for t in texts if t not in out]
+    if missing:  # one query for all of them, not one per text
+        rows = db.execute(
+            "SELECT source_text, translated_text FROM translations WHERE source_lang=? AND target_lang=?"
+            f" AND source_text IN ({','.join('?' * len(missing))})", (source, target, *missing)).fetchall()
+        for text, translated in rows:
+            out[text] = memo[(source, target, text)] = translated
     return out
 
 
 def _store(source: str, target: str, pairs: list[tuple[str, dict]]) -> None:
     db = get_db()
     db.executemany(
-        "INSERT OR IGNORE INTO translations(source_lang, target_lang, source_text, translated_text, provider, model, created_at)"
-        " VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO translations(source_lang, target_lang, source_text, translated_text, provider, model, created_at)"
+        " VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
         [(source, target, t, r["text"], "verbx", r["model"], iso()) for t, r in pairs if not r["degraded"]],
     )
     db.commit()

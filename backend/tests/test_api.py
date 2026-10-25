@@ -355,17 +355,22 @@ def test_confusable_spoken_number_needs_confirmation(client, lang, utterance, he
 
 
 def test_schema_migration_adds_confusable_column(tmp_path):
+    """A SQLite database from before schema_migrations existed (old facts table) is brought up to date."""
     import sqlite3
 
-    from anvaya.db import init_schema
+    from anvaya.db import connect
+    from anvaya.migrations import migrate
     path = tmp_path / "old.db"
     old = sqlite3.connect(path)
     old.execute("CREATE TABLE facts (fact_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, attribute TEXT NOT NULL)")
     old.execute("INSERT INTO facts VALUES ('F-1', 'S-1', 'age')")
     old.commit()
-    init_schema(old)
-    init_schema(old)  # idempotent
-    assert old.execute("SELECT confusable FROM facts WHERE fact_id='F-1'").fetchone()[0] == 0
+    old.close()
+    db = connect(str(path))
+    assert migrate(db) == [1, 2, 3]
+    assert migrate(db) == []  # idempotent
+    assert db.execute("SELECT confusable FROM facts WHERE fact_id='F-1'").fetchone()[0] == 0
+    db.close()
 
 
 def test_no_user_facing_string_promises_eligibility_or_approval():
