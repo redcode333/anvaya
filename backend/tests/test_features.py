@@ -44,3 +44,18 @@ def test_phone_routes_503_unless_on(client, app, monkeypatch, flag, method, path
 def test_phone_switched_on_without_integration_is_501_not_a_silent_success(client, app, monkeypatch):
     monkeypatch.setitem(app.config, "PHONE_OTP_STATUS", "on")
     assert client.post("/api/v1/auth/phone/otp/send", json={}).status_code == 501
+
+
+def test_turnstile_key_accepts_either_variable_name(monkeypatch):
+    import importlib
+
+    from anvaya import config
+    try:
+        monkeypatch.delenv("VITE_TURNSTILE_SITE_KEY", raising=False)
+        monkeypatch.setenv("TURNSTILE_SITE_KEY", "0xserver")
+        assert importlib.reload(config).Config.TURNSTILE_SITE_KEY == "0xserver"
+        monkeypatch.setenv("VITE_TURNSTILE_SITE_KEY", " 0xvite ")
+        assert importlib.reload(config).Config.TURNSTILE_SITE_KEY == "0xvite"
+    finally:
+        monkeypatch.undo()
+        importlib.reload(config)

@@ -81,7 +81,9 @@ class Config:
     STAFF_MFA_REQUIRED = _flag("ANVAYA_STAFF_MFA_REQUIRED", True)
     # Cloudflare Turnstile site key of the browser build (public). Supabase verifies the token server-side once CAPTCHA
     # protection is enabled in the project's Auth settings; unset = the widget is skipped (local dev) with a warning.
-    TURNSTILE_SITE_KEY = os.environ.get("VITE_TURNSTILE_SITE_KEY", "").strip()
+    # Either name works: VITE_TURNSTILE_SITE_KEY (also baked into the browser build) or TURNSTILE_SITE_KEY. GET /api/config
+    # hands the key to the page at runtime, so setting it on the server alone is enough.
+    TURNSTILE_SITE_KEY = (os.environ.get("VITE_TURNSTILE_SITE_KEY") or os.environ.get("TURNSTILE_SITE_KEY") or "").strip()
     # Per-IP limits (requests per minute) on our endpoints that create sessions or report sign-in events.
     SESSION_CREATE_LIMIT_PER_MIN = _num("ANVAYA_SESSION_CREATE_LIMIT", 20, int)
     AUTH_EVENT_LIMIT_PER_MIN = _num("ANVAYA_AUTH_EVENT_LIMIT", 30, int)
@@ -168,4 +170,3 @@ class Config:
     # Until "on", their routes answer 503 FEATURE_NOT_AVAILABLE (anvaya/features.py).
     DIGILOCKER_STATUS = os.environ.get("DIGILOCKER_STATUS", "coming_soon")
     PHONE_OTP_STATUS = os.environ.get("PHONE_OTP_STATUS", "coming_soon")
-    TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY", "")  # public site key only

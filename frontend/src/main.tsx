@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import { loadRuntimeTurnstileKey } from "./auth";
 import { AppProvider } from "./state";
 import "./styles.css";
 // Self-hosted fonts (no Google Fonts): only the subsets and weights the UI uses, font-display: swap.
@@ -22,15 +23,18 @@ for (const href of [interTightHero, devanagariHero, teluguHero]) {
   document.head.appendChild(l);
 }
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <AppProvider>
-        <App />
-      </AppProvider>
-    </BrowserRouter>
-  </React.StrictMode>,
-);
+// The CAPTCHA key may come from the server, so it is read before the first render (one small request).
+loadRuntimeTurnstileKey().finally(() => {
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <BrowserRouter>
+        <AppProvider>
+          <App />
+        </AppProvider>
+      </BrowserRouter>
+    </React.StrictMode>,
+  );
+});
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register("/sw.js").catch(() => undefined);

@@ -17,7 +17,7 @@ working offline.
 | **Catalogue** | 3,534 schemes in 37 jurisdictions (searchable) · **17 curated, quoted rules** that are screened automatically |
 | **Surfaces** | Citizen (phone) · **Kiosk** (operator-assisted, offline-capable) · Reviewer · Admin (catalogue, security, background jobs) · Official scenarios TC1–TC5 |
 | **Stack** | React + Vite PWA · Flask API (gunicorn) · Supabase (Postgres with Row Level Security, Auth with TOTP for staff, private Storage) · VerbX speech · optional Groq → Gemini LLM · Langfuse tracing · Prometheus + Grafana · GitHub Actions |
-| **Verified by** | 385 backend tests on SQLite and 386 on Postgres 16 · 93 frontend tests · TC1–TC5 against the live Supabase project (checks 6/6, 6/6, 7/7, 7/7, 8/8) — re-run on 2026-10-25 against the merged code, all passing |
+| **Verified by** | 386 backend tests on SQLite and 387 on Postgres 16 · 95 frontend tests · TC1–TC5 against the live Supabase project (checks 6/6, 6/6, 7/7, 7/7, 8/8) — re-run on 2026-10-25 against the merged code, all passing |
 | **Runs on** | A sleeping free tier (Render) with no Redis, queue, gateway or separate worker — see [Scaling](#scaling) |
 
 **Contents:**
@@ -659,7 +659,7 @@ read it, and `.env` is gitignored.
 | `KIOSK_MAX_SESSION_MINUTES` | `30` | absolute length of a kiosk citizen session |
 | `VITE_TURNSTILE_SITE_KEY` | unset | Cloudflare Turnstile site key (public). Unset: no CAPTCHA widget, startup warning |
 | `DIGILOCKER_STATUS`, `PHONE_OTP_STATUS` | `coming_soon` | `off` / `coming_soon` / `on`, read at runtime by the frontend from `GET /api/config`. `DIGILOCKER_STATUS` is reported `on` exactly when the DigiLocker adapter is enabled and fully configured (`DIGILOCKER_ENABLED` + all its variables); an `on` that cannot work is shown as `coming_soon`. Phone OTP routes answer `503 FEATURE_NOT_AVAILABLE` until `on` (and `501` if switched on without an integration) |
-| `TURNSTILE_SITE_KEY` | unset | Cloudflare Turnstile public site key, returned by `GET /api/config` |
+| `TURNSTILE_SITE_KEY` (or `VITE_TURNSTILE_SITE_KEY`) | unset | Cloudflare Turnstile **site** key (public). Either name works. The server returns it from `GET /api/config`, so setting it on the server alone is enough; no rebuild is needed (a build-time `VITE_TURNSTILE_SITE_KEY` also works) |
 | `ANVAYA_STAFF_MFA_REQUIRED` | `true` | staff API calls need an `aal2` (TOTP) token; `false` only for a local demo |
 | `ANVAYA_SESSION_CREATE_LIMIT`, `ANVAYA_AUTH_EVENT_LIMIT` | `20`, `30` | per-IP requests per minute: session creation and Passport resume; browser auth-event reports |
 | `PHONE_OTP_ENABLED` | `false` | phone OTP sign-in (needs DLT registration and an SMS provider) |

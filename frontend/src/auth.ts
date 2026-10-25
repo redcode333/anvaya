@@ -9,8 +9,19 @@ const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
 /** Cloudflare Turnstile site key; unset (local dev) = no widget, sign-in requests go without a captchaToken. */
-export const turnstileSiteKey = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) || "";
-if (!turnstileSiteKey) console.warn("anvaya: VITE_TURNSTILE_SITE_KEY is not set; sign-in runs without the Turnstile CAPTCHA (local dev only).");
+export let turnstileSiteKey = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) || "";
+
+/** When the key was not baked into the build, ask the server (GET /api/config): setting the variable on the server alone
+ *  is then enough, with no rebuild. Call once before the app renders. */
+export async function loadRuntimeTurnstileKey(): Promise<void> {
+  if (!turnstileSiteKey) {
+    try {
+      const r = await fetch("/api/config", { headers: { Accept: "application/json" } });
+      if (r.ok) turnstileSiteKey = ((await r.json()).turnstile_site_key as string | null) || "";
+    } catch { /* offline or no server: sign-in runs without the widget */ }
+  }
+  if (!turnstileSiteKey) console.warn("anvaya: no Turnstile site key (build or server); sign-in runs without the CAPTCHA (local dev only).");
+}
 
 // flowType "pkce": an OAuth redirect (Google) returns a one-time code in the query, never tokens in the URL fragment.
 export const supabase: SupabaseClient | null = url && key
