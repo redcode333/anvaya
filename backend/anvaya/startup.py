@@ -6,13 +6,13 @@ shown by GET /api/v1/ready.
 """
 import logging
 
-from .config import CONFIG_WARNINGS, STAFF_ACCOUNTS
+from .config import CONFIG_WARNINGS
 from .llm.providers import is_configured, missing
 
 log = logging.getLogger("anvaya.startup")
 
 
-def check(cfg, demo_password_users: list[str]) -> dict:
+def check(cfg) -> dict:
     integrations = {}
 
     need = [k for k in ("VERBX_BASE_URL", "VERBX_API_KEY") if not cfg[k]]
@@ -40,6 +40,13 @@ def check(cfg, demo_password_users: list[str]) -> dict:
         "effect": "LLM-extraction traces not exported (SDK not loaded)" if lf_need
         else "LLM-extraction turns traced to Langfuse (input/output for demo data only)"}
 
+    need = [k for k in ("SUPABASE_URL", "SUPABASE_SECRET_KEY") if not cfg[k]]
+    integrations["supabase_auth"] = {
+        "status": "missing" if "SUPABASE_URL" in need else ("partial" if need else "configured"), "missing": need,
+        "effect": "staff sign-in and citizen accounts unavailable (Passport code + PIN still works)"
+        if "SUPABASE_URL" in need else ("tokens verified; account deletion cannot remove the Auth user" if need
+                                        else "tokens verified against the project's JWKS; admin API for deletion")}
+
     integrations["metrics"] = {
         "status": "configured" if cfg["METRICS_TOKEN"] else "missing",
         "missing": [] if cfg["METRICS_TOKEN"] else ["ANVAYA_METRICS_TOKEN"],
@@ -47,12 +54,12 @@ def check(cfg, demo_password_users: list[str]) -> dict:
         else "/metrics is open (fine for a local demo; set a token behind a public ingress)"}
 
     warnings = list(CONFIG_WARNINGS)
-    for user in demo_password_users:
-        warnings.append(f"{STAFF_ACCOUNTS[user][0]} is not set: account '{user}' uses the public demo password")
+    if not cfg["PASSPORT_PEPPER"]:
+        warnings.append("ANVAYA_PASSPORT_PEPPER is not set: Passport codes are hashed with a public development pepper")
 
     for name, i in integrations.items():
         extra = f" (missing {', '.join(i['missing'])})" if i["missing"] else ""
         log.info("integration %-12s %s%s: %s", name, i["status"], extra, i["effect"])
     for w in warnings:
         log.warning("config: %s", w)
-    return {"integrations": integrations, "warnings": warnings, "demo_password_users": demo_password_users}
+    return {"integrations": integrations, "warnings": warnings}

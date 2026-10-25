@@ -1,7 +1,7 @@
 """Sessions, profile facts (stable IDs + provenance + confirmation) and conversation turns."""
 import json
 
-from flask import current_app
+from flask import current_app, g
 
 from . import extraction, i18n, llm, metrics
 from .llm import merge as llm_merge
@@ -67,23 +67,33 @@ def validate_value(attr: str, value):
 
 # ---------------------------------------------------------------- sessions
 
-def create_session(mode: str, language: str, device_id=None, operator_id=None, is_test=False, is_demo=False) -> dict:
+def create_session(mode: str, language: str, device_id=None, operator_id=None, is_test=False, is_demo=False,
+                   claims: dict | None = None, citizen_id: str | None = None, commit: bool = True) -> dict:
+    """A new session. `claims` = a signed-in citizen (Supabase user): the session is tied to that user and, if they saved
+    their passports, starts from the saved profile. `citizen_id` = a Passport code holder resuming."""
     if mode not in SESSION_MODES:
         raise ApiError("INVALID_MODE", "mode must be personal or kiosk.", 422)
     if language not in i18n.SUPPORTED_LANGUAGES:
         raise ApiError("UNSUPPORTED_LANGUAGE", "Supported languages: en, hi, te.", 422)
+    db = get_db()
+    auth_user_id = None
+    if claims and mode == "personal":
+        from .accounts import queue_citizen
+        citizen_id, auth_user_id = queue_citizen(claims), claims["sub"]
     s = {"session_id": new_id("SES"), "mode": mode, "language": language, "workflow_state": "SESSION_ACTIVE",
          "device_id": device_id, "operator_id": operator_id, "is_test": int(is_test), "is_demo": int(is_demo),
-         "created_at": iso(), "expires_at": iso_in(current_app.config["SESSION_TTL_HOURS"]), "ended_at": None}
-    db = get_db()
-    db.execute(
-        """INSERT INTO sessions(session_id, mode, language, workflow_state, device_id, operator_id, is_test,
-           is_demo, created_at, expires_at) VALUES (?,?,?,?,?,?,?,?,?,?)""",
-        tuple(s[k] for k in ("session_id", "mode", "language", "workflow_state", "device_id", "operator_id",
-                             "is_test", "is_demo", "created_at", "expires_at")),
-    )
-    audit("session.start", session_id=s["session_id"], details={"mode": mode, "language": language, "demo": bool(is_demo)})
-    db.commit()
+         "created_at": iso(), "expires_at": iso_in(current_app.config["SESSION_TTL_HOURS"]), "ended_at": None,
+         "citizen_id": citizen_id, "auth_user_id": auth_user_id}
+    cols = ("session_id", "mode", "language", "workflow_state", "device_id", "operator_id", "is_test", "is_demo",
+            "created_at", "expires_at", "citizen_id", "auth_user_id")
+    db.execute(f"INSERT INTO sessions({', '.join(cols)}) VALUES ({','.join('?' * len(cols))})", tuple(s[k] for k in cols))
+    audit("session.start", session_id=s["session_id"], details={"mode": mode, "language": language, "demo": bool(is_demo),
+                                                                "account": bool(citizen_id)})
+    if auth_user_id:
+        from .accounts import apply_saved_profile
+        s["account"] = apply_saved_profile(s, citizen_id)
+    if commit:
+        db.commit()
     return s
 
 
@@ -95,6 +105,12 @@ def _checked_session(row, allow_ended: bool) -> dict:
     if not row:
         raise ApiError("SESSION_NOT_FOUND", "Session not found.", 404)
     s = dict(row)
+    if s.get("auth_user_id"):
+        # A signed-in citizen's session is reachable only with that citizen's verified token (same user id after an
+        # anonymous account is linked to an email).
+        claims = g.get("auth")
+        if not claims or claims.get("sub") != s["auth_user_id"]:
+            raise ApiError("SESSION_FORBIDDEN", "This session belongs to another account.", 403)
     if not allow_ended and (s["ended_at"] or parse_iso(s["expires_at"]) < now()):
         raise ApiError("SESSION_EXPIRED", "This session has ended or expired.", 410)
     return s
@@ -122,22 +138,25 @@ def set_language(session_id: str, language: str, session: dict | None = None, co
     return {**session, "language": language}
 
 
-def end_session(session_id: str) -> None:
-    """Kiosk exit: unconsented facts are deleted; consented case data is retained."""
+def end_session(session_id: str, reason: str = "user") -> None:
+    """End a session (kiosk End session / idle timeout, or Start over). Data nobody consented to keep is deleted:
+    a saved passport keeps its facts and versions, a consented hand-off keeps its case; utterances never stay."""
     db = get_db()
-    session, case = db.query_many([(SESSION_SQL, (session_id,)), ("SELECT 1 FROM cases WHERE session_id=?", (session_id,))])
+    session, case, saved = db.query_many([
+        (SESSION_SQL, (session_id,)), ("SELECT 1 FROM cases WHERE session_id=?", (session_id,)),
+        ("SELECT c.saved FROM citizens c JOIN sessions s ON s.citizen_id = c.citizen_id WHERE s.session_id=?",
+         (session_id,))])
     _checked_session(session.fetchone(), allow_ended=True)
-    has_case = case.fetchone()
-    if not has_case:
-        db.execute("DELETE FROM facts WHERE session_id=?", (session_id,))
-        db.execute("DELETE FROM turns WHERE session_id=?", (session_id,))
-        db.execute("DELETE FROM doc_marks WHERE session_id=?", (session_id,))
-        db.execute("DELETE FROM evaluations WHERE session_id=?", (session_id,))
-        db.execute("DELETE FROM drafts WHERE session_id=?", (session_id,))
+    has_case, row = case.fetchone(), saved.fetchone()
+    is_saved = bool(row and row[0])
+    if not has_case and not is_saved:
+        for table in ("facts", "turns", "doc_marks", "evaluations", "drafts", "passport_versions"):
+            db.execute(f"DELETE FROM {table} WHERE session_id=?", (session_id,))
     else:
         db.execute("DELETE FROM turns WHERE session_id=?", (session_id,))
     db.execute("UPDATE sessions SET ended_at=? WHERE session_id=?", (iso(), session_id))
-    audit("session.end", session_id=session_id, details={"retained_case": bool(has_case)})
+    audit("session.end", session_id=session_id,
+          details={"retained_case": bool(has_case), "saved_passport": is_saved, "reason": reason})
     db.commit()
 
 
@@ -496,7 +515,8 @@ def profile_view(session_id: str, loaded: list | None = None) -> dict:
                         f"{display_value(f['attribute'], f['value'], s['language'])}"
     marks = {r["doc_key"]: r["status"] for r in marks_rows}
     return {
-        "session": {k: s[k] for k in ("session_id", "mode", "language", "workflow_state", "created_at", "expires_at", "ended_at")},
+        "session": {**{k: s[k] for k in ("session_id", "mode", "language", "workflow_state", "created_at", "expires_at",
+                                         "ended_at")}, "linked_to_citizen": bool(s.get("citizen_id"))},
         "facts": list(facts.values()),
         "needs_confirmation": [f["fact_id"] for f in facts.values() if f["confirm_individually"] and not f["confirmed"]],
         "documents": marks,

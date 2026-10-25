@@ -1,9 +1,13 @@
-# `docker compose up --build` from a clean clone; only .env needs filling (it is optional: without it VerbX and the
-# LLM providers stay off and the staff accounts use the demo passwords, with a warning in the app log).
+# `docker compose up --build` from a clean clone; only .env needs filling (it is optional: without it VerbX, the LLM
+# providers and Supabase Auth stay off: no staff sign-in or citizen accounts, Passport code + PIN still works).
 # State lives in named volumes only; the bind mounts below are read-only configs inside this repo.
 services:
   anvaya:
-    build: .
+    build:
+      context: .
+      args:   # baked into the browser bundle: URL + publishable key only
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:-}
     ports:
       - "5000:5000"
     env_file:

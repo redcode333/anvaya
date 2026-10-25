@@ -4,12 +4,9 @@ export class ApiError extends Error {
   }
 }
 
-let staffToken: string | null = sessionStorage.getItem("anvaya.staffToken");
-export const setStaffToken = (t: string | null) => {
-  staffToken = t;
-  try { t ? sessionStorage.setItem("anvaya.staffToken", t) : sessionStorage.removeItem("anvaya.staffToken"); } catch { /* storage blocked */ }
-};
-export const getStaffToken = () => staffToken;
+// The Supabase access token (anonymous citizen, linked citizen or staff), sent on every request; the server verifies it.
+let tokenProvider: () => Promise<string | null> = async () => null;
+export const setTokenProvider = (fn: () => Promise<string | null>) => { tokenProvider = fn; };
 
 export const newKey = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
@@ -21,7 +18,10 @@ export async function api<T = any>(path: string, opts: Opts = {}): Promise<T> {
   if (opts.body instanceof FormData) body = opts.body;
   else if (opts.body !== undefined) { headers["Content-Type"] = "application/json"; body = JSON.stringify(opts.body); }
   if (opts.sessionId) headers["X-Session-Id"] = opts.sessionId;
-  if (staffToken && opts.auth !== false) headers["Authorization"] = `Bearer ${staffToken}`;
+  if (opts.auth !== false) {
+    const token = await tokenProvider().catch(() => null);
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
   let res: Response;
   try {
     res = await fetch(`/api/v1${path}`, { method: opts.method || (body ? "POST" : "GET"), headers, body, signal: opts.signal });

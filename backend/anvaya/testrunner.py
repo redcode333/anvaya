@@ -1,7 +1,10 @@
-"""Official scenarios TC1–TC4: seeded inputs run through the real pipeline with recorded evidence."""
+"""Official scenarios TC1–TC5: seeded inputs run through the real pipeline with recorded evidence."""
 import json
+import re
 
-from . import cases, catalogue, metrics, profile, rules_engine, voice
+from flask import current_app
+
+from . import accounts, cases, catalogue, metrics, profile, rules_engine, voice
 from .common import ApiError
 from .db import dumps, get_db, iso, new_id
 
@@ -34,6 +37,16 @@ TC_DEFS = {
         "language": "en",
         "utterance": "I am 70 years old and live in Punjab. We have a BPL card. I do not get any pension.",
         "documents": {"bpl_card": "missing", "age_proof": "unknown", "residence_proof": "available"},
+    },
+    "TC5": {
+        "title": "Returning citizen",
+        "expected": "Passport saved with consent behind a Passport code + PIN (code hashed, weak PIN refused); a new session resumes from the saved profile (wrong code and wrong PIN get the same answer); after the age is corrected, \"what changed\" shows each outcome before → after with the reason (the age fact changed).",
+        "language": "en",
+        "utterance": ("I am 67 years old, a farmer in a village in Guntur, Andhra Pradesh. Family of 4, yearly income "
+                      "60,000 rupees. We have a BPL card, I do not get any pension, I own 2 acres of land and have a bank account."),
+        "pin": "4826",
+        "weak_pin": "1234",
+        "new_age": 52,
     },
 }
 
@@ -217,12 +230,85 @@ def run_tc4(d):
             "checks": checks, "session_ids": [sid]}
 
 
-RUNNERS = {"TC1": run_tc1, "TC2": run_tc2, "TC3": run_tc3, "TC4": run_tc4}
+def _error(fn):
+    try:
+        fn()
+    except ApiError as e:
+        return {"code": e.code, "status": e.status, "message": e.message}
+    return None
+
+
+def run_tc5(d):
+    consent = {"version": current_app.config["CONSENT_VERSION"], "accepted": True, "language": d["language"]}
+    sid1 = _session(d["language"])
+    profile.handle_turn(sid1, d["utterance"], channel="text")
+    _confirm(sid1)
+    ev1 = catalogue.evaluate_session(sid1)
+    weak = _error(lambda: accounts.create_passport_code(sid1, {"pin": d["weak_pin"], "consent": consent}))
+    no_consent = _error(lambda: accounts.create_passport_code(sid1, {"pin": d["pin"]}))
+    saved = accounts.create_passport_code(sid1, {"pin": d["pin"], "consent": consent})
+    code, cid = saved["code"], saved["citizen_id"]
+    db = get_db()
+    stored = db.execute("SELECT code_hash, pin_hash FROM citizens WHERE citizen_id=?", (cid,)).fetchone()
+    profile.end_session(sid1)
+    kept = len(profile.load_facts(sid1).rows)
+
+    other = accounts.new_passport_code()
+    wrong_pin = _error(lambda: accounts.resume({"code": code, "pin": "4827", "language": "en"}, None))
+    wrong_code = _error(lambda: accounts.resume({"code": other, "pin": d["pin"], "language": "en"}, None))
+    resumed = accounts.resume({"code": code, "pin": d["pin"], "language": d["language"]}, None)
+    sid2 = resumed["session_id"]
+    before = {a: f["value"] for a, f in profile.load_facts(sid1).current().items()}
+    after_resume = profile.current_facts(sid2)
+    ev2 = catalogue.evaluate_session(sid2)
+    v2_at = accounts.history(cid)["versions"][0]["created_at"]
+    corrected = profile.patch_fact(sid2, after_resume["age"]["fact_id"],
+                                   {"value": d["new_age"], "raw_text": "citizen correction"})
+    ev3 = catalogue.evaluate_session(sid2)
+    hist = accounts.history(cid)
+    changed = accounts.what_changed(cid, v2_at)
+    indiramma = next((c for c in changed["changes"] if c["rule_id"] == "R_AP_INDIRAMMA_OAP_RURAL"), None)
+    age_reason = indiramma and next((r for r in indiramma["reasons"] if r["kind"] == "fact_changed"
+                                     and r["attribute"] == "age"), None)
+    # The scenario's own attempt rows (hashes only) go away so a re-run starts with clean limits.
+    db.executemany("DELETE FROM passport_attempts WHERE code_hash=?", [(accounts.code_hash(c),) for c in (code, other)])
+    db.commit()
+    checks = [
+        _check("Passport code is PSP-XXXX-XXXX from a 32-symbol alphabet (40 random bits)",
+               re.fullmatch(r"PSP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}", code) is not None
+               and len(accounts.CODE_ALPHABET) ** 8 == 2 ** 40, code),
+        _check("Code stored only as sha256(pepper + code); PIN argon2-hashed",
+               stored["code_hash"] == accounts.code_hash(code) and code not in stored["code_hash"]
+               and stored["pin_hash"].startswith("$argon2"), {"code_hash_prefix": stored["code_hash"][:12]}),
+        _check("Weak PIN refused; saving without consent refused",
+               weak and weak["code"] == "WEAK_PIN" and no_consent and no_consent["code"] == "CONSENT_REQUIRED",
+               {"weak_pin": weak, "no_consent": no_consent}),
+        _check("End session keeps the consented passport's facts", kept > 0, {"facts_kept": kept}),
+        _check("Wrong code and wrong PIN get the same answer",
+               wrong_pin and wrong_code and wrong_pin == wrong_code and wrong_pin["status"] == 401,
+               {"wrong_pin": wrong_pin, "wrong_code": wrong_code}),
+        _check("New session resumes from the saved profile",
+               {a: f["value"] for a, f in after_resume.items()} == before and resumed["restored"]["saved"],
+               {"session_id": sid2, "restored": resumed["restored"]["restored"]}),
+        _check("Every screening is a passport version with rule versions, fact ids and outcomes",
+               len(hist["versions"]) == 3 and all(v["rule_versions"] and v["fact_ids"] for v in hist["versions"]),
+               [{k: v[k] for k in ("version_id", "created_at", "counts")} for v in hist["versions"]]),
+        _check("What changed: AP INDIRAMMA OAP PROVISIONAL → MISMATCH because the age fact changed",
+               indiramma and indiramma["before"] == "PROVISIONAL" and indiramma["after"] == "MISMATCH" and age_reason
+               and age_reason["before"] == 67 and age_reason["after"] == d["new_age"]
+               and age_reason["fact_after"] == corrected["fact"]["fact_id"], indiramma),
+    ]
+    return {"input": {"utterance": d["utterance"], "pin": "(4 digits, not recorded)", "new_age": d["new_age"]},
+            "actual": {"evaluations": [ev1["eval_id"], ev2["eval_id"], ev3["eval_id"]], "what_changed": changed},
+            "checks": checks, "session_ids": [sid1, sid2]}
+
+
+RUNNERS = {"TC1": run_tc1, "TC2": run_tc2, "TC3": run_tc3, "TC4": run_tc4, "TC5": run_tc5}
 
 
 def run(tc_id: str) -> dict:
     if tc_id not in RUNNERS:
-        raise ApiError("UNKNOWN_TEST_CASE", "Use TC1, TC2, TC3 or TC4.", 404)
+        raise ApiError("UNKNOWN_TEST_CASE", "Use TC1, TC2, TC3, TC4 or TC5.", 404)
     d = TC_DEFS[tc_id]
     out = RUNNERS[tc_id](d)
     passed = all(c["passed"] for c in out["checks"])
@@ -247,9 +333,11 @@ def latest_runs() -> dict:
 def reset() -> dict:
     db = get_db()
     sids = [r[0] for r in db.execute("SELECT session_id FROM sessions WHERE is_test=1")]
-    for table in ("facts", "turns", "doc_marks", "evaluations", "drafts", "cases", "audit_events"):
+    for table in ("facts", "turns", "doc_marks", "evaluations", "drafts", "cases", "audit_events", "passport_versions"):
         db.executemany(f"DELETE FROM {table} WHERE session_id=?", [(s,) for s in sids])
     db.execute("DELETE FROM sessions WHERE is_test=1")
+    db.execute("DELETE FROM passport_attempts WHERE code_hash IN (SELECT code_hash FROM citizens WHERE is_test=1)")
+    db.execute("DELETE FROM citizens WHERE is_test=1")
     db.execute("DELETE FROM test_runs")
     db.commit()
     return {"removed_sessions": len(sids)}

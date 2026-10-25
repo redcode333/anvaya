@@ -18,7 +18,7 @@ export default function ReviewerCase() {
   const ok = staff && ["reviewer", "admin"].includes(staff.role);
   const load = () => api(`/reviewer/cases/${id}`).then(setC).catch(setErr);
   useEffect(() => { if (ok) load(); }, [id, ok]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!ok) return <StaffLogin roles={["reviewer", "admin"]} title="Reviewer sign-in" hint="" demo={["reviewer"]} />;
+  if (!ok) return <StaffLogin roles={["reviewer", "admin"]} title="Reviewer sign-in" hint="" />;
   if (!c) return <ErrorNote error={err} />;
 
   const act = async (action: string) => {

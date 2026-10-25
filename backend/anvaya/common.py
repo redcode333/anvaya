@@ -1,13 +1,11 @@
 import hashlib
 import json
-import secrets
 from functools import wraps
 
 from flask import g, request
-from werkzeug.security import check_password_hash
 
 from . import metrics
-from .db import dumps, get_db, iso, iso_in, new_id, now, parse_iso
+from .db import dumps, get_db, iso, new_id
 
 
 class ApiError(Exception):
@@ -41,39 +39,16 @@ def audit(action: str, *, case_id=None, session_id=None, object_version=None, de
 
 # ---------------------------------------------------------------- auth
 
-def login(username: str, password: str) -> dict:
-    db = get_db()
-    user = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-    if not user or not check_password_hash(user["password_hash"], password):
-        metrics.AUTH.labels("login_failed").inc()
-        audit("auth.login_failed", details={"username": username}, actor_id="anonymous", actor_role="anonymous")
-        db.commit()
-        raise ApiError("INVALID_CREDENTIALS", "Username or password is incorrect.", 401)
-    from flask import current_app
-    token = secrets.token_urlsafe(32)
-    expires = iso_in(current_app.config["AUTH_TOKEN_TTL_HOURS"])
-    db.execute("INSERT INTO auth_tokens(token_hash, user_id, expires_at) VALUES (?,?,?)",
-               (sha256(token), user["user_id"], expires))
-    metrics.AUTH.labels("login_ok").inc()
-    audit("auth.login", actor_id=user["user_id"], actor_role=user["role"])
-    db.commit()
-    return {"token": token, "expires_at": expires,
-            "user": {"user_id": user["user_id"], "username": user["username"], "role": user["role"],
-                     "display_name": user["display_name"]}}
-
-
 def current_user() -> dict | None:
-    header = request.headers.get("Authorization", "")
-    if not header.startswith("Bearer "):
+    """The signed-in staff member (Supabase account whose app_metadata.role is operator / reviewer / admin), from the
+    access token verified for this request (auth.authenticate_request); None otherwise."""
+    from .auth import staff_role
+    claims = g.get("auth")
+    role = staff_role(claims)
+    if not role:
         return None
-    row = get_db().execute(
-        """SELECT u.user_id, u.username, u.role, u.display_name, t.expires_at FROM auth_tokens t
-           JOIN users u ON u.user_id = t.user_id WHERE t.token_hash=?""",
-        (sha256(header[7:]),),
-    ).fetchone()
-    if not row or parse_iso(row["expires_at"]) < now():
-        return None
-    return dict(row)
+    email = claims.get("email") or ""
+    return {"user_id": claims["sub"], "username": email, "role": role, "display_name": email or role}
 
 
 def require_role(*roles):
@@ -82,6 +57,7 @@ def require_role(*roles):
         def wrapper(*a, **kw):
             user = current_user()
             if user is None:
+                metrics.AUTH.labels("unauthenticated").inc()
                 raise ApiError("UNAUTHENTICATED", "Sign in with a staff account.", 401)
             if user["role"] not in roles:
                 g.user = user

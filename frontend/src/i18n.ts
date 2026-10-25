@@ -72,9 +72,75 @@ const S = {
   missingInfo: { en: "Missing information", hi: "छूटी जानकारी", te: "లేని సమాచారం" },
   changed: { en: "What changed after your correction", hi: "सुधार के बाद क्या बदला", te: "సవరణ తర్వాత ఏమి మారింది" },
   addDetail: { en: "Add a detail", hi: "जानकारी जोड़ें", te: "వివరం జోడించండి" },
+  myPassports: { en: "My Passports", hi: "मेरे पासपोर्ट", te: "నా పాస్‌పోర్ట్‌లు" },
+  savePassports: { en: "Save my passports", hi: "मेरे पासपोर्ट सहेजें", te: "నా పాస్‌పోర్ట్‌లను సేవ్ చేయండి" },
+  saveIntro: {
+    en: "Right now nothing is kept after this session. To come back later, save with your email or with a Passport code and PIN.",
+    hi: "अभी इस सत्र के बाद कुछ भी नहीं रखा जाता। बाद में लौटने के लिए अपने ईमेल से या पासपोर्ट कोड और पिन से सहेजें।",
+    te: "ప్రస్తుతం ఈ సెషన్ తర్వాత ఏదీ ఉంచబడదు. తర్వాత తిరిగి రావడానికి మీ ఈమెయిల్‌తో లేదా పాస్‌పోర్ట్ కోడ్ మరియు పిన్‌తో సేవ్ చేయండి.",
+  },
+  consentSave: {
+    en: "I agree that Anvaya keeps my details, screening results and their history so I can come back to them. I can delete everything at any time.",
+    hi: "मैं सहमत हूँ कि Anvaya मेरी जानकारी, जाँच के परिणाम और उनका इतिहास रखे ताकि मैं बाद में लौट सकूँ। मैं कभी भी सब कुछ मिटा सकता/सकती हूँ।",
+    te: "నేను తిరిగి రాగలిగేలా Anvaya నా వివరాలు, పరిశీలన ఫలితాలు మరియు వాటి చరిత్రను ఉంచడానికి అంగీకరిస్తున్నాను. నేను ఎప్పుడైనా అన్నింటినీ తొలగించగలను.",
+  },
+  email: { en: "Email", hi: "ईमेल", te: "ఈమెయిల్" },
+  sendCode: { en: "Send code", hi: "कोड भेजें", te: "కోడ్ పంపండి" },
+  enterCode: { en: "6-digit code from the email", hi: "ईमेल में आया 6 अंकों का कोड", te: "ఈమెయిల్‌లో వచ్చిన 6 అంకెల కోడ్" },
+  verifySave: { en: "Verify and save", hi: "पुष्टि करें और सहेजें", te: "ధృవీకరించి సేవ్ చేయండి" },
+  google: { en: "Continue with Google", hi: "Google से जारी रखें", te: "Googleతో కొనసాగండి" },
+  orCode: { en: "No email? Save with a Passport code and PIN", hi: "ईमेल नहीं है? पासपोर्ट कोड और पिन से सहेजें", te: "ఈమెయిల్ లేదా? పాస్‌పోర్ట్ కోడ్ మరియు పిన్‌తో సేవ్ చేయండి" },
+  choosePin: { en: "Choose a 4-digit PIN", hi: "4 अंकों का पिन चुनें", te: "4 అంకెల పిన్ ఎంచుకోండి" },
+  pinFormat: { en: "The PIN must be exactly 4 digits.", hi: "पिन ठीक 4 अंकों का होना चाहिए।", te: "పిన్ సరిగ్గా 4 అంకెలు ఉండాలి." },
+  pinWeak: { en: "This PIN is too easy to guess. Choose another.", hi: "यह पिन आसानी से अनुमान लगाया जा सकता है। दूसरा चुनें।", te: "ఈ పిన్ సులభంగా ఊహించవచ్చు. వేరొకటి ఎంచుకోండి." },
+  saveWithCode: { en: "Save with code + PIN", hi: "कोड + पिन से सहेजें", te: "కోడ్ + పిన్‌తో సేవ్ చేయండి" },
+  yourPassportCode: { en: "Your Passport code", hi: "आपका पासपोर्ट कोड", te: "మీ పాస్‌పోర్ట్ కోడ్" },
+  readAgain: { en: "Read it again", hi: "फिर से सुनाएँ", te: "మళ్ళీ చదవండి" },
+  saved: { en: "Saved", hi: "सहेजा गया", te: "సేవ్ అయింది" },
+  savedAccount: { en: "Your passports are saved to your account.", hi: "आपके पासपोर्ट आपके खाते में सहेजे गए हैं।", te: "మీ పాస్‌పోర్ట్‌లు మీ ఖాతాలో సేవ్ అయ్యాయి." },
+  resume: { en: "Resume with Passport code", hi: "पासपोर्ट कोड से फिर शुरू करें", te: "పాస్‌పోర్ట్ కోడ్‌తో కొనసాగించండి" },
+  passportCode: { en: "Passport code", hi: "पासपोर्ट कोड", te: "పాస్‌పోర్ట్ కోడ్" },
+  pin: { en: "PIN", hi: "पिन", te: "పిన్" },
+  open: { en: "Open", hi: "खोलें", te: "తెరవండి" },
+  signInEmail: { en: "Already saved? Sign in with your email", hi: "पहले सहेजा है? अपने ईमेल से साइन इन करें", te: "ఇప్పటికే సేవ్ చేశారా? మీ ఈమెయిల్‌తో సైన్ ఇన్ చేయండి" },
+  signOut: { en: "Sign out", hi: "साइन आउट", te: "సైన్ అవుట్" },
+  savedProfile: { en: "Saved details", hi: "सहेजी गई जानकारी", te: "సేవ్ చేసిన వివరాలు" },
+  reconfirm: { en: "Older than 90 days — confirm again", hi: "90 दिन से पुराना — फिर से पुष्टि करें", te: "90 రోజుల కంటే పాతది — మళ్ళీ నిర్ధారించండి" },
+  history: { en: "Passport history", hi: "पासपोर्ट इतिहास", te: "పాస్‌పోర్ట్ చరిత్ర" },
+  whatChangedSince: { en: "What changed since", hi: "तब से क्या बदला", te: "అప్పటి నుండి ఏమి మారింది" },
+  noChanges: { en: "No results changed.", hi: "कोई परिणाम नहीं बदला।", te: "ఏ ఫలితమూ మారలేదు." },
+  factChanged: { en: "your detail changed", hi: "आपकी जानकारी बदली", te: "మీ వివరం మారింది" },
+  ruleChanged: { en: "the scheme rule was updated", hi: "योजना का नियम बदला गया", te: "పథకం నియమం నవీకరించబడింది" },
+  documentChanged: { en: "a document status changed", hi: "एक दस्तावेज़ की स्थिति बदली", te: "ఒక పత్రం స్థితి మారింది" },
+  attachCode: { en: "Add a Passport code to this account", hi: "इस खाते में पासपोर्ट कोड जोड़ें", te: "ఈ ఖాతాకు పాస్‌పోర్ట్ కోడ్ జోడించండి" },
+  deleteAccount: { en: "Delete my account and data", hi: "मेरा खाता और डेटा मिटाएँ", te: "నా ఖాతా మరియు డేటాను తొలగించండి" },
+  deleteConfirm: {
+    en: "This deletes your details, every saved passport and your sign-in. Cases you already sent to a reviewer stay with the reviewer. Type DELETE to confirm.",
+    hi: "इससे आपकी जानकारी, हर सहेजा पासपोर्ट और आपका साइन-इन मिट जाएगा। समीक्षक को भेजे गए केस समीक्षक के पास रहेंगे। पुष्टि के लिए DELETE लिखें।",
+    te: "ఇది మీ వివరాలు, సేవ్ చేసిన ప్రతి పాస్‌పోర్ట్ మరియు మీ సైన్-ఇన్‌ను తొలగిస్తుంది. సమీక్షకునికి పంపిన కేసులు సమీక్షకుని వద్దే ఉంటాయి. నిర్ధారించడానికి DELETE అని టైప్ చేయండి.",
+  },
+  deleted: { en: "Your account and data were deleted.", hi: "आपका खाता और डेटा मिटा दिया गया।", te: "మీ ఖాతా మరియు డేటా తొలగించబడ్డాయి." },
+  stillThere: { en: "Still there?", hi: "क्या आप अभी भी यहाँ हैं?", te: "ఇంకా ఉన్నారా?" },
+  stillThereBody: {
+    en: "This session will end and your answers will be cleared in",
+    hi: "यह सत्र समाप्त होगा और आपके जवाब मिटा दिए जाएँगे —",
+    te: "ఈ సెషన్ ముగుస్తుంది, మీ సమాధానాలు తొలగించబడతాయి —",
+  },
+  imHere: { en: "I'm still here", hi: "मैं यहाँ हूँ", te: "నేను ఇక్కడే ఉన్నాను" },
+  privacyTitle: { en: "Privacy and retention", hi: "गोपनीयता और डेटा रखने की अवधि", te: "గోప్యత మరియు డేటా నిల్వ కాలం" },
 } as const;
 
 export type Key = keyof typeof S;
+
+/** The retention policy, shown wherever something can be saved. */
+export function retentionText(lang: Lang, r: { unsaved_hours: number; passport_days: number; stale_fact_days: number }): string {
+  const { unsaved_hours: h, passport_days: d, stale_fact_days: s } = r;
+  return {
+    en: `Unsaved answers are deleted ${h} hours after the session starts (kiosk sessions as soon as they end). Saved passports are deleted after ${d} days without use. Saved age and income older than ${s} days must be confirmed again. You can delete your account and data at any time; only cases you chose to send to a reviewer are kept.`,
+    hi: `बिना सहेजे जवाब सत्र शुरू होने के ${h} घंटे बाद मिटा दिए जाते हैं (कियोस्क सत्र समाप्त होते ही)। सहेजे गए पासपोर्ट ${d} दिन तक उपयोग न होने पर मिटा दिए जाते हैं। ${s} दिन से पुरानी सहेजी उम्र और आय की फिर से पुष्टि करनी होगी। आप कभी भी अपना खाता और डेटा मिटा सकते हैं; केवल वे केस रखे जाते हैं जिन्हें आपने समीक्षक को भेजा।`,
+    te: `సేవ్ చేయని సమాధానాలు సెషన్ ప్రారంభమైన ${h} గంటల తర్వాత తొలగించబడతాయి (కియోస్క్ సెషన్‌లు ముగిసిన వెంటనే). సేవ్ చేసిన పాస్‌పోర్ట్‌లు ${d} రోజులు ఉపయోగించకపోతే తొలగించబడతాయి. ${s} రోజుల కంటే పాత సేవ్ చేసిన వయస్సు, ఆదాయాన్ని మళ్ళీ నిర్ధారించాలి. మీరు ఎప్పుడైనా మీ ఖాతా మరియు డేటాను తొలగించవచ్చు; మీరు సమీక్షకునికి పంపిన కేసులు మాత్రమే ఉంచబడతాయి.`,
+  }[lang];
+}
 export const t = (k: Key, lang: Lang) => S[k][lang] ?? S[k].en;
 
 export const ATTR: Record<string, Record<Lang, string>> = {

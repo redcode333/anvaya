@@ -43,11 +43,11 @@ def test_migrations_are_recorded_and_idempotent(app):
 
 
 def test_manage_init_is_idempotent(app):
-    """Re-running init skips the unchanged catalogue, upserts rules (keeping source verification), adds no users."""
+    """Re-running init skips the unchanged catalogue and upserts rules (keeping source verification)."""
     db = connect(app.config)
     try:
         before = db.query_many([("SELECT COUNT(*) FROM schemes", ()), ("SELECT COUNT(*) FROM rules", ()),
-                                ("SELECT COUNT(*) FROM users", ()), ("SELECT COUNT(*) FROM source_artifacts", ())])
+                                ("SELECT COUNT(*) FROM citizens", ()), ("SELECT COUNT(*) FROM source_artifacts", ())])
         before = [r.fetchone()[0] for r in before]
         db.execute("UPDATE rules SET source_verified_at='2026-01-01T00:00:00+00:00', source_verified_by='admin'"
                    " WHERE rule_id='R_PM_KISAN'")
@@ -55,7 +55,7 @@ def test_manage_init_is_idempotent(app):
         res = ingest.bootstrap(db, app.config["DATASET_CSV"], app.config["GOLDEN_RULES"], app.config["RULE_BUNDLE_VERSION"])
         assert res["catalogue"]["skipped"] is True
         after = db.query_many([("SELECT COUNT(*) FROM schemes", ()), ("SELECT COUNT(*) FROM rules", ()),
-                               ("SELECT COUNT(*) FROM users", ()), ("SELECT COUNT(*) FROM source_artifacts", ())])
+                               ("SELECT COUNT(*) FROM citizens", ()), ("SELECT COUNT(*) FROM source_artifacts", ())])
         assert [r.fetchone()[0] for r in after] == before
         row = db.execute("SELECT source_verified_by FROM rules WHERE rule_id='R_PM_KISAN'").fetchone()
         assert row[0] == "admin"
@@ -85,7 +85,8 @@ def test_rls_blocks_supabase_api_roles(app):
         conn.execute("SET ROLE anon_test")
         try:
             assert conn.execute("SELECT COUNT(*) FROM schemes").fetchone()[0] == 0
-            assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM citizens").fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM passport_versions").fetchone()[0] == 0
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 conn.execute("INSERT INTO sessions(session_id, mode, language, workflow_state, created_at, expires_at)"
                              " VALUES ('x', 'personal', 'en', 'SESSION_ACTIVE', 'a', 'b')")

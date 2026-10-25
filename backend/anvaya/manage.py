@@ -1,4 +1,4 @@
-"""CLI: python -m anvaya.manage init | import | report | cleanup | eval-extraction [--no-llm] [--json]
+"""CLI: python -m anvaya.manage init | import | report | cleanup | seed-staff | eval-extraction [--no-llm] [--json]
                           | prerender-audio [--max-count N] [--concurrency N] [--per-minute N] [--dry-run]"""
 import json
 import sys
@@ -42,10 +42,38 @@ def _run(argv: list[str], app, conn) -> int:
     if cmd == "cleanup":
         n = conn.execute("UPDATE sessions SET ended_at=? WHERE ended_at IS NULL AND expires_at < ?", (iso(), iso())).rowcount
         conn.commit()
+        from .accounts import purge_expired
         from .voice import purge_audio
         a = purge_audio(conn, cfg["SESSION_TTL_HOURS"])
         print(f"expired {n} sessions; removed {a} cached audio clips older than {cfg['SESSION_TTL_HOURS']} h")
+        with app.app_context():
+            r = purge_expired(conn, cfg)
+        print(f"retention: deleted {r['unsaved_sessions']} unsaved sessions older than {cfg['UNSAVED_RETENTION_HOURS']} h,"
+              f" {r['unsaved_citizens']} unsaved citizens, {r['inactive_passports']} passports inactive for"
+              f" {cfg['PASSPORT_RETENTION_DAYS']} days, {r['auth_users_deleted']} Supabase Auth users")
         return 0
+    if cmd == "seed-staff":
+        # Staff roles live in Supabase app_metadata, which only the server (secret key) can set. Prints emails'
+        # roles and actions only, never passwords.
+        import os
+        from .auth import upsert_staff
+        from .config import STAFF_ROLES
+        if not (cfg["SUPABASE_URL"] and cfg["SUPABASE_SECRET_KEY"]):
+            print("SUPABASE_URL and SUPABASE_SECRET_KEY must be set")
+            return 1
+        missing = 0
+        for role, (email_var, password_var) in STAFF_ROLES.items():
+            email, password = os.environ.get(email_var, "").strip(), os.environ.get(password_var, "")
+            if not email or not password:
+                print(f"  {role:<9} skipped: set {email_var} and {password_var}")
+                missing += 1
+                continue
+            if len(password) < 8:
+                print(f"  {role:<9} skipped: {password_var} must be at least 8 characters")
+                missing += 1
+                continue
+            print(f"  {role:<9} {upsert_staff(cfg, email, password, role)}")
+        return 1 if missing else 0
     if cmd == "prerender-audio":
         from . import prerender, voice
         with app.app_context():

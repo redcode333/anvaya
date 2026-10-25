@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { DemoCreds } from "../components";
+import { RetentionNote } from "../AccountUI";
 import { LANGS, t } from "../i18n";
 import { useApp } from "../state";
 
@@ -24,8 +24,13 @@ export default function Landing() {
             <button className="btn" onClick={() => go("kiosk")}>{t("kiosk", lang)}</button>
             <button className="btn ghost" onClick={() => nav("/case")}>{t("checkStatus", lang)}</button>
           </div>
+          <div className="row">
+            <button className="btn small" onClick={() => nav("/resume")}>{t("resume", lang)}</button>
+            <button className="btn small ghost" onClick={() => nav("/citizen/passports")}>{t("myPassports", lang)}</button>
+          </div>
         </div>
         <p className="notice small">{t("notApproval", lang)}</p>
+        <RetentionNote />
       </section>
       <section className="stack">
         <div className="card flat stack">
@@ -36,13 +41,14 @@ export default function Landing() {
             <li>Confirmed facts are compared against sourced, versioned rules — explicit comparisons, not AI guesses.</li>
             <li>The Scheme Passport shows matches, reasons, rule quotes, sources and missing documents.</li>
             <li>A draft is prepared from your confirmed facts; with your consent it goes to a reviewer.</li>
+            <li>Nothing is kept after the session unless you choose to save it — with your email or a Passport code and PIN.</li>
           </ol>
         </div>
         <div className="card flat stack small">
           <h3>For judges & staff</h3>
-          <p className="muted">Run the official scenarios on <a href="/test-runs">TC1–TC4</a>, review cases on <a href="/reviewer">Reviewer</a>,
+          <p className="muted">Run the official scenarios on <a href="/test-runs">TC1–TC5</a>, review cases on <a href="/reviewer">Reviewer</a>,
             inspect data freshness on <a href="/admin/schemes">Catalogue</a>. Kiosk mode needs an operator sign-in.
-            {" "}<DemoCreds users={["reviewer", "admin", "operator"]} /></p>
+            Staff sign in with the email and password an administrator created for them.</p>
         </div>
       </section>
     </div>

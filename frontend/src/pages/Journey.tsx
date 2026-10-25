@@ -2,9 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Fact } from "../api";
 import { choices, splitPending } from "../confirmation";
+import { ensureAnonymous, type AuthLike } from "../account";
+import { RetentionNote } from "../AccountUI";
+import { supabase } from "../auth";
 import { ErrorNote, StaffLogin, ValueInput } from "../components";
 import { ATTR, attrLabel, showValue, t, type Lang } from "../i18n";
-import { listen, speak, stopSpeaking, verbxFailedOver, voiceProvider, type Provider, type Recorder } from "../speech";
+import { listen, speak, verbxFailedOver, voiceProvider, type Provider, type Recorder } from "../speech";
 import { useApp } from "../state";
 import { getOutbox, refreshBundle } from "../offline/store";
 import OfflinePrescreen from "./OfflinePrescreen";
@@ -18,7 +21,7 @@ const SAMPLES = demoPhrases as Record<Lang, { label: string; text: string }[]>;
 
 export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
   const app = useApp();
-  const { lang, sessionId, setSessionId, staff, online, setMode, resetCitizen } = app;
+  const { lang, sessionId, setSessionId, staff, online, setMode, endCitizenSession, refreshAuth } = app;
   const nav = useNavigate();
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -59,9 +62,15 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
   const begin = async () => {
     setErr(null);
     try {
-      const s = await api<{ session_id: string; greeting: string }>("/sessions", { body: { mode, language: lang } });
+      // Personal mode starts with an anonymous Supabase session, so "Save my passports" can later link an email to
+      // the same user id. Kiosks never create citizen accounts.
+      if (mode === "personal" && supabase && !staff) { await ensureAnonymous(supabase.auth as unknown as AuthLike); await refreshAuth(); }
+      const s = await api<{ session_id: string; greeting: string; account?: { saved: boolean; restored: string[]; reconfirm: string[] } | null }>(
+        "/sessions", { body: { mode, language: lang } });
       setSessionId(s.session_id);
-      setMsgs([{ who: "bot", text: s.greeting }]);
+      const restored = s.account?.saved && s.account.restored.length
+        ? [{ who: "bot" as const, text: `${t("savedProfile", lang)}: ${s.account.restored.length}${s.account.reconfirm.length ? ` · ${t("reconfirm", lang)}: ${s.account.reconfirm.length}` : ""}` }] : [];
+      setMsgs([{ who: "bot", text: s.greeting }, ...restored]);
       if (mode === "kiosk") say(s.session_id, s.greeting);
     } catch (e) { setErr(e); }
   };
@@ -109,14 +118,15 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
   const confirmAll = async () => { await api(`/sessions/${sessionId}/profile/confirm-all`, { body: {} }).catch(setErr); loadProfile(sessionId!); };
 
   const endSession = async () => {
-    stopSpeaking();
-    if (sessionId) await api(`/sessions/${sessionId}/end`, { body: {} }).catch(() => undefined);
-    resetCitizen(); setMsgs([]); setProfile(null); setText("");
+    await endCitizenSession("user");
+    setMsgs([]); setProfile(null); setText("");
   };
+  // The kiosk idle timeout ends the session from outside this page: clear what is on screen too.
+  useEffect(() => { if (!sessionId) { setMsgs([]); setProfile(null); setText(""); } }, [sessionId]);
 
   if (mode === "kiosk" && !(staff && ["operator", "admin"].includes(staff.role)))
     return <StaffLogin roles={["operator", "admin"]} title="Kiosk operator sign-in"
-      hint="A kiosk operator starts each temporary citizen session." demo={["operator"]} />;
+      hint="A kiosk operator starts each temporary citizen session." />;
 
   if (mode === "kiosk" && !online) return <OfflinePrescreen />;
 
@@ -127,6 +137,8 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
         <p className="muted">{t("intro", lang)}</p>
         <ErrorNote error={err} />
         <button className="btn primary" onClick={begin}>{t("start", lang)}</button>
+        <button className="btn ghost small" onClick={() => nav("/resume")}>{t("resume", lang)}</button>
+        <RetentionNote />
         <p className="tiny">Voice: {provider === "verbx" ? "VerbX" : provider === "browser" ? `browser speech (VerbX ${verbxFailedOver() ? "unavailable" : "not configured"})` : "not available — text only"}.
           Audio is not stored by Anvaya.</p>
       </div>

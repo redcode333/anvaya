@@ -261,6 +261,9 @@ def evaluate_session(session_id: str, *, require_confirmed=True, origin="online"
         "INSERT INTO evaluations(eval_id, session_id, bundle_version, created_at, fact_ids_json, results_json, origin) VALUES (?,?,?,?,?,?,?)",
         (eval_id, session_id, bundle_version, iso(), dumps(fact_ids), dumps(results), origin),
     )
+    if session.get("citizen_id"):
+        from .accounts import record_version
+        record_version(session, eval_id, bundle_version, facts, marks, results)
     profile.set_workflow_state(session_id, "MATCH_RESULTS_READY")
     audit("eligibility.evaluate", session_id=session_id,
           details={"eval_id": eval_id, "bundle_version": bundle_version, "input_fact_ids": fact_ids,

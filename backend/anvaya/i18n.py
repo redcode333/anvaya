@@ -178,6 +178,12 @@ MESSAGES = {
         "hi": "नमस्ते! अपने परिवार के बारे में बताइए — राज्य, उम्र, आय और काम। आप बोल या लिख सकते हैं।",
         "te": "నమస్తే! మీ కుటుంబం గురించి చెప్పండి — రాష్ట్రం, వయస్సు, ఆదాయం మరియు పని. మీరు మాట్లాడవచ్చు లేదా టైప్ చేయవచ్చు.",
     },
+    "passport_code_is": {"en": "Your Passport code is", "hi": "आपका पासपोर्ट कोड है", "te": "మీ పాస్‌పోర్ట్ కోడ్"},
+    "passport_code_notice": {
+        "en": "Write down this code and remember your PIN. Together they open your saved passport; staff never need them.",
+        "hi": "यह कोड लिख लें और अपना पिन याद रखें। दोनों से आपका सहेजा पासपोर्ट खुलता है; कर्मचारियों को इनकी ज़रूरत नहीं होती।",
+        "te": "ఈ కోడ్‌ను రాసుకోండి, మీ పిన్ గుర్తుంచుకోండి. రెండూ కలిసి మీ సేవ్ చేసిన పాస్‌పోర్ట్‌ను తెరుస్తాయి; సిబ్బందికి ఇవి అవసరం లేదు.",
+    },
     "heard": {"en": "I understood:", "hi": "मैंने समझा:", "te": "నేను అర్థం చేసుకున్నది:"},
     "nothing_heard": {
         "en": "I could not pick out any details. Could you say it another way?",

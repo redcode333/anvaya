@@ -24,16 +24,14 @@ def create_app(overrides: dict | None = None) -> Flask:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     log = logging.getLogger("anvaya.http")
 
-    from . import migrations, startup
-    from .ingest import seed_users
+    from . import auth, migrations, startup
     db = connect(app.config)
     try:
         applied = migrations.migrate(db)
-        demo_users = seed_users(db)
     finally:
         db.close()
     log.info("database: %s%s", db.dialect, f" (applied migrations {applied})" if applied else "")
-    app.extensions["anvaya.startup"] = startup.check(app.config, demo_users)
+    app.extensions["anvaya.startup"] = startup.check(app.config)
     if app.config["LANGFUSE_PUBLIC_KEY"] and app.config["LANGFUSE_SECRET_KEY"] and app.config["LANGFUSE_BASE_URL"]:
         from .llm import tracing
         with app.app_context():
@@ -42,11 +40,15 @@ def create_app(overrides: dict | None = None) -> Flask:
             except Exception:  # noqa: BLE001 - tracing is optional
                 log.warning("langfuse: client setup failed; LLM extraction runs untraced")
 
+    if app.config["RETENTION_INTERVAL_MIN"] > 0 and not app.config.get("TESTING"):
+        _start_retention(app, log)
+
     @app.before_request
     def _start():
         # 32 hex chars: also the Langfuse trace id of an LLM-extraction turn (W3C / OpenTelemetry trace-id format).
         g.request_id = request.headers.get("X-Request-Id") or uuid.uuid4().hex
         g.t0 = time.perf_counter()
+        auth.authenticate_request()  # verifies a bearer token, if any (401 when it is not valid)
 
     @app.after_request
     def _finish(resp):
@@ -108,6 +110,34 @@ def create_app(overrides: dict | None = None) -> Flask:
     @app.get("/")
     @app.get("/<path:path>")
     def spa(path=""):
+        if path.startswith("api/"):  # unknown API paths are JSON 404s, never the app shell
+            return _not_found(None)
         return _spa(path)
 
     return app
+
+
+def _start_retention(app: Flask, log: logging.Logger) -> None:
+    """Delete expired data (accounts.purge_expired) shortly after start and then every RETENTION_INTERVAL_MIN."""
+    import threading
+
+    from .accounts import purge_expired
+
+    def run():
+        db = connect(app.config)
+        try:
+            with app.app_context():
+                r = purge_expired(db, app.config)
+            if any(r.values()):
+                log.info("retention: %s", r)  # counts only
+        except Exception as e:  # noqa: BLE001 - retry at the next interval
+            log.warning("retention: run failed (%s)", type(e).__name__)
+        finally:
+            db.close()
+        schedule(app.config["RETENTION_INTERVAL_MIN"] * 60)
+
+    def schedule(delay: float):
+        t = threading.Timer(delay, run)
+        t.daemon = True
+        t.start()
+    schedule(30)

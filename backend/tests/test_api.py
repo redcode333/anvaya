@@ -234,7 +234,7 @@ def test_admin_verify_rule(client, admin, reviewer):
     assert client.post("/api/v1/admin/rules/R_PMJJBY/verify", json={}, headers=admin).status_code == 422
     r = client.post("/api/v1/admin/rules/R_PMJJBY/verify",
                     json={"checked_source_url": "https://jansuraksha.gov.in/Files/PMJJBY/English/Rules.pdf"}, headers=admin)
-    assert r.json["source_verified_by"] == "admin"
+    assert r.json["source_verified_by"] == "admin@anvaya.test"
     f = client.get("/api/v1/admin/schemes/freshness", headers=admin).json
     assert next(x for x in f["rules"] if x["rule_id"] == "R_PMJJBY")["source_verified_at"]
 
@@ -367,7 +367,7 @@ def test_schema_migration_adds_confusable_column(tmp_path):
     old.commit()
     old.close()
     db = connect(str(path))
-    assert migrate(db) == [1, 2, 3]
+    assert migrate(db) == [1, 2, 3, 4]
     assert migrate(db) == []  # idempotent
     assert db.execute("SELECT confusable FROM facts WHERE fact_id='F-1'").fetchone()[0] == 0
     db.close()

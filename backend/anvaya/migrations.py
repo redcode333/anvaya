@@ -80,18 +80,6 @@ SCHEMA_V1 = [
         source_verified_by TEXT,
         active INTEGER NOT NULL DEFAULT 1
     )""",
-    """CREATE TABLE IF NOT EXISTS users (
-        user_id TEXT PRIMARY KEY,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        role TEXT NOT NULL,
-        display_name TEXT NOT NULL
-    )""",
-    """CREATE TABLE IF NOT EXISTS auth_tokens (
-        token_hash TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        expires_at TEXT NOT NULL
-    )""",
     """CREATE TABLE IF NOT EXISTS sessions (
         session_id TEXT PRIMARY KEY,
         mode TEXT NOT NULL,
@@ -318,10 +306,70 @@ def _m3_lookup_indexes_and_versions(db: Database) -> None:
                    [(n,) for n in CACHE_VERSIONS])
 
 
+ACCOUNT_TABLES = [
+    # A citizen whose passports may be kept: a Supabase Auth user (citizen_id = "CIT_" + auth user id, so it is known
+    # from the token without a lookup) and/or a Passport code + PIN holder. Nothing is kept beyond the session until
+    # saved=1, which needs recorded consent (version + time). Emails are not stored here; Supabase Auth holds them.
+    """CREATE TABLE IF NOT EXISTS citizens (
+        citizen_id TEXT PRIMARY KEY,
+        auth_user_id TEXT UNIQUE,
+        is_anonymous INTEGER NOT NULL DEFAULT 1,
+        code_hash TEXT UNIQUE,
+        pin_hash TEXT,
+        saved INTEGER NOT NULL DEFAULT 0,
+        consent_json TEXT,
+        failed_attempts INTEGER NOT NULL DEFAULT 0,
+        locked_until TEXT,
+        is_test INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        last_active_at TEXT NOT NULL
+    )""",
+    # One row per screening of a citizen's session: rule versions, fact ids (+ the values compared) and outcomes.
+    """CREATE TABLE IF NOT EXISTS passport_versions (
+        {seq}
+        version_id TEXT PRIMARY KEY,
+        citizen_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        eval_id TEXT NOT NULL,
+        bundle_version TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        facts_json TEXT NOT NULL,
+        outcomes_json TEXT NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_passport_versions_citizen ON passport_versions(citizen_id, created_at)",
+    # Passport code + PIN attempts (hashes only), for the per-code and per-IP limits.
+    """CREATE TABLE IF NOT EXISTS passport_attempts (
+        {seq}
+        code_hash TEXT NOT NULL,
+        ip_hash TEXT NOT NULL,
+        ok INTEGER NOT NULL,
+        ts TEXT NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_passport_attempts_code ON passport_attempts(code_hash, ts)",
+    "CREATE INDEX IF NOT EXISTS idx_passport_attempts_ip ON passport_attempts(ip_hash, ts)",
+]
+SESSION_OWNER_COLUMNS = [("citizen_id", "ALTER TABLE sessions ADD COLUMN citizen_id TEXT"),
+                         ("auth_user_id", "ALTER TABLE sessions ADD COLUMN auth_user_id TEXT")]
+
+
+def _m4_accounts(db: Database) -> None:
+    """Citizen accounts and saved passports; staff sign in through Supabase Auth, so the old local staff password
+    hashes and tokens are dropped."""
+    if db.dialect == "postgres":
+        cols = [sql.replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS") for _, sql in SESSION_OWNER_COLUMNS]
+    else:
+        have = {r[1] for r in db.execute("PRAGMA table_info(sessions)")}
+        cols = [sql for c, sql in SESSION_OWNER_COLUMNS if c not in have]
+    db.query_many([(ddl(s, db.dialect), ()) for s in ACCOUNT_TABLES + cols + [
+        "CREATE INDEX IF NOT EXISTS idx_sessions_citizen ON sessions(citizen_id)",
+        "DROP TABLE IF EXISTS auth_tokens", "DROP TABLE IF EXISTS users"]])
+
+
 MIGRATIONS = [
     (1, "initial schema", _m1_initial_schema),
     (2, "late columns: facts.confusable, facts.alternatives_json, sessions.is_demo", _m2_late_columns),
     (3, "lookup indexes, unique case codes, cache versions", _m3_lookup_indexes_and_versions),
+    (4, "citizen accounts, passport versions, passport code attempts; drop local staff passwords", _m4_accounts),
 ]
 
 ENABLE_RLS = """DO $$

@@ -1,8 +1,8 @@
 """Dataset import: immutable source artifact + normalized catalogue + graph edges + rules.
 
 Run via `python -m anvaya.manage init` (see manage.py). Idempotent: an unchanged dataset (same sha256) is not imported
-again, rules are upserted (keeping who verified them against the source), and staff accounts are created only when
-missing. Rows go to the database in batches, so an import over a remote connection takes a few round trips, not one
+again, rules are upserted (keeping who verified them against the source). Staff accounts live in Supabase Auth
+(`manage seed-staff`). Rows go to the database in batches, so an import over a remote connection takes a few round trips, not one
 per row.
 """
 import csv
@@ -14,9 +14,7 @@ import re
 import sys
 from pathlib import Path
 
-from werkzeug.security import check_password_hash, generate_password_hash
 
-from .config import STAFF_ACCOUNTS
 from .db import Database, bump, dumps, iso, new_id
 from .migrations import migrate
 
@@ -285,37 +283,8 @@ def load_rules(conn: Database, rules_path: str, bundle_version: str) -> dict:
     return {"bundle_version": bundle_version, "rules": results}
 
 
-def seed_users(conn: Database, env=None) -> list[str]:
-    """Create the reviewer / operator / admin accounts if they are missing (INSERT ... ON CONFLICT DO NOTHING, safe
-    when several processes start at once). A password set in ANVAYA_<ROLE>_PASSWORD is also applied to an existing
-    account when it differs (so changing it in .env takes effect, and an old demo password stops working); when unset,
-    a new account gets the public demo password and an existing one is left as it is. Returns the usernames whose
-    password variable is unset."""
-    env = os.environ if env is None else env
-    names = list(STAFF_ACCOUNTS)
-    hashes = {r[0]: r[1] for r in conn.execute(
-        f"SELECT username, password_hash FROM users WHERE username IN ({','.join('?' * len(names))})", names)}
-    on_demo, inserts = [], []
-    for username, (var, role, display, demo_password) in STAFF_ACCOUNTS.items():
-        password = env.get(var, "")
-        if not password:
-            on_demo.append(username)
-            password = demo_password
-            if username in hashes:
-                continue  # keep whatever the account has; never reset it to the demo password
-        if username not in hashes:
-            inserts.append((new_id("USR"), username, generate_password_hash(password), role, display))
-        elif not check_password_hash(hashes[username], password):
-            conn.execute("UPDATE users SET password_hash=? WHERE username=?", (generate_password_hash(password), username))
-    conn.executemany("INSERT INTO users(user_id, username, password_hash, role, display_name) VALUES (?,?,?,?,?)"
-                     " ON CONFLICT DO NOTHING", inserts)
-    conn.commit()
-    return on_demo
-
-
 def bootstrap(conn: Database, csv_path: str, rules_path: str, bundle_version: str) -> dict:
     migrate(conn)
     cat = import_catalogue(conn, csv_path)
     rules = load_rules(conn, rules_path, bundle_version)
-    seed_users(conn)
     return {"catalogue": cat, "rules": rules}

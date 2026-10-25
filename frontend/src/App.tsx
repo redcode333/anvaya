@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { KioskIdleGuard } from "./AccountUI";
 import { LANGS, t } from "./i18n";
 import { getBundle, getOutbox } from "./offline/store";
 import AdminSchemes from "./pages/AdminSchemes";
@@ -8,8 +9,10 @@ import Documents from "./pages/Documents";
 import DraftPage from "./pages/Draft";
 import Journey from "./pages/Journey";
 import Landing from "./pages/Landing";
+import MyPassports from "./pages/MyPassports";
 import Passport from "./pages/Passport";
 import Reviewer from "./pages/Reviewer";
+import Resume from "./pages/Resume";
 import ReviewerCase from "./pages/ReviewerCase";
 import TestRuns from "./pages/TestRuns";
 import { useApp } from "./state";
@@ -47,7 +50,7 @@ function StatusBar() {
 }
 
 export default function App() {
-  const { mode } = useApp();
+  const { mode, lang } = useApp();
   return (
     <>
       <header className="topbar">
@@ -55,10 +58,11 @@ export default function App() {
           <NavLink to="/" className="brand"><img src="/icon.svg" alt="" />Anvaya AI</NavLink>
           <nav className="nav" aria-label="Main">
             <NavLink to={mode === "kiosk" ? "/kiosk" : "/citizen"}>Citizen</NavLink>
+            {mode !== "kiosk" && <NavLink to="/citizen/passports">{t("myPassports", lang)}</NavLink>}
             <NavLink to="/case">Case status</NavLink>
             <NavLink to="/reviewer">Reviewer</NavLink>
             <NavLink to="/admin/schemes">Catalogue</NavLink>
-            <NavLink to="/test-runs">TC1–TC4</NavLink>
+            <NavLink to="/test-runs">TC1–TC5</NavLink>
           </nav>
         </div>
         <StatusBar />
@@ -71,6 +75,8 @@ export default function App() {
           <Route path="/citizen/schemes" element={<Passport />} />
           <Route path="/citizen/documents" element={<Documents />} />
           <Route path="/citizen/draft/:id" element={<DraftPage />} />
+          <Route path="/citizen/passports" element={<MyPassports />} />
+          <Route path="/resume" element={<Resume />} />
           <Route path="/case" element={<CaseStatus />} />
           <Route path="/case/:code" element={<CaseStatus />} />
           <Route path="/reviewer" element={<Reviewer />} />
@@ -80,6 +86,7 @@ export default function App() {
           <Route path="*" element={<div className="card">Page not found.</div>} />
         </Routes>
       </main>
+      <KioskIdleGuard />
     </>
   );
 }

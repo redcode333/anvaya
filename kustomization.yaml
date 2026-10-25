@@ -40,6 +40,9 @@ configMapGenerator:
       - GEMINI_REASONING_EFFORT=low
       - LLM_TURN_BUDGET_S=7
       - LLM_ALLOW_REAL_DATA=false
+      - KIOSK_IDLE_SECONDS=180
+      - PASSPORT_RETENTION_DAYS=365
+      - GOOGLE_AUTH_ENABLED=false
       - VERBX_STT_PATH=/v1/stt
       - VERBX_TTS_PATH=/v1/tts
       - VERBX_TIMEOUT_S=15

@@ -84,7 +84,7 @@ print("langfuse" in sys.modules, "opentelemetry" in sys.modules)
 
 def test_ready_reports_langfuse_integration(app, client, exported):
     from anvaya import startup
-    rep = startup.check(app.config, [])
+    rep = startup.check(app.config)
     assert rep["integrations"]["langfuse"] == {"status": "configured", "missing": [], "effect": rep["integrations"]
                                                ["langfuse"]["effect"]}
     assert client.get("/api/v1/ready").json["integrations"]["langfuse"]["status"] == "missing"  # boot-time report

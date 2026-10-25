@@ -2,8 +2,8 @@ from functools import wraps
 
 from flask import Blueprint, current_app, g, jsonify, request
 
-from . import cases, catalogue, i18n, llm, migrations, profile, sync, testrunner, translation, voice
-from .common import ApiError, audit, current_user, idempotency_key, idempotent, login, require_role
+from . import accounts, auth, cases, catalogue, i18n, llm, migrations, profile, sync, testrunner, translation, voice
+from .common import ApiError, audit, current_user, idempotency_key, idempotent, require_role
 from .db import bump, get_db, iso
 
 bp = Blueprint("api", __name__, url_prefix="/api/v1")
@@ -64,28 +64,88 @@ def ready():
                     "llm_extraction": llm.status() if database["status"] == "ok" else None}), (200 if ok else 503)
 
 
-@bp.get("/auth/demo-accounts")
-def demo_accounts():
-    """Which staff accounts still use the public demo password, so sign-in pages only show credentials that work."""
-    from .config import STAFF_ACCOUNTS
-    users = current_app.extensions["anvaya.startup"]["demo_password_users"]
-    return {"accounts": [{"username": u, "password": STAFF_ACCOUNTS[u][3]} for u in users]}
+@bp.get("/auth/config")
+def auth_config():
+    """Public settings the browser needs for sign-in and the privacy notice (no secrets: the browser gets the
+    publishable key from its own build environment)."""
+    cfg = current_app.config
+    return {"supabase_configured": bool(cfg["SUPABASE_URL"]), "google_enabled": cfg["GOOGLE_AUTH_ENABLED"],
+            "kiosk_idle_seconds": cfg["KIOSK_IDLE_SECONDS"], "kiosk_warning_seconds": 30,
+            "retention": accounts.retention_policy()}
 
 
 # ---------------------------------------------------------------- auth
 
-@bp.post("/auth/login")
-def auth_login():
-    b = body()
-    return login(b.get("username", ""), b.get("password", ""))
-
-
 @bp.get("/auth/me")
 def auth_me():
     u = current_user()
-    if not u:
+    if u:
+        return {"user": {k: u[k] for k in ("user_id", "username", "role", "display_name")}}
+    claims = auth.citizen_claims()
+    if not claims:
         raise ApiError("UNAUTHENTICATED", "Not signed in.", 401)
-    return {"user": {k: u[k] for k in ("user_id", "username", "role", "display_name")}}
+    return {"citizen": {"user_id": claims["sub"], "is_anonymous": bool(claims.get("is_anonymous")),
+                        "email": claims.get("email") or None}}
+
+
+# ---------------------------------------------------------------- citizen accounts
+
+@bp.get("/account")
+def account():
+    return accounts.account_view(accounts.require_account(allow_anonymous=True))
+
+
+@bp.post("/account/consent")
+def account_consent():
+    return accounts.give_consent(body())
+
+
+@bp.get("/account/passports")
+def account_passports():
+    claims = accounts.require_account(allow_anonymous=True)
+    return accounts.history(accounts.citizen_id_for(claims["sub"]))
+
+
+@bp.get("/account/passports/changes")
+def account_changes():
+    claims = accounts.require_account(allow_anonymous=True)
+    return accounts.what_changed(accounts.citizen_id_for(claims["sub"]), request.args.get("since"))
+
+
+@bp.post("/account/attach-passport")
+def account_attach():
+    return accounts.attach_passport(body())
+
+
+@bp.delete("/account")
+def account_delete():
+    return accounts.delete_account(accounts.require_account(allow_anonymous=True))
+
+
+@bp.post("/sessions/<sid>/passport-code")
+def passport_code(sid):
+    return accounts.create_passport_code(sid, body()), 201
+
+
+@bp.post("/passport/resume")
+def passport_resume():
+    """Passport code + PIN → a new session from the saved profile. At a kiosk the operator's token makes it a kiosk
+    session; a personal device needs no account."""
+    u = current_user()
+    operator_id = None
+    if u and u["role"] in ("operator", "admin"):
+        g.user, operator_id = u, u["user_id"]
+    return accounts.resume(body(), operator_id), 201
+
+
+@bp.get("/sessions/<sid>/passports")
+def session_passports(sid):
+    return accounts.history(accounts.session_citizen(sid))
+
+
+@bp.get("/sessions/<sid>/passports/changes")
+def session_changes(sid):
+    return accounts.what_changed(accounts.session_citizen(sid), request.args.get("since"))
 
 
 # ---------------------------------------------------------------- sessions & conversation
@@ -102,10 +162,11 @@ def create_session():
         g.user = u
         operator_id = u["user_id"]
     # "demo": true marks demo data, which (unlike real citizen data) may be sent to free-tier LLM providers.
+    # A signed-in citizen (anonymous or linked) owns a personal session; kiosks never keep anything (no account).
     s = profile.create_session(mode, b.get("language", "en"), device_id=b.get("device_id"), operator_id=operator_id,
-                               is_demo=b.get("demo") is True)
+                               is_demo=b.get("demo") is True, claims=auth.citizen_claims() if mode == "personal" else None)
     return {**{k: s[k] for k in ("session_id", "mode", "language", "workflow_state", "expires_at")},
-            "demo": bool(s["is_demo"]),
+            "demo": bool(s["is_demo"]), "account": s.get("account"),
             "greeting": i18n.t(i18n.MESSAGES, "greeting", s["language"])}, 201
 
 
@@ -124,7 +185,8 @@ def patch_session(sid):
 
 @bp.post("/sessions/<sid>/end")
 def end_session(sid):
-    profile.end_session(sid)
+    reason = body().get("reason")
+    profile.end_session(sid, reason if reason in ("user", "idle") else "user")
     return {"ended": True}
 
 

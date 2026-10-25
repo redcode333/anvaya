@@ -46,7 +46,7 @@ jobs:
       - name: Install dependencies
         working-directory: backend
         run: pip install -r requirements.txt
-      - name: Run tests on SQLite (rules engine, extraction, API contracts, TC1–TC4)
+      - name: Run tests on SQLite (rules engine, extraction, API contracts, accounts, TC1–TC5)
         working-directory: backend
         run: python -m pytest -q
       - name: Run tests on PostgreSQL 16
@@ -99,7 +99,7 @@ jobs:
         run: docker compose config -q
 
   docker:
-    name: Docker image smoke test (TC1–TC4)
+    name: Docker image smoke test (TC1–TC5)
     needs: [backend, frontend]
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -125,15 +125,17 @@ jobs:
             sleep 2
           done
           echo "::error::Service never became ready"; docker logs anvaya; exit 1
-      - name: Official scenarios TC1–TC4
+      - name: Official scenarios TC1–TC5
         run: |
           fail=0
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:5000/api/v1/test-runs/TC1)
           [ "$code" = "401" ] || { echo "::error::test runs must need an admin token (got $code)"; fail=1; }
-          token=$(curl -sf http://localhost:5000/api/v1/auth/login -H 'Content-Type: application/json' \
-            -d '{"username":"admin","password":"admin123"}' | jq -r '.token')
-          for tc in TC1 TC2 TC3 TC4; do
-            out=$(curl -sf -X POST -H "Authorization: Bearer $token" "http://localhost:5000/api/v1/test-runs/$tc") || { echo "::error::$tc request failed"; fail=1; continue; }
+          # Staff sign in through Supabase Auth, which CI does not have: restart the same image in demo-test-run mode.
+          docker rm -f anvaya >/dev/null
+          docker run -d --name anvaya --read-only --tmpfs /tmp -v anvaya-ci:/app/var -p 5000:5000             -e ANVAYA_DEMO_TEST_RUNS=on anvaya-ai:ci
+          for _ in $(seq 1 60); do curl -sf -o /dev/null http://localhost:5000/api/v1/ready && break; sleep 2; done
+          for tc in TC1 TC2 TC3 TC4 TC5; do
+            out=$(curl -sf -X POST "http://localhost:5000/api/v1/test-runs/$tc") || { echo "::error::$tc request failed"; fail=1; continue; }
             passed=$(echo "$out" | jq -r '.passed')
             echo "$tc passed=$passed"
             if [ "$passed" != "true" ]; then
