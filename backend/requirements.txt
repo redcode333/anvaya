@@ -1,6 +1,6 @@
 Flask>=3.0
 requests>=2.31
-prometheus_client>=0.20
+prometheus_client>=0.26.0
 # PostgreSQL (used only when DATABASE_URL is set; SQLite is the default and needs nothing extra).
 psycopg[binary]>=3.2
 psycopg_pool>=3.2
