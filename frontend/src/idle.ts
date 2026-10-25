@@ -3,6 +3,12 @@
 // unconsented data). Any input during the warning keeps the session.
 export type IdleTimer = { activity: () => void; stop: () => void };
 
+/** Milliseconds until a kiosk session's absolute end (the server's expires_at); 0 if already past. */
+export function absoluteLimitMs(expiresAt: string, nowMs: number): number {
+  const end = Date.parse(expiresAt);
+  return Number.isFinite(end) ? Math.max(0, end - nowMs) : 0;
+}
+
 export function createIdleTimer(opts: {
   idleSeconds: number; warningSeconds: number;
   onWarn: () => void; onActive: () => void; onTimeout: () => void;

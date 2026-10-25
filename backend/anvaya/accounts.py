@@ -16,6 +16,7 @@ the passport is tied to something they can come back with: a verified email / Go
 """
 import json
 import secrets
+import threading
 from datetime import timedelta
 
 from argon2 import PasswordHasher
@@ -38,6 +39,19 @@ TOO_MANY = ("TOO_MANY_ATTEMPTS", "Too many attempts. Please wait and try again l
 
 _ph = PasswordHasher()
 _DUMMY_HASH = _ph.hash("0000-dummy")
+_stamp_lock, _last_stamp = threading.Lock(), None
+
+
+def _version_stamp():
+    """Strictly increasing within the process: Windows clocks tick every ~16 ms, so two screenings in one tick would
+    otherwise share a created_at and "what changed" would compare a version with itself."""
+    global _last_stamp
+    with _stamp_lock:
+        t = now()
+        if _last_stamp and t <= _last_stamp:
+            t = _last_stamp + timedelta(microseconds=1)
+        _last_stamp = t
+        return t
 
 CITIZEN_SQL = "SELECT * FROM citizens WHERE citizen_id=?"
 # The saved profile: current facts of the citizen's most recent other session that has any.
@@ -154,7 +168,7 @@ def record_version(session: dict, eval_id: str, bundle_version: str, facts: dict
                " facts_json, outcomes_json) VALUES (?,?,?,?,?,?,?,?)",
                # microseconds: two screenings in the same second still order correctly for "what changed"
                (new_id("PSV"), session["citizen_id"], session["session_id"], eval_id, bundle_version,
-                now().isoformat(timespec="microseconds"),
+                _version_stamp().isoformat(timespec="microseconds"),
                 dumps(snapshot), dumps(outcomes)))
     db.execute("UPDATE citizens SET last_active_at=? WHERE citizen_id=?", (iso(), session["citizen_id"]))
 
@@ -280,11 +294,14 @@ def _check_code(code: str, pin) -> dict:
     return dict(row)
 
 
-def resume(body: dict, operator_id: str | None) -> dict:
+def resume(body: dict, operator_id: str | None, device_id: str | None = None) -> dict:
     """Code + PIN → a new session starting from the saved profile."""
-    citizen = _check_code(body.get("code", ""), body.get("pin"))
     mode = "kiosk" if operator_id else "personal"
+    if mode == "kiosk" and not profile.valid_device_id(device_id):
+        raise ApiError("KIOSK_DEVICE_REQUIRED", "A kiosk session needs the operator and the kiosk device id.", 422)
+    citizen = _check_code(body.get("code", ""), body.get("pin"))
     s = profile.create_session(mode, body.get("language", "en"), operator_id=operator_id, citizen_id=citizen["citizen_id"],
+                               device_id=device_id if mode == "kiosk" else None,
                                is_test=bool(citizen["is_test"]), commit=False)
     restored = apply_saved_profile(s, citizen["citizen_id"])
     last = get_db().execute("SELECT MAX(created_at) FROM passport_versions WHERE citizen_id=?",
@@ -459,12 +476,26 @@ def _delete_citizen_rows(db, citizen_ids: list[str]) -> dict:
     return {"sessions_deleted": len(drop), "cases_kept": len(keep), "passport_versions": versions.fetchone()[0]}
 
 
-def delete_account(claims: dict) -> dict:
+def _pending_cases(db, cid: str) -> dict:
+    """The citizen's cases still waiting for a reviewer, and how many uploaded documents deleting would take from them."""
+    row = db.execute("""SELECT COUNT(DISTINCT c.case_id) AS cases, COUNT(u.upload_id) AS documents
+                        FROM cases c JOIN sessions s ON s.session_id = c.session_id
+                        LEFT JOIN document_uploads u ON u.session_id = c.session_id
+                        WHERE s.citizen_id=? AND c.status='PENDING_REVIEW'""", (cid,)).fetchone()
+    return {"pending_cases": row["cases"] or 0, "documents": row["documents"] or 0}
+
+
+def delete_account(claims: dict, acknowledge_pending_case: bool = False) -> dict:
     """Delete the signed-in citizen's data and their Supabase Auth user. The Auth user goes first: if that fails,
-    nothing is deleted and the citizen can retry; then all data goes in one transaction."""
+    nothing is deleted and the citizen can retry; then all data goes in one transaction. While a case waits for a
+    reviewer the citizen must confirm a second time: their uploaded documents leave that case too."""
     from . import documents
     cid = citizen_id_for(claims["sub"])
     db = get_db()
+    pending = _pending_cases(db, cid)
+    if pending["pending_cases"] and not acknowledge_pending_case:
+        raise ApiError("PENDING_CASE_DOCUMENTS", "A case is waiting for a reviewer. Deleting also removes the documents "
+                       "you uploaded for it, so the reviewer cannot check them. Confirm again to delete.", 409, pending)
     # Uploaded files go first (a Storage failure stops here with nothing deleted), then the Auth user, then the rows.
     uploads = documents.paths_for_sessions(db, [r[0] for r in db.execute(
         "SELECT session_id FROM sessions WHERE citizen_id=?", (cid,))])
@@ -478,6 +509,78 @@ def delete_account(claims: dict) -> dict:
         audit("account.deleted", details={**counts, "auth_user_deleted": True}, actor_id=cid, actor_role="citizen")
     metrics.AUTH.labels("account_deleted").inc()
     return {"deleted": True, **counts}
+
+
+EXPORT_FORMAT = "anvaya-my-data/1"
+
+
+def export_data(citizen_id: str | None, session_id: str | None = None) -> dict:
+    """"Download my data" (DPDP Act 2023): everything kept about this citizen — current facts with their source,
+    passport versions, consents, the list of uploaded documents (names and states, never the files) and case statuses.
+    Left out on purpose: raw utterances and reviewer notes (they can describe other people), staff identities, hashes.
+    `session_id` alone = an unsaved session's own data."""
+    db = get_db()
+    if citizen_id:
+        scope, params = "s.citizen_id=?", (citizen_id,)
+    else:
+        scope, params = "s.session_id=?", (session_id,)
+    cit, sessions, facts, versions, marks, uploads, case_rows, links = db.query_many([
+        (CITIZEN_SQL, (citizen_id or "",)),
+        (f"SELECT s.session_id, s.mode, s.language, s.created_at, s.ended_at FROM sessions s WHERE {scope}"
+         " ORDER BY s.created_at", params),
+        (f"SELECT f.* FROM facts f JOIN sessions s ON s.session_id = f.session_id WHERE {scope}"
+         " AND f.superseded_by IS NULL ORDER BY f.captured_at, f.rowid", params),
+        (VERSIONS_SQL, (citizen_id or "",)),
+        (f"SELECT m.session_id, m.doc_key, m.status, m.updated_at FROM doc_marks m JOIN sessions s"
+         f" ON s.session_id = m.session_id WHERE {scope}", params),
+        (f"SELECT u.session_id, u.case_id, u.doc_key, u.content_type, u.size_bytes, u.status, u.consent_json,"
+         f" u.created_at, u.uploaded_at, u.reviewed_at FROM document_uploads u JOIN sessions s"
+         f" ON s.session_id = u.session_id WHERE {scope} ORDER BY u.created_at", params),
+        (f"SELECT c.case_id, d.scheme_id, c.status, c.review_outcome, c.consent_json, c.created_at, c.updated_at"
+         f" FROM cases c JOIN drafts d ON d.draft_id = c.draft_id JOIN sessions s ON s.session_id = c.session_id"
+         f" WHERE {scope} ORDER BY c.created_at", params),
+        ("SELECT provider, linked_at FROM linked_identities WHERE citizen_id=?", (citizen_id or "",)),
+    ])
+    cit = cit.fetchone()
+
+    def consent(raw):
+        c = json.loads(raw) if raw else None
+        return {k: c.get(k) for k in ("version", "accepted", "language", "channel", "consented_at", "share_with_reviewer")
+                if k in c} if c else None
+
+    consents = []
+    if cit and cit["consent_json"]:
+        consents.append({"purpose": "save_passports", **consent(cit["consent_json"])})
+    uploads = uploads.fetchall()
+    case_rows = case_rows.fetchall()
+    consents += [{"purpose": "share_with_reviewer", "case_id": c["case_id"], **(consent(c["consent_json"]) or {})}
+                 for c in case_rows]
+    consents += [{"purpose": "upload_document", "doc_key": u["doc_key"], **(consent(u["consent_json"]) or {})}
+                 for u in uploads]
+    return {
+        "format": EXPORT_FORMAT, "exported_at": iso(),
+        "citizen": {"citizen_id": citizen_id, "saved": bool(cit and cit["saved"]),
+                    "is_anonymous": bool(cit["is_anonymous"]) if cit else None,
+                    "has_passport_code": bool(cit and cit["code_hash"]),
+                    "created_at": cit["created_at"] if cit else None,
+                    "last_active_at": cit["last_active_at"] if cit else None} if citizen_id else None,
+        "sessions": [dict(r) for r in sessions],
+        "facts": [{"fact_id": f["fact_id"], "session_id": f["session_id"], "attribute": f["attribute"],
+                   "value": json.loads(f["value_json"]), "source": f["source"], "confirmed": bool(f["confirmed"]),
+                   "verified": bool(f["verified"]), "captured_at": f["captured_at"], "confirmed_at": f["confirmed_at"]}
+                  for f in facts],
+        "passport_versions": [{**_version_public(v), "facts": {a: x["value"] for a, x in
+                                                             json.loads(v["facts_json"])["facts"].items()}}
+                              for v in versions] if citizen_id else [],
+        "consents": consents,
+        "document_marks": [dict(r) for r in marks],
+        "documents": [{k: u[k] for k in ("session_id", "case_id", "doc_key", "content_type", "size_bytes", "status",
+                                         "created_at", "uploaded_at", "reviewed_at")} for u in uploads],
+        "cases": [{k: c[k] for k in ("case_id", "scheme_id", "status", "review_outcome", "created_at", "updated_at")}
+                  for c in case_rows],
+        "linked_identities": [dict(r) for r in links],
+        "retention": retention_policy(),
+    }
 
 
 def retention_policy() -> dict:

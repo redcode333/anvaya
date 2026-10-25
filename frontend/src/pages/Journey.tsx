@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Fact } from "../api";
 import { choices, splitPending } from "../confirmation";
-import { ensureAnonymous, type AuthLike } from "../account";
+import { ensureAnonymous, startDigiLocker, type AuthLike } from "../account";
 import { RetentionNote } from "../AccountUI";
 import { supabase } from "../auth";
-import { ErrorNote, StaffLogin, ValueInput } from "../components";
+import { ErrorNote, KioskOperatorBar, StaffLogin, ValueInput } from "../components";
+import { useCaptcha } from "../Turnstile";
 import { ATTR, attrLabel, showValue, t, type Lang } from "../i18n";
 import { listen, speak, verbxFailedOver, voiceProvider, type Provider, type Recorder } from "../speech";
 import { useApp } from "../state";
@@ -21,8 +22,11 @@ const SAMPLES = demoPhrases as Record<Lang, { label: string; text: string }[]>;
 
 export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
   const app = useApp();
-  const { lang, sessionId, setSessionId, staff, online, setMode, endCitizenSession, refreshAuth } = app;
+  const { lang, sessionId, setSessionId, staff, citizen, config, online, setMode, endCitizenSession, refreshAuth } = app;
   const nav = useNavigate();
+  const captcha = useCaptcha(lang);
+  // Turnstile only guards the anonymous sign-in, which happens once per device (personal mode, no session yet).
+  const needsCaptcha = mode === "personal" && !!supabase && !staff && !citizen;
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [text, setText] = useState("");
@@ -64,10 +68,13 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
     try {
       // Personal mode starts with an anonymous Supabase session, so "Save my passports" can later link an email to
       // the same user id. Kiosks never create citizen accounts.
-      if (mode === "personal" && supabase && !staff) { await ensureAnonymous(supabase.auth as unknown as AuthLike); await refreshAuth(); }
-      const s = await api<{ session_id: string; greeting: string; account?: { saved: boolean; restored: string[]; reconfirm: string[] } | null }>(
+      if (mode === "personal" && supabase && !staff) {
+        try { await ensureAnonymous(supabase.auth as unknown as AuthLike, captcha.token); } finally { captcha.used(); }
+        await refreshAuth();
+      }
+      const s = await api<{ session_id: string; expires_at: string; greeting: string; account?: { saved: boolean; restored: string[]; reconfirm: string[] } | null }>(
         "/sessions", { body: { mode, language: lang } });
-      setSessionId(s.session_id);
+      setSessionId(s.session_id, s.expires_at);
       const restored = s.account?.saved && s.account.restored.length
         ? [{ who: "bot" as const, text: `${t("savedProfile", lang)}: ${s.account.restored.length}${s.account.reconfirm.length ? ` · ${t("reconfirm", lang)}: ${s.account.reconfirm.length}` : ""}` }] : [];
       setMsgs([{ who: "bot", text: s.greeting }, ...restored]);
@@ -128,19 +135,23 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
     return <StaffLogin roles={["operator", "admin"]} title="Kiosk operator sign-in"
       hint="A kiosk operator starts each temporary citizen session." />;
 
-  if (mode === "kiosk" && !online) return <OfflinePrescreen />;
+  if (mode === "kiosk" && !online) return <><KioskOperatorBar /><OfflinePrescreen /></>;
 
   if (!sessionId)
     return (
+      <div className="stack">
+      {mode === "kiosk" && <KioskOperatorBar />}
       <div className="card stack" style={{ maxWidth: 560 }}>
         <h1>{t("tagline", lang)}</h1>
         <p className="muted">{t("intro", lang)}</p>
         <ErrorNote error={err} />
-        <button className="btn primary" onClick={begin}>{t("start", lang)}</button>
+        {needsCaptcha && captcha.widget}
+        <button className="btn primary" onClick={begin} disabled={needsCaptcha && !captcha.ready}>{t("start", lang)}</button>
         <button className="btn ghost small" onClick={() => nav("/resume")}>{t("resume", lang)}</button>
         <RetentionNote />
         <p className="tiny">Voice: {provider === "verbx" ? "VerbX" : provider === "browser" ? `browser speech (VerbX ${verbxFailedOver() ? "unavailable" : "not configured"})` : "not available — text only"}.
           Audio is not stored by Anvaya.</p>
+      </div>
       </div>
     );
 
@@ -148,10 +159,16 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
   const pending = profile?.needs_confirmation ?? [];
   const { individual, bulk } = splitPending(facts);
   const known = new Set(profile?.facts.map((f) => f.attribute));
-  const addable = Object.keys(ATTR).filter((a) => !known.has(a));
+  // Date of birth comes only from DigiLocker (verified); it is not typed in.
+  const addable = Object.keys(ATTR).filter((a) => !known.has(a) && a !== "date_of_birth");
+  const digilocker = async () => {
+    setErr(null);
+    try { window.location.assign(await startDigiLocker(sessionId!)); } catch (e) { setErr(e); }
+  };
 
   return (
     <div className="stack">
+    {mode === "kiosk" && <KioskOperatorBar />}
     <div className="grid two">
       <section className="card">
         <h2>{mode === "kiosk" ? "🗣️" : "💬"} {t("tagline", lang)}</h2>
@@ -197,7 +214,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
             return (
               <div key={f.fact_id} className={`fact ${isPending ? "pending" : ""}`}>
                 <div>
-                  <div className="k">{attrLabel(f.attribute, lang)} {f.high_impact && <span className="chip" title="High-impact: must be confirmed">!</span>} <span className="mono tiny">{f.fact_id}</span></div>
+                  <div className="k">{attrLabel(f.attribute, lang)} {f.high_impact && <span className="chip" title="High-impact: must be confirmed">!</span>} {f.verified && <span className="chip on">{t("verifiedDigiLocker", lang)}</span>} <span className="mono tiny">{f.fact_id}</span></div>
                   {isEditing ? <ValueInput attr={f.attribute} value={editing!.value} onChange={(v) => setEditing({ ...editing!, value: v })} lang={lang} />
                     : <div className="v">{showValue(f.attribute, f.value, lang)}</div>}
                   {readBack && !isEditing && !f.disputed && <div className="small" role="status"><strong>{t("isThisRight", lang)}</strong> <span className="mono">{f.readback}</span></div>}
@@ -240,6 +257,9 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
           {bulk.length > 0 && <button className="btn" onClick={confirmAll}>{t("confirmAll", lang)}</button>}
           <button className="btn primary" disabled={pending.length > 0 || facts.length === 0} onClick={() => nav("/citizen/schemes")}>{t("checkSchemes", lang)} →</button>
         </div>
+        {mode === "personal" && config?.digilocker_enabled && citizen && (
+          <button className="btn" onClick={digilocker}>{t("digilocker", lang)}</button>
+        )}
         {mode === "kiosk" && <button className="btn danger" onClick={endSession}>{t("endSession", lang)}</button>}
         {mode === "personal" && <button className="btn ghost small" onClick={endSession}>Start over</button>}
       </section>

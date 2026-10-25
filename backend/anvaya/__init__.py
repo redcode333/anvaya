@@ -50,9 +50,17 @@ def create_app(overrides: dict | None = None) -> Flask:
         g.t0 = time.perf_counter()
         auth.authenticate_request()  # verifies a bearer token, if any (401 when it is not valid)
 
+    csp = content_security_policy(app.config)
+
     @app.after_request
     def _finish(resp):
         resp.headers["X-Request-Id"] = g.get("request_id", "")
+        # Only this origin, the Supabase project (sign-in) and Cloudflare Turnstile; responses that set their own
+        # policy (document views) keep it.
+        resp.headers.setdefault("Content-Security-Policy", csp)
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("Referrer-Policy", "no-referrer")
+        resp.headers.setdefault("Permissions-Policy", "camera=(), geolocation=(), microphone=(self)")
         if request.path.startswith("/api/"):
             elapsed = time.perf_counter() - g.get("t0", time.perf_counter())
             route = request.url_rule.rule if request.url_rule else "unmatched"
@@ -115,6 +123,32 @@ def create_app(overrides: dict | None = None) -> Flask:
         return _spa(path)
 
     return app
+
+
+TURNSTILE_ORIGIN = "https://challenges.cloudflare.com"
+
+
+def content_security_policy(cfg) -> str:
+    """Strict CSP: scripts only from this origin and Turnstile, network calls only to this origin and the Supabase
+    project, frames only for Turnstile and our own document previews. data: images are the MFA QR code; data:/blob:
+    media is synthesized speech. No inline scripts, no eval."""
+    supabase = cfg.get("SUPABASE_URL") or ""
+    return "; ".join([
+        "default-src 'self'",
+        f"script-src 'self' {TURNSTILE_ORIGIN}",
+        "style-src 'self'",
+        "img-src 'self' data: blob:",
+        "media-src 'self' data: blob:",
+        "font-src 'self'",
+        f"connect-src 'self' {supabase}".strip(),
+        f"frame-src 'self' {TURNSTILE_ORIGIN}",
+        "worker-src 'self'",
+        "manifest-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'self'",
+    ])
 
 
 def _start_retention(app: Flask, log: logging.Logger) -> None:

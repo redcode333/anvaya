@@ -119,6 +119,13 @@ const S = {
     hi: "इससे आपकी जानकारी, हर सहेजा पासपोर्ट और आपका साइन-इन मिट जाएगा। समीक्षक को भेजे गए केस समीक्षक के पास रहेंगे। पुष्टि के लिए DELETE लिखें।",
     te: "ఇది మీ వివరాలు, సేవ్ చేసిన ప్రతి పాస్‌పోర్ట్ మరియు మీ సైన్-ఇన్‌ను తొలగిస్తుంది. సమీక్షకునికి పంపిన కేసులు సమీక్షకుని వద్దే ఉంటాయి. నిర్ధారించడానికి DELETE అని టైప్ చేయండి.",
   },
+  pendingCaseWarning: {
+    en: "You have a case waiting for a reviewer. Deleting your account also removes the documents you uploaded from that case, and the reviewer will not be able to check them. Do you still want to delete everything?",
+    hi: "आपका एक केस समीक्षक की प्रतीक्षा में है। खाता मिटाने से आपके अपलोड किए गए दस्तावेज़ भी उस केस से हट जाएँगे, और समीक्षक उन्हें जाँच नहीं पाएँगे। क्या आप फिर भी सब कुछ मिटाना चाहते हैं?",
+    te: "మీ కేసు ఒకటి సమీక్షకుని కోసం వేచి ఉంది. ఖాతాను తొలగిస్తే మీరు అప్‌లోడ్ చేసిన పత్రాలు కూడా ఆ కేసు నుండి తొలగించబడతాయి, సమీక్షకుడు వాటిని తనిఖీ చేయలేరు. అయినా మీరు అన్నింటినీ తొలగించాలనుకుంటున్నారా?",
+  },
+  deleteAnyway: { en: "Yes, delete everything", hi: "हाँ, सब कुछ मिटाएँ", te: "అవును, అన్నింటినీ తొలగించండి" },
+  keepAccount: { en: "No, keep my account", hi: "नहीं, मेरा खाता रखें", te: "వద్దు, నా ఖాతాను ఉంచండి" },
   deleted: { en: "Your account and data were deleted.", hi: "आपका खाता और डेटा मिटा दिया गया।", te: "మీ ఖాతా మరియు డేటా తొలగించబడ్డాయి." },
   stillThere: { en: "Still there?", hi: "क्या आप अभी भी यहाँ हैं?", te: "ఇంకా ఉన్నారా?" },
   stillThereBody: {
@@ -151,7 +158,48 @@ const S = {
   },
   uploadCaseClosed: { en: "This case has been reviewed; no more uploads.", hi: "इस केस की समीक्षा हो चुकी है; अब अपलोड नहीं।", te: "ఈ కేసు సమీక్ష పూర్తయింది; ఇక అప్‌లోడ్‌లు లేవు." },
   privacyTitle: { en: "Privacy and retention", hi: "गोपनीयता और डेटा रखने की अवधि", te: "గోప్యత మరియు డేటా నిల్వ కాలం" },
+  consentNoticeTitle: { en: "Notice: what you agree to", hi: "सूचना: आप किस बात के लिए सहमत हो रहे हैं", te: "నోటీసు: మీరు దేనికి అంగీకరిస్తున్నారు" },
+  downloadData: { en: "Download my data", hi: "मेरा डेटा डाउनलोड करें", te: "నా డేటాను డౌన్‌లోడ్ చేయండి" },
+  downloadDataHint: {
+    en: "A JSON file with your details, saved passports, consents, document list (names and states, not the files) and case statuses.",
+    hi: "एक JSON फ़ाइल जिसमें आपकी जानकारी, सहेजे पासपोर्ट, सहमतियाँ, दस्तावेज़ों की सूची (नाम और स्थिति, फ़ाइलें नहीं) और केस की स्थिति है।",
+    te: "మీ వివరాలు, సేవ్ చేసిన పాస్‌పోర్ట్‌లు, సమ్మతులు, పత్రాల జాబితా (పేర్లు మరియు స్థితి, ఫైళ్లు కాదు) మరియు కేసు స్థితితో ఒక JSON ఫైల్.",
+  },
+  signOutAll: { en: "Sign out of all devices", hi: "सभी डिवाइस से साइन आउट करें", te: "అన్ని పరికరాల నుండి సైన్ అవుట్ చేయండి" },
+  signedOutAll: { en: "You are signed out on every device.", hi: "आप हर डिवाइस से साइन आउट हो गए हैं।", te: "మీరు అన్ని పరికరాల నుండి సైన్ అవుట్ అయ్యారు." },
+  withdrawConsent: { en: "Withdraw consent", hi: "सहमति वापस लें", te: "సమ్మతిని ఉపసంహరించుకోండి" },
+  digilocker: { en: "Fill name, date of birth and gender from DigiLocker", hi: "नाम, जन्मतिथि और लिंग DigiLocker से भरें", te: "పేరు, పుట్టిన తేదీ మరియు లింగాన్ని DigiLocker నుండి నింపండి" },
+  verifiedDigiLocker: { en: "Verified · DigiLocker", hi: "सत्यापित · DigiLocker", te: "ధృవీకరించబడింది · DigiLocker" },
+  phone: { en: "Mobile number", hi: "मोबाइल नंबर", te: "మొబైల్ నంబర్" },
+  smsCode: { en: "6-digit code from the SMS", hi: "SMS में आया 6 अंकों का कोड", te: "SMSలో వచ్చిన 6 అంకెల కోడ్" },
+  timeLimit: { en: "Kiosk sessions end after", hi: "कियोस्क सत्र इतने समय बाद समाप्त होते हैं:", te: "కియోస్క్ సెషన్‌లు ఇంత సమయం తర్వాత ముగుస్తాయి:" },
 } as const;
+
+/** The consent notice (DPDP Act 2023, section 5): purpose, what is stored, how long, and how to withdraw. Shown next
+ *  to every "save" consent; its version is CONSENT_VERSION. */
+export function consentNotice(lang: Lang, r: { unsaved_hours: number; passport_days: number; stale_fact_days: number }) {
+  const { unsaved_hours: h, passport_days: d, stale_fact_days: s } = r;
+  return {
+    en: [
+      ["Purpose", "To check which government schemes you may be eligible for, keep your Scheme Passport so you can come back to it, and show what changed since your last check. Nothing is used for advertising, sold or shared, except a case you yourself choose to send to a reviewer."],
+      ["What is stored", "The details you give or confirm (for example state, age, income, household), your screening results with the rule versions used, your consent records, the list and status of documents you upload (the files stay in private storage), and your sign-in (email, phone or Passport code + PIN). We never ask for or store your Aadhaar number."],
+      ["How long", `Without saving: deleted ${h} hours after the session starts (kiosk sessions as soon as they end). Saved passports: deleted after ${d} days without use. Saved age and income older than ${s} days must be confirmed again.`],
+      ["How to withdraw", "Open My Passports → \"Delete my account and data\" at any time. That withdraws this consent and deletes your data; only cases you sent to a reviewer stay with the reviewer. \"Download my data\" gives you a copy first. Questions or complaints: contact the office running this service; you may also approach the Data Protection Board of India."],
+    ],
+    hi: [
+      ["उद्देश्य", "यह जाँचना कि आप किन सरकारी योजनाओं के पात्र हो सकते हैं, आपका योजना पासपोर्ट रखना ताकि आप बाद में लौट सकें, और पिछली जाँच के बाद क्या बदला यह दिखाना। कुछ भी विज्ञापन के लिए इस्तेमाल, बेचा या साझा नहीं किया जाता, सिवाय उस केस के जिसे आप ख़ुद समीक्षक को भेजना चुनते हैं।"],
+      ["क्या रखा जाता है", "आपके द्वारा दी या पुष्टि की गई जानकारी (जैसे राज्य, उम्र, आय, परिवार), इस्तेमाल हुए नियम संस्करणों के साथ जाँच के परिणाम, आपकी सहमति के रिकॉर्ड, अपलोड किए दस्तावेज़ों की सूची और स्थिति (फ़ाइलें निजी स्टोरेज में रहती हैं), और आपका साइन-इन (ईमेल, फ़ोन या पासपोर्ट कोड + पिन)। हम आपका आधार नंबर कभी नहीं माँगते या रखते।"],
+      ["कितने समय तक", `बिना सहेजे: सत्र शुरू होने के ${h} घंटे बाद मिटा दिया जाता है (कियोस्क सत्र समाप्त होते ही)। सहेजे पासपोर्ट: ${d} दिन उपयोग न होने पर मिटा दिए जाते हैं। ${s} दिन से पुरानी सहेजी उम्र और आय की फिर से पुष्टि करनी होगी।`],
+      ["सहमति कैसे वापस लें", "कभी भी मेरे पासपोर्ट → \"मेरा खाता और डेटा मिटाएँ\" खोलें। इससे यह सहमति वापस हो जाती है और आपका डेटा मिट जाता है; केवल समीक्षक को भेजे गए केस समीक्षक के पास रहते हैं। पहले \"मेरा डेटा डाउनलोड करें\" से एक प्रति ले सकते हैं। प्रश्न या शिकायत: यह सेवा चलाने वाले कार्यालय से संपर्क करें; आप भारतीय डेटा संरक्षण बोर्ड से भी संपर्क कर सकते हैं।"],
+    ],
+    te: [
+      ["ఉద్దేశ్యం", "మీరు ఏ ప్రభుత్వ పథకాలకు అర్హులు కావచ్చో తనిఖీ చేయడం, మీరు తిరిగి రాగలిగేలా మీ పథకం పాస్‌పోర్ట్‌ను ఉంచడం, మరియు గత తనిఖీ తర్వాత ఏమి మారిందో చూపించడం. మీరే సమీక్షకునికి పంపాలని ఎంచుకున్న కేసు తప్ప, ఏదీ ప్రకటనల కోసం ఉపయోగించబడదు, అమ్మబడదు లేదా పంచుకోబడదు."],
+      ["ఏమి నిల్వ చేయబడుతుంది", "మీరు ఇచ్చిన లేదా నిర్ధారించిన వివరాలు (ఉదా. రాష్ట్రం, వయస్సు, ఆదాయం, కుటుంబం), ఉపయోగించిన నియమ వెర్షన్లతో పరిశీలన ఫలితాలు, మీ సమ్మతి రికార్డులు, మీరు అప్‌లోడ్ చేసిన పత్రాల జాబితా మరియు స్థితి (ఫైళ్లు ప్రైవేట్ నిల్వలో ఉంటాయి), మరియు మీ సైన్-ఇన్ (ఈమెయిల్, ఫోన్ లేదా పాస్‌పోర్ట్ కోడ్ + పిన్). మేము మీ ఆధార్ నంబర్‌ను ఎప్పుడూ అడగము, నిల్వ చేయము."],
+      ["ఎంత కాలం", `సేవ్ చేయకపోతే: సెషన్ ప్రారంభమైన ${h} గంటల తర్వాత తొలగించబడుతుంది (కియోస్క్ సెషన్‌లు ముగిసిన వెంటనే). సేవ్ చేసిన పాస్‌పోర్ట్‌లు: ${d} రోజులు ఉపయోగించకపోతే తొలగించబడతాయి. ${s} రోజుల కంటే పాత వయస్సు, ఆదాయాన్ని మళ్ళీ నిర్ధారించాలి.`],
+      ["సమ్మతిని ఎలా ఉపసంహరించుకోవాలి", "ఎప్పుడైనా నా పాస్‌పోర్ట్‌లు → \"నా ఖాతా మరియు డేటాను తొలగించండి\" తెరవండి. అది ఈ సమ్మతిని ఉపసంహరించి మీ డేటాను తొలగిస్తుంది; సమీక్షకునికి పంపిన కేసులు మాత్రమే సమీక్షకుని వద్ద ఉంటాయి. ముందుగా \"నా డేటాను డౌన్‌లోడ్ చేయండి\"తో ఒక కాపీ తీసుకోవచ్చు. ప్రశ్నలు లేదా ఫిర్యాదులు: ఈ సేవను నడిపే కార్యాలయాన్ని సంప్రదించండి; భారత డేటా రక్షణ బోర్డును కూడా సంప్రదించవచ్చు."],
+    ],
+  }[lang] as [string, string][];
+}
 
 export type Key = keyof typeof S;
 
@@ -182,6 +230,7 @@ export const ATTR: Record<string, Record<Lang, string>> = {
   has_bank_account: { en: "Has bank account", hi: "बैंक खाता है", te: "బ్యాంక్ ఖాతా ఉంది" },
   owns_pucca_house: { en: "Owns pucca house", hi: "पक्का मकान है", te: "పక్కా ఇల్లు ఉంది" },
   applicant_name: { en: "Applicant name", hi: "आवेदक का नाम", te: "దరఖాస్తుదారుని పేరు" },
+  date_of_birth: { en: "Date of birth", hi: "जन्मतिथि", te: "పుట్టిన తేదీ" },
 };
 export const attrLabel = (a: string, lang: Lang) => ATTR[a]?.[lang] ?? a;
 

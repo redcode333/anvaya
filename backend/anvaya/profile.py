@@ -1,7 +1,9 @@
 """Sessions, profile facts (stable IDs + provenance + confirmation) and conversation turns."""
 import json
+import secrets
+from datetime import timedelta
 
-from flask import current_app, g
+from flask import current_app, g, request
 
 from . import extraction, i18n, llm, metrics
 from .llm import merge as llm_merge
@@ -24,6 +26,7 @@ ATTR_SCHEMA = {
     "has_bank_account": ("bool", None),
     "owns_pucca_house": ("bool", None),
     "applicant_name": ("str", 80),
+    "date_of_birth": ("date", None),  # only from an official source (DigiLocker), YYYY-MM-DD
 }
 
 # Order in which missing attributes are asked about (FR-03).
@@ -54,6 +57,15 @@ def validate_value(attr: str, value):
         if str(value).lower() in ("false", "no", "0"):
             return False
         raise ApiError("INVALID_VALUE", f"{attr} must be yes or no.", 422)
+    if kind == "date":
+        from datetime import date
+        try:
+            d = date.fromisoformat(str(value).strip()[:10])
+        except ValueError:
+            raise ApiError("INVALID_VALUE", f"{attr} must be a date (YYYY-MM-DD).", 422)
+        if not date(1900, 1, 1) <= d <= date.today():
+            raise ApiError("INVALID_VALUE", f"{attr} is out of range.", 422)
+        return d.isoformat()
     if kind == "enum":
         match = next((s for s in spec if s.lower() == str(value).strip().lower()), None)
         if match is None:
@@ -67,8 +79,27 @@ def validate_value(attr: str, value):
 
 # ---------------------------------------------------------------- sessions
 
+DEVICE_ID_CHARS = set("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_")
+
+
+def new_session_id() -> str:
+    """128 random bits: a session id is never guessable. It travels only in the X-Session-Id header and the request
+    body, never in a URL or a log line."""
+    return f"SES_{secrets.token_hex(16)}"
+
+
+def valid_device_id(device_id) -> bool:
+    return isinstance(device_id, str) and 8 <= len(device_id) <= 64 and set(device_id) <= DEVICE_ID_CHARS
+
+
+def kiosk_device() -> str | None:
+    """The kiosk device id this request comes from (header set by the kiosk browser)."""
+    return request.headers.get("X-Kiosk-Device") or None
+
+
 def create_session(mode: str, language: str, device_id=None, operator_id=None, is_test=False, is_demo=False,
-                   claims: dict | None = None, citizen_id: str | None = None, commit: bool = True) -> dict:
+                   claims: dict | None = None, citizen_id: str | None = None, commit: bool = True,
+                   synced: bool = False) -> dict:
     """A new session. `claims` = a signed-in citizen (Supabase user): the session is tied to that user and, if they saved
     their passports, starts from the saved profile. `citizen_id` = a Passport code holder resuming."""
     if mode not in SESSION_MODES:
@@ -80,9 +111,17 @@ def create_session(mode: str, language: str, device_id=None, operator_id=None, i
     if claims and mode == "personal":
         from .accounts import queue_citizen
         citizen_id, auth_user_id = queue_citizen(claims), claims["sub"]
-    s = {"session_id": new_id("SES"), "mode": mode, "language": language, "workflow_state": "SESSION_ACTIVE",
+    if mode == "kiosk":
+        # A kiosk session belongs to one device and one operator, and ends after KIOSK_MAX_SESSION_MINUTES at most.
+        # (synced=True: rebuilt from a kiosk's offline outbox, which has no live operator session to bind to)
+        if not synced and (not operator_id or not valid_device_id(device_id)):
+            raise ApiError("KIOSK_DEVICE_REQUIRED", "A kiosk session needs the operator and the kiosk device id.", 422)
+        expires = iso(now() + timedelta(minutes=current_app.config["KIOSK_MAX_SESSION_MINUTES"]))
+    else:
+        expires = iso_in(current_app.config["SESSION_TTL_HOURS"])
+    s = {"session_id": new_session_id(), "mode": mode, "language": language, "workflow_state": "SESSION_ACTIVE",
          "device_id": device_id, "operator_id": operator_id, "is_test": int(is_test), "is_demo": int(is_demo),
-         "created_at": iso(), "expires_at": iso_in(current_app.config["SESSION_TTL_HOURS"]), "ended_at": None,
+         "created_at": iso(), "expires_at": expires, "ended_at": None,
          "citizen_id": citizen_id, "auth_user_id": auth_user_id}
     cols = ("session_id", "mode", "language", "workflow_state", "device_id", "operator_id", "is_test", "is_demo",
             "created_at", "expires_at", "citizen_id", "auth_user_id")
@@ -101,16 +140,28 @@ SESSION_SQL = "SELECT * FROM sessions WHERE session_id=?"
 FACTS_SQL = "SELECT * FROM facts WHERE session_id=? ORDER BY captured_at, rowid"
 
 
-def _checked_session(row, allow_ended: bool) -> dict:
-    if not row:
-        raise ApiError("SESSION_NOT_FOUND", "Session not found.", 404)
-    s = dict(row)
+def check_owner(s: dict) -> None:
+    """A signed-in citizen's session is reachable only with that citizen's verified token (same user id after an
+    anonymous account is linked to an email); a kiosk session only from its kiosk device (X-Kiosk-Device) with the
+    token of the operator who started it."""
     if s.get("auth_user_id"):
-        # A signed-in citizen's session is reachable only with that citizen's verified token (same user id after an
-        # anonymous account is linked to an email).
         claims = g.get("auth")
         if not claims or claims.get("sub") != s["auth_user_id"]:
             raise ApiError("SESSION_FORBIDDEN", "This session belongs to another account.", 403)
+    if s.get("mode") == "kiosk" and s.get("operator_id"):
+        from .common import current_user
+        user = current_user()
+        if not user or user["user_id"] != s["operator_id"] or kiosk_device() != s.get("device_id"):
+            raise ApiError("SESSION_FORBIDDEN", "This kiosk session belongs to another kiosk or operator.", 403)
+        g.user = user
+
+
+def _checked_session(row, allow_ended: bool, owner: bool = True) -> dict:
+    if not row:
+        raise ApiError("SESSION_NOT_FOUND", "Session not found.", 404)
+    s = dict(row)
+    if owner:
+        check_owner(s)
     if not allow_ended and (s["ended_at"] or parse_iso(s["expires_at"]) < now()):
         raise ApiError("SESSION_EXPIRED", "This session has ended or expired.", 410)
     return s
@@ -138,7 +189,7 @@ def set_language(session_id: str, language: str, session: dict | None = None, co
     return {**session, "language": language}
 
 
-def end_session(session_id: str, reason: str = "user") -> None:
+def end_session(session_id: str, reason: str = "user", owner_checked: bool = False) -> None:
     """End a session (kiosk End session / idle timeout, or Start over). Data nobody consented to keep is deleted:
     a saved passport keeps its facts and versions, a consented hand-off keeps its case; utterances never stay."""
     db = get_db()
@@ -147,7 +198,7 @@ def end_session(session_id: str, reason: str = "user") -> None:
         ("SELECT c.saved FROM citizens c JOIN sessions s ON s.citizen_id = c.citizen_id WHERE s.session_id=?",
          (session_id,)),
         ("SELECT upload_id, storage_path FROM document_uploads WHERE session_id=?", (session_id,))])
-    _checked_session(session.fetchone(), allow_ended=True)
+    _checked_session(session.fetchone(), allow_ended=True, owner=not owner_checked)
     has_case, row = case.fetchone(), saved.fetchone()
     is_saved = bool(row and row[0])
     removed_uploads = 0
@@ -168,6 +219,21 @@ def end_session(session_id: str, reason: str = "user") -> None:
     db.commit()
 
 
+def end_device_sessions(device_id: str, operator_id: str, reason: str = "operator_sign_out") -> int:
+    """A kiosk operator signs out at the device: every citizen session still open on that device ends, whoever started
+    it (shift change), with the same deletion as End session. Returns how many ended."""
+    if not valid_device_id(device_id):
+        raise ApiError("KIOSK_DEVICE_REQUIRED", "Send the kiosk device id (X-Kiosk-Device).", 422)
+    rows = get_db().execute("SELECT session_id FROM sessions WHERE mode='kiosk' AND device_id=? AND ended_at IS NULL",
+                            (device_id,)).fetchall()
+    for r in rows:
+        end_session(r[0], reason, owner_checked=True)
+    ended = len(rows)
+    audit("kiosk.device_signed_out", details={"sessions_ended": ended}, actor_id=operator_id)
+    get_db().commit()
+    return ended
+
+
 # ---------------------------------------------------------------- facts
 
 def _fact_row_to_public(r) -> dict:
@@ -180,6 +246,8 @@ def _fact_row_to_public(r) -> dict:
         "captured_at": r["captured_at"], "confirmed_at": r["confirmed_at"],
         "high_impact": r["attribute"] in extraction.HIGH_IMPACT,
         "confusable": bool(r["confusable"]),
+        # Read from an official source (DigiLocker), not from what was said or typed.
+        "verified": bool(r["verified"]),
         # Two extractors heard different values: the citizen picks one of these (PATCH {value}); plain confirm is refused.
         "alternatives": alternatives,
         "disputed": disputed,
@@ -194,7 +262,7 @@ class Facts:
     their INSERT/UPDATE, so a request reads the facts once instead of after every change."""
 
     COLUMNS = ("fact_id", "session_id", "attribute", "value_json", "raw_text", "source", "confidence", "confirmed",
-               "inferred", "note", "captured_at", "confirmed_at", "confusable", "alternatives_json")
+               "inferred", "note", "captured_at", "confirmed_at", "confusable", "alternatives_json", "verified")
 
     def __init__(self, session_id: str, rows):
         self.session_id = session_id
@@ -239,13 +307,14 @@ def fact_history(session_id: str) -> list[dict]:
 
 
 def upsert_fact(session_id, attribute, value, *, source, raw_text=None, confidence=1.0, inferred=False,
-                note=None, confirmed=False, confusable=False, alternatives=None, facts: Facts | None = None) -> dict:
+                note=None, confirmed=False, confusable=False, alternatives=None, verified=False,
+                facts: Facts | None = None) -> dict:
     value = validate_value(attribute, value)
     alternatives = [validate_value(attribute, a) for a in alternatives] if alternatives else None
     facts = facts or load_facts(session_id)
     db = get_db()
     existing = facts.by_attribute().get(attribute)
-    if existing and json.loads(existing["value_json"]) == value:
+    if existing and json.loads(existing["value_json"]) == value and (existing["verified"] or not verified):
         if confirmed and not existing["confirmed"]:
             facts.confirm(existing)
         elif alternatives and not existing["confirmed"]:
@@ -259,7 +328,8 @@ def upsert_fact(session_id, attribute, value, *, source, raw_text=None, confiden
     row = {"fact_id": fact_id, "session_id": session_id, "attribute": attribute, "value_json": dumps(value),
            "raw_text": raw_text, "source": source, "confidence": confidence, "confirmed": int(confirmed),
            "inferred": int(inferred), "note": note, "captured_at": ts, "confirmed_at": ts if confirmed else None,
-           "confusable": int(confusable), "alternatives_json": dumps(alternatives) if alternatives else None}
+           "confusable": int(confusable), "alternatives_json": dumps(alternatives) if alternatives else None,
+           "verified": int(verified)}
     facts.insert(row)
     previous = None
     if existing:

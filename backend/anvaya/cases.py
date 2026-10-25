@@ -62,7 +62,8 @@ def _build_fields(facts: dict, rule_facts: list[str]) -> list[dict]:
 
 
 # A draft with its session's language and its case (if any), in one query.
-DRAFT_SQL = """SELECT d.*, s.language AS session_language, c.case_id AS case_case_id, c.status AS case_status,
+DRAFT_SQL = """SELECT d.*, s.language AS session_language, s.mode, s.device_id, s.operator_id, s.auth_user_id,
+                      c.case_id AS case_case_id, c.status AS case_status,
                       c.review_outcome AS case_review_outcome, c.updated_at AS case_updated_at
                FROM drafts d JOIN sessions s ON s.session_id = d.session_id
                LEFT JOIN cases c ON c.draft_id = d.draft_id"""
@@ -149,6 +150,8 @@ def get_draft(draft_id: str, session_id: str | None, staff: bool = False) -> dic
         raise ApiError("DRAFT_NOT_FOUND", "Draft not found.", 404)
     if not staff and row["session_id"] != session_id:
         raise ApiError("FORBIDDEN", "This draft belongs to another session.", 403)
+    if not staff:
+        profile.check_owner(dict(row))
     return _draft_public(row, row["session_language"], _case_of(row))
 
 
@@ -160,6 +163,7 @@ def patch_draft(draft_id: str, session_id: str, version: int, edits: dict) -> di
         raise ApiError("DRAFT_NOT_FOUND", "Draft not found.", 404)
     if row["session_id"] != session_id:
         raise ApiError("FORBIDDEN", "This draft belongs to another session.", 403)
+    profile.check_owner(dict(row))
     if row["version"] != version:
         audit("draft.conflict", session_id=session_id, object_version=row["version"], details={"draft_id": draft_id, "sent_version": version})
         db.commit()
@@ -183,8 +187,8 @@ def handoff(draft_id: str, session_id: str, consent: dict, staff: bool = False) 
     db = get_db()
     by_draft = "(SELECT session_id FROM drafts WHERE draft_id=?)"
     row, fact_rows, marks_rows, case = db.query_many([
-        ("SELECT d.*, s.language AS session_language FROM drafts d JOIN sessions s ON s.session_id = d.session_id"
-         " WHERE d.draft_id=? FOR UPDATE OF d", (draft_id,)),
+        ("SELECT d.*, s.language AS session_language, s.mode, s.device_id, s.operator_id, s.auth_user_id"
+         " FROM drafts d JOIN sessions s ON s.session_id = d.session_id WHERE d.draft_id=? FOR UPDATE OF d", (draft_id,)),
         (f"SELECT * FROM facts WHERE session_id={by_draft} ORDER BY captured_at, rowid", (draft_id,)),
         (f"SELECT doc_key, status FROM doc_marks WHERE session_id={by_draft}", (draft_id,)),
         ("SELECT * FROM cases WHERE draft_id=?", (draft_id,)),
@@ -194,6 +198,8 @@ def handoff(draft_id: str, session_id: str, consent: dict, staff: bool = False) 
         raise ApiError("DRAFT_NOT_FOUND", "Draft not found.", 404)
     if not staff and row["session_id"] != session_id:
         raise ApiError("FORBIDDEN", "This draft belongs to another session.", 403)
+    if not staff:
+        profile.check_owner(dict(row))
     if not (consent.get("share_with_reviewer") is True):
         raise ApiError("CONSENT_REQUIRED", "The citizen must consent to share this draft with a reviewer.", 422)
 

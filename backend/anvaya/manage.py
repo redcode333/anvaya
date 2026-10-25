@@ -12,6 +12,22 @@ def _opt(argv: list[str], name: str, default: int) -> int:
     return int(argv[argv.index(name) + 1]) if name in argv else default
 
 
+def _record_staff_change(app, res: dict, role: str) -> None:
+    """Auth audit for seed-staff: a role change, and a password set again (existing sessions are signed out)."""
+    from . import auth
+    from .db import get_db
+    if not res.get("user_id"):
+        return
+    with app.app_context():
+        if res["previous_role"] != role:
+            auth.record("role_changed", "system", "system",
+                        {"user_id": res["user_id"], "from": res["previous_role"], "to": role})
+        if res["action"] == "updated":
+            auth.revoke_sessions(res["user_id"], "password_changed")
+            auth.record("password_changed", "system", "system", {"user_id": res["user_id"], "global_sign_out": True})
+        get_db().commit()
+
+
 def main(argv: list[str]) -> int:
     app = create_app()
     conn = connect(app.config)
@@ -72,7 +88,9 @@ def _run(argv: list[str], app, conn) -> int:
                 print(f"  {role:<9} skipped: {password_var} must be at least 8 characters")
                 missing += 1
                 continue
-            print(f"  {role:<9} {upsert_staff(cfg, email, password, role)}")
+            res = upsert_staff(cfg, email, password, role)
+            print(f"  {role:<9} {res['action']}")
+            _record_staff_change(app, res, role)
         return 1 if missing else 0
     if cmd == "prerender-audio":
         from . import prerender, voice

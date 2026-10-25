@@ -76,9 +76,38 @@ class Config:
     # token names an unknown key id (rotation), at most every 30 s.
     SUPABASE_JWKS_CACHE_S = _num("SUPABASE_JWKS_CACHE_S", 600, int)
     GOOGLE_AUTH_ENABLED = _flag("GOOGLE_AUTH_ENABLED", False)
+    # Staff (operator / reviewer / admin) must use an aal2 access token (TOTP verified) on every staff API call.
+    # Off only for a local demo without Supabase MFA; never in production.
+    STAFF_MFA_REQUIRED = _flag("ANVAYA_STAFF_MFA_REQUIRED", True)
+    # Cloudflare Turnstile site key of the browser build (public). Supabase verifies the token server-side once CAPTCHA
+    # protection is enabled in the project's Auth settings; unset = the widget is skipped (local dev) with a warning.
+    TURNSTILE_SITE_KEY = os.environ.get("VITE_TURNSTILE_SITE_KEY", "").strip()
+    # Per-IP limits (requests per minute) on our endpoints that create sessions or report sign-in events.
+    SESSION_CREATE_LIMIT_PER_MIN = _num("ANVAYA_SESSION_CREATE_LIMIT", 20, int)
+    AUTH_EVENT_LIMIT_PER_MIN = _num("ANVAYA_AUTH_EVENT_LIMIT", 30, int)
+    # Phone OTP through Supabase phone auth: off (Indian SMS needs DLT registration and a paid SMS provider).
+    PHONE_OTP_ENABLED = _flag("PHONE_OTP_ENABLED", False)
+
+    # DigiLocker / Meri Pehchaan (OAuth 2.0 / OpenID Connect, authorization code + PKCE). Off unless
+    # DIGILOCKER_ENABLED=true and every endpoint below is configured; nothing is hardcoded (partner onboarding gives
+    # the real values). The Aadhaar number is never requested or stored.
+    DIGILOCKER_ENABLED = _flag("DIGILOCKER_ENABLED", False)
+    DIGILOCKER_CLIENT_ID = os.environ.get("DIGILOCKER_CLIENT_ID", "").strip()
+    DIGILOCKER_CLIENT_SECRET = os.environ.get("DIGILOCKER_CLIENT_SECRET", "").strip()
+    DIGILOCKER_AUTH_URL = os.environ.get("DIGILOCKER_AUTH_URL", "").strip()
+    DIGILOCKER_TOKEN_URL = os.environ.get("DIGILOCKER_TOKEN_URL", "").strip()
+    DIGILOCKER_JWKS_URL = os.environ.get("DIGILOCKER_JWKS_URL", "").strip()
+    DIGILOCKER_REDIRECT_URI = os.environ.get("DIGILOCKER_REDIRECT_URI", "").strip()
+    DIGILOCKER_SCOPES = os.environ.get("DIGILOCKER_SCOPES", "openid").strip()
+    DIGILOCKER_ISSUER = os.environ.get("DIGILOCKER_ISSUER", "").strip()  # optional: checked against the ID token's iss
+    DIGILOCKER_STATE_TTL_S = 600
+
+    # Kiosk temporary sessions end after this many minutes whatever the activity (the idle limit is separate).
+    KIOSK_MAX_SESSION_MINUTES = _num("KIOSK_MAX_SESSION_MINUTES", 30, int)
 
     # Saved passports. Consent text version the citizen must accept before anything is kept beyond the session.
-    CONSENT_VERSION = "save-2026-10"
+    # Bumped when the notice text changes (save-2026-10-dpdp: itemised DPDP Act 2023 notice).
+    CONSENT_VERSION = "save-2026-10-dpdp"
     PASSPORT_RETENTION_DAYS = _num("PASSPORT_RETENTION_DAYS", 365, int)   # saved passports, after inactivity
     UNSAVED_RETENTION_HOURS = _num("ANVAYA_UNSAVED_RETENTION_HOURS", 24, int)  # unsaved anonymous data
     STALE_FACT_DAYS = 90  # saved age / income older than this must be confirmed again

@@ -8,6 +8,7 @@ services:
       args:   # baked into the browser bundle: URL + publishable key only
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
         VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:-}
+        VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
     ports:
       - "5000:5000"
     env_file:

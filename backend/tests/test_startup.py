@@ -23,7 +23,7 @@ def test_one_line_per_integration_and_never_a_value(tmp_path, caplog):
                       LLM_PROVIDERS=providers, METRICS_TOKEN="", LANGFUSE_PUBLIC_KEY="", LANGFUSE_SECRET_KEY="",
                       LANGFUSE_BASE_URL="")
     integ = [ln for ln in lines if ln.startswith("integration")]
-    assert len(integ) == 6  # verbx, llm.groq, llm.gemini, langfuse, supabase_auth, metrics
+    assert len(integ) == 8  # verbx, llm.groq, llm.gemini, langfuse, supabase_auth, metrics, turnstile, digilocker
     assert "integration verbx        configured" in integ[0]
     assert "llm.groq" in integ[1] and "configured" in integ[1]
     assert "llm.gemini" in integ[2] and "missing (missing GEMINI_MODEL, GEMINI_API_KEY)" in integ[2]

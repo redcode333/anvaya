@@ -53,9 +53,28 @@ def check(cfg) -> dict:
         "effect": "/metrics requires a bearer token" if cfg["METRICS_TOKEN"]
         else "/metrics is open (fine for a local demo; set a token behind a public ingress)"}
 
+    integrations["turnstile"] = {
+        "status": "configured" if cfg["TURNSTILE_SITE_KEY"] else "missing",
+        "missing": [] if cfg["TURNSTILE_SITE_KEY"] else ["VITE_TURNSTILE_SITE_KEY"],
+        "effect": "CAPTCHA token sent with anonymous sign-in, email OTP and staff sign-in (verified by Supabase)"
+        if cfg["TURNSTILE_SITE_KEY"] else "no CAPTCHA widget (local dev only)"}
+
+    from . import digilocker
+    dl = digilocker.describe(cfg)
+    integrations["digilocker"] = {
+        "status": "configured" if dl["enabled"] else ("partial" if dl["missing"] else "disabled"),
+        "missing": dl["missing"],
+        "effect": "DigiLocker sign-in offered" if dl["enabled"] else "button hidden (DIGILOCKER_ENABLED=false)"}
+
     warnings = list(CONFIG_WARNINGS)
     if not cfg["PASSPORT_PEPPER"]:
         warnings.append("ANVAYA_PASSPORT_PEPPER is not set: Passport codes are hashed with a public development pepper")
+    if not cfg["TURNSTILE_SITE_KEY"]:
+        warnings.append("VITE_TURNSTILE_SITE_KEY is not set: sign-in runs without the Turnstile CAPTCHA (local dev only)")
+    if not cfg["STAFF_MFA_REQUIRED"]:
+        warnings.append("ANVAYA_STAFF_MFA_REQUIRED is off: staff API calls are allowed without TOTP (never in production)")
+    if dl["missing"]:
+        warnings.append(f"DIGILOCKER_ENABLED is true but {', '.join(dl['missing'])} not set: DigiLocker stays off")
 
     for name, i in integrations.items():
         extra = f" (missing {', '.join(i['missing'])})" if i["missing"] else ""

@@ -223,7 +223,7 @@ def test_view_links_audit_and_reviewer_access(app, client, store, clock, reviewe
     own = client.get(f"/api/v1/sessions/{sid}/documents/bpl_card/view-url").json["view_url"]
     assert client.get(own).status_code == 200
     viewed = [json.loads(r[0]) | {"actor": r[1], "role": r[2]} for r in rows(
-        app, "SELECT details_json, actor_id, actor_role FROM audit_events WHERE action='document.viewed' AND session_id=?",
+        app, "SELECT details_json, actor_id, actor_role FROM audit_events WHERE action='document.viewed' AND session_id=? ORDER BY rowid",
         (sid,))]
     assert [(v["role"], v["doc_key"]) for v in viewed] == [("reviewer", "bpl_card"), ("citizen", "bpl_card")]
     assert all(set(v) == {"upload_id", "doc_key", "actor", "role"} for v in viewed)  # never content
@@ -283,6 +283,28 @@ def test_account_deletion_deletes_uploads(app, client, store, monkeypatch):
     r = client.delete("/api/v1/account", headers=user)
     assert r.status_code == 200 and r.json["uploads_deleted"] == 2 and store.objects == {}
     assert not rows(app, "SELECT 1 FROM document_uploads WHERE session_id=?", (sid,))
+
+
+def test_account_deletion_warns_before_removing_uploads_from_a_pending_case(app, client, store, monkeypatch, reviewer):
+    monkeypatch.setattr(auth, "delete_auth_user", lambda uid, cfg=None: True)
+    user = bearer(token(email="p@example.org"))
+    client.post("/api/v1/account/consent", json={"consent": {"version": app.config["CONSENT_VERSION"], "accepted": True}},
+                headers=user)
+    sid = client.post("/api/v1/sessions", json={"mode": "personal", "language": "en"}, headers=user).json["session_id"]
+    client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": PUNJAB}, headers=user)
+    for fid in client.post(f"/api/v1/sessions/{sid}/profile/confirm-all", headers=user).json["needs_confirmation"]:
+        client.patch(f"/api/v1/sessions/{sid}/profile/facts/{fid}", json={"confirmed": True}, headers=user)
+    upload(client, app, sid, headers=user)
+    case_id = handed_off(client, sid, headers=user)
+    for ack in (None, False, "yes"):  # only an explicit true confirms
+        r = client.delete("/api/v1/account", json=None if ack is None else {"acknowledge_pending_case": ack}, headers=user)
+        assert r.status_code == 409 and r.json["error"]["details"] == {"pending_cases": 1, "documents": 1}
+    assert len(store.objects) == 1 and rows(app, "SELECT COUNT(*) FROM document_uploads WHERE session_id=?", (sid,))[0][0] == 1
+    r = client.delete("/api/v1/account", json={"acknowledge_pending_case": True}, headers=user)
+    assert r.status_code == 200 and r.json["cases_kept"] == 1 and r.json["uploads_deleted"] == 1 and store.objects == {}
+    case = client.get(f"/api/v1/reviewer/cases/{case_id}", headers=reviewer).json
+    assert case["status"] == "PENDING_REVIEW"
+    assert rows(app, "SELECT COUNT(*) FROM doc_marks WHERE session_id=? AND status='uploaded'", (sid,))[0][0] == 0
 
 
 def _age(app, sql, params):

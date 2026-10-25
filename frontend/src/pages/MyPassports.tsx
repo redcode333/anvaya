@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api } from "../api";
-import { deleteAccount, formatCode, loadHistory, sendEmailCode, verifyEmailCode, whatChanged, type AuthLike, type Change, type EmailFlow, type PassportVersion, type Reason } from "../account";
-import { RetentionNote } from "../AccountUI";
+import { api, ApiError } from "../api";
+import { deleteAccount, downloadMyData, formatCode, loadHistory, sendEmailCode, sendPhoneCode, verifyEmailCode, verifyPhoneCode, whatChanged, type AuthLike, type Change, type EmailFlow, type PassportVersion, type Reason } from "../account";
+import { ConsentNotice, RetentionNote } from "../AccountUI";
+import { useCaptcha } from "../Turnstile";
 import { supabase } from "../auth";
 import { ErrorNote, OutcomeBadge } from "../components";
 import { attrLabel, showValue, t, type Lang } from "../i18n";
@@ -27,20 +28,59 @@ function EmailSignIn() {
   const [email, setEmail] = useState(""), [code, setCode] = useState("");
   const [flow, setFlow] = useState<EmailFlow | null>(null);
   const [err, setErr] = useState<unknown>(null);
+  const captcha = useCaptcha(lang);
   const run = async (fn: () => Promise<void>) => { setErr(null); try { await fn(); } catch (e) { setErr(e); } };
+  const send = () => run(async () => {
+    try { setFlow(await sendEmailCode(authClient(), email.trim(), captcha.token)); } finally { captcha.used(); }
+  });
   return (
     <div className="card stack" style={{ maxWidth: 520 }}>
       <h2>{t("signInEmail", lang)}</h2>
       {!flow ? (
-        <div className="row">
-          <input type="email" value={email} placeholder={t("email", lang)} aria-label={t("email", lang)} onChange={(e) => setEmail(e.target.value)} style={{ flex: 1 }} />
-          <button className="btn primary" disabled={!email.includes("@")} onClick={() => run(async () => setFlow(await sendEmailCode(authClient(), email.trim())))}>{t("sendCode", lang)}</button>
-        </div>
+        <>
+          <div className="row">
+            <input type="email" value={email} placeholder={t("email", lang)} aria-label={t("email", lang)} onChange={(e) => setEmail(e.target.value)} style={{ flex: 1 }} />
+            <button className="btn primary" disabled={!email.includes("@") || !captcha.ready} onClick={send}>{t("sendCode", lang)}</button>
+          </div>
+          {captcha.widget}
+        </>
       ) : (
         <div className="row">
           <input type="text" inputMode="numeric" autoComplete="one-time-code" value={code} placeholder={t("enterCode", lang)} aria-label={t("enterCode", lang)}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} style={{ flex: 1 }} />
           <button className="btn primary" disabled={code.length !== 6} onClick={() => run(async () => { await verifyEmailCode(authClient(), email.trim(), code, flow); await refreshAuth(); })}>{t("open", lang)}</button>
+        </div>
+      )}
+      <ErrorNote error={err} />
+    </div>
+  );
+}
+
+/** Phone OTP through Supabase phone auth — shown only when PHONE_OTP_ENABLED (Indian SMS needs DLT registration and a
+ *  paid SMS provider, so it is off in this build). */
+function PhoneSignIn() {
+  const { lang, refreshAuth } = useApp();
+  const [phone, setPhone] = useState(""), [sent, setSent] = useState<string | null>(null), [code, setCode] = useState("");
+  const [err, setErr] = useState<unknown>(null);
+  const captcha = useCaptcha(lang);
+  const run = async (fn: () => Promise<void>) => { setErr(null); try { await fn(); } catch (e) { setErr(e); } };
+  return (
+    <div className="card stack" style={{ maxWidth: 520 }}>
+      {!sent ? (
+        <>
+          <div className="row">
+            <input type="tel" inputMode="tel" value={phone} placeholder="98xxxxxxxx" aria-label={t("phone", lang)} onChange={(e) => setPhone(e.target.value)} style={{ flex: 1 }} />
+            <button className="btn primary" disabled={!captcha.ready} onClick={() => run(async () => {
+              try { setSent(await sendPhoneCode(authClient(), phone, captcha.token)); } finally { captcha.used(); }
+            })}>{t("sendCode", lang)}</button>
+          </div>
+          {captcha.widget}
+        </>
+      ) : (
+        <div className="row">
+          <input type="text" inputMode="numeric" autoComplete="one-time-code" value={code} placeholder={t("smsCode", lang)} aria-label={t("smsCode", lang)}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} style={{ flex: 1 }} />
+          <button className="btn primary" disabled={code.length !== 6} onClick={() => run(async () => { await verifyPhoneCode(authClient(), sent, code); await refreshAuth(); })}>{t("open", lang)}</button>
         </div>
       )}
       <ErrorNote error={err} />
@@ -66,13 +106,15 @@ function AttachCode({ onDone }: { onDone: () => void }) {
 }
 
 export default function MyPassports() {
-  const { lang, citizen, sessionId, signOut, resetCitizen } = useApp();
+  const { lang, citizen, sessionId, signOut, signOutAll, resetCitizen, config } = useApp();
+  const [notice, setNotice] = useState<string | null>(null);
   const nav = useNavigate();
   const [account, setAccount] = useState<Account | null>(null);
   const [versions, setVersions] = useState<PassportVersion[] | null>(null);
   const [since, setSince] = useState("");
   const [changes, setChanges] = useState<Change[] | null>(null);
   const [confirmText, setConfirmText] = useState("");
+  const [pendingCase, setPendingCase] = useState(false);  // the server asked for a second confirmation
   const [done, setDone] = useState(false);
   const [err, setErr] = useState<unknown>(null);
   const signedIn = !!citizen && !citizen.is_anonymous;
@@ -101,24 +143,40 @@ export default function MyPassports() {
     return (
       <div className="stack">
         <h1>{t("myPassports", lang)}</h1>
+        {notice && <div className="notice ok" role="status">{notice}</div>}
         {supabase && <EmailSignIn />}
+        {supabase && config?.phone_otp_enabled && <PhoneSignIn />}
         <p><Link className="btn" to="/resume">{t("resume", lang)} →</Link></p>
+        <ConsentNotice />
         <RetentionNote />
       </div>
     );
 
-  const remove = async () => {
+  const download = async () => { setErr(null); try { await downloadMyData(viaSession); } catch (e) { setErr(e); } };
+  const everywhere = async () => {
     setErr(null);
-    try { await deleteAccount(authClient()); resetCitizen(); setDone(true); } catch (e) { setErr(e); }
+    try { await signOutAll(); setNotice(t("signedOutAll", lang)); nav("/citizen/passports"); } catch (e) { setErr(e); }
+  };
+
+  const remove = async (acknowledgePendingCase = false) => {
+    setErr(null);
+    try { await deleteAccount(authClient(), { acknowledgePendingCase }); resetCitizen(); setDone(true); }
+    catch (e) { if (e instanceof ApiError && e.code === "PENDING_CASE_DOCUMENTS") setPendingCase(true); else setErr(e); }
   };
 
   return (
     <div className="stack">
       <div className="row spread">
         <h1>{t("myPassports", lang)}</h1>
-        {signedIn && <span className="row small">{account?.email ?? citizen?.email}<button className="btn small" onClick={() => signOut().then(() => nav("/"))}>{t("signOut", lang)}</button></span>}
+        {signedIn && <span className="row small">{account?.email ?? citizen?.email}
+          <button className="btn small" onClick={() => signOut().then(() => nav("/"))}>{t("signOut", lang)}</button>
+          <button className="btn small ghost" onClick={everywhere}>{t("signOutAll", lang)}</button></span>}
       </div>
       <ErrorNote error={err} />
+      <section className="card row spread">
+        <span className="small">{t("downloadDataHint", lang)}</span>
+        <button className="btn" onClick={download}>⬇ {t("downloadData", lang)}</button>
+      </section>
       {account && !account.saved && <div className="notice">{t("saveIntro", lang)} <Link to="/citizen">{t("profile", lang)} →</Link></div>}
       {account?.saved && account.profile.length > 0 && (
         <section className="card stack">
@@ -167,15 +225,25 @@ export default function MyPassports() {
         </section>
       )}
       {signedIn && <AttachCode onDone={load} />}
+      <ConsentNotice />
       <RetentionNote />
       {citizen && (
         <section className="card stack">
-          <h2>{t("deleteAccount", lang)}</h2>
+          <h2>{t("withdrawConsent", lang)} · {t("deleteAccount", lang)}</h2>
           <p className="small">{t("deleteConfirm", lang)}</p>
           <div className="row">
             <input type="text" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} aria-label="DELETE" style={{ width: "10rem" }} />
-            <button className="btn danger" disabled={confirmText !== "DELETE"} onClick={remove}>{t("deleteAccount", lang)}</button>
+            <button className="btn danger" disabled={confirmText !== "DELETE" || pendingCase} onClick={() => remove()}>{t("deleteAccount", lang)}</button>
           </div>
+          {pendingCase && (
+            <div className="notice stack" role="alertdialog" aria-live="assertive" aria-label={t("deleteAccount", lang)}>
+              <p style={{ margin: 0 }}><strong>{t("pendingCaseWarning", lang)}</strong></p>
+              <div className="row">
+                <button className="btn danger" onClick={() => remove(true)}>{t("deleteAnyway", lang)}</button>
+                <button className="btn" autoFocus onClick={() => { setPendingCase(false); setConfirmText(""); }}>{t("keepAccount", lang)}</button>
+              </div>
+            </div>
+          )}
         </section>
       )}
     </div>

@@ -2,12 +2,23 @@ from functools import wraps
 
 from flask import Blueprint, current_app, g, jsonify, request
 
-from . import (accounts, auth, cases, catalogue, documents, i18n, llm, migrations, profile, sync, testrunner,
-               translation, voice)
-from .common import ApiError, audit, current_user, idempotency_key, idempotent, require_role
+from . import (accounts, auth, cases, catalogue, digilocker, documents, i18n, llm, migrations, profile, sync,
+               testrunner, translation, voice)
+from .common import ApiError, audit, current_user, idempotency_key, idempotent, rate_limit, require_role
 from .db import bump, get_db, iso
 
 bp = Blueprint("api", __name__, url_prefix="/api/v1")
+
+
+@bp.url_value_preprocessor
+def _session_from_header(endpoint, values):
+    """/sessions/current/... takes the session id from the X-Session-Id header, so the id never appears in a URL (and
+    so never in a proxy or server access log). The browser always uses this form."""
+    if values and values.get("sid") == "current":
+        sid = request.headers.get("X-Session-Id", "").strip()
+        if not sid:
+            raise ApiError("SESSION_REQUIRED", "Send the session id in the X-Session-Id header.", 400)
+        values["sid"] = sid
 
 
 def body() -> dict:
@@ -72,6 +83,9 @@ def auth_config():
     cfg = current_app.config
     return {"supabase_configured": bool(cfg["SUPABASE_URL"]), "google_enabled": cfg["GOOGLE_AUTH_ENABLED"],
             "kiosk_idle_seconds": cfg["KIOSK_IDLE_SECONDS"], "kiosk_warning_seconds": 30,
+            "kiosk_max_session_minutes": cfg["KIOSK_MAX_SESSION_MINUTES"],
+            "staff_mfa_required": cfg["STAFF_MFA_REQUIRED"], "phone_otp_enabled": cfg["PHONE_OTP_ENABLED"],
+            "digilocker_enabled": digilocker.enabled(cfg),
             "retention": accounts.retention_policy()}
 
 
@@ -79,14 +93,82 @@ def auth_config():
 
 @bp.get("/auth/me")
 def auth_me():
-    u = current_user()
+    """Who the token belongs to. Staff at aal1 get mfa_required: true (and nothing else works until they verify)."""
+    u = current_user(require_mfa=False)
     if u:
-        return {"user": {k: u[k] for k in ("user_id", "username", "role", "display_name")}}
+        need = u["aal"] != "aal2" and current_app.config["STAFF_MFA_REQUIRED"]
+        return {"user": {k: u[k] for k in ("user_id", "username", "role", "display_name", "aal")}, "mfa_required": need}
     claims = auth.citizen_claims()
     if not claims:
         raise ApiError("UNAUTHENTICATED", "Not signed in.", 401)
     return {"citizen": {"user_id": claims["sub"], "is_anonymous": bool(claims.get("is_anonymous")),
-                        "email": claims.get("email") or None}}
+                        "email": claims.get("email") or None, "phone": claims.get("phone") or None}}
+
+
+# Events the browser reports after its own Supabase call (sign-in runs between the browser and Supabase, so the
+# server cannot see it). With a token the actor is the verified user; without one (a failed sign-in) it is anonymous.
+BROWSER_EVENTS = {"sign_in_success", "sign_in_failure", "otp_requested", "mfa_enrolled", "mfa_verified", "mfa_failed"}
+EVENT_METHODS = {"anonymous", "email_otp", "password", "google", "phone_otp", "totp"}
+
+
+@bp.post("/auth/events")
+def auth_event():
+    rate_limit("auth_events", current_app.config["AUTH_EVENT_LIMIT_PER_MIN"])
+    b = body()
+    event, method = b.get("event"), b.get("method")
+    if event not in BROWSER_EVENTS or (method is not None and method not in EVENT_METHODS):
+        raise ApiError("INVALID_EVENT", "Unknown auth event.", 422)
+    claims = g.get("auth")
+    role = auth.staff_role(claims) or ("citizen" if claims else "anonymous")
+    auth.record(event, claims["sub"] if claims else None, role, {"method": method} if method else {})
+    get_db().commit()
+    return {"recorded": True}, 201
+
+
+@bp.post("/auth/sign-out-all")
+def sign_out_all():
+    """Sign out of every device: Supabase revokes all refresh tokens, and this server refuses every token of a sign-in
+    that started before now. reason=password_changed after a staff password change."""
+    claims = g.get("auth")
+    if not claims:
+        raise ApiError("UNAUTHENTICATED", "Not signed in.", 401)
+    reason = "password_changed" if body().get("reason") == "password_changed" else "user"
+    role = auth.staff_role(claims) or "citizen"
+    supabase_ok = auth.sign_out_everywhere(g.auth_token)
+    auth.revoke_sessions(claims["sub"], reason)
+    if reason == "password_changed":
+        auth.record("password_changed", claims["sub"], role, {"global_sign_out": True})
+    auth.record("global_sign_out", claims["sub"], role, {"reason": reason, "supabase": supabase_ok})
+    get_db().commit()
+    return {"signed_out": True, "supabase": supabase_ok}
+
+
+@bp.post("/kiosk/sign-out")
+def kiosk_sign_out():
+    """The operator signs out at a kiosk: every citizen session on this device ends first."""
+    u = current_user()
+    if not u or u["role"] not in ("operator", "admin"):
+        raise ApiError("OPERATOR_REQUIRED", "Only the kiosk operator can sign out the kiosk.", 401)
+    g.user = u
+    ended = profile.end_device_sessions(profile.kiosk_device() or "", u["user_id"])
+    auth.record("kiosk_sign_out", u["user_id"], u["role"], {"sessions_ended": ended})
+    get_db().commit()
+    return {"sessions_ended": ended}
+
+
+# ---------------------------------------------------------------- DigiLocker / Meri Pehchaan (off by default)
+
+@bp.post("/auth/digilocker/start")
+def digilocker_start():
+    claims = accounts.require_account(allow_anonymous=True)
+    return digilocker.start(claims, session_header())
+
+
+@bp.post("/auth/digilocker/callback")
+def digilocker_callback():
+    claims = accounts.require_account(allow_anonymous=True)
+    b = body()
+    return digilocker.finish(claims, b.get("code") or "", b.get("state") or "")
 
 
 # ---------------------------------------------------------------- citizen accounts
@@ -120,7 +202,39 @@ def account_attach():
 
 @bp.delete("/account")
 def account_delete():
-    return accounts.delete_account(accounts.require_account(allow_anonymous=True))
+    """Delete = withdraw consent (DPDP Act 2023): the data goes, only consented hand-off cases stay with the reviewer."""
+    claims = accounts.require_account(allow_anonymous=True)
+    res = accounts.delete_account(claims, acknowledge_pending_case=body().get("acknowledge_pending_case") is True)
+    auth.record("account_deleted", claims["sub"], "citizen", {k: res[k] for k in ("sessions_deleted", "cases_kept")})
+    get_db().commit()
+    return res
+
+
+@bp.get("/account/export")
+def account_export():
+    """"Download my data": the signed-in citizen's own data as JSON."""
+    claims = accounts.require_account(allow_anonymous=True)
+    return _export(accounts.citizen_id_for(claims["sub"]), claims["sub"])
+
+
+@bp.get("/sessions/<sid>/export")
+def session_export(sid):
+    """The same for a Passport-code holder (through the session they resumed) or an unsaved session's own data."""
+    session = profile.get_session(sid, allow_ended=False)
+    if session.get("citizen_id"):
+        return _export(session["citizen_id"], session.get("auth_user_id"))
+    return _export(None, None, session_id=sid)
+
+
+def _export(citizen_id, actor_id, session_id=None):
+    data = accounts.export_data(citizen_id, session_id=session_id)
+    counts = {k: len(v) for k, v in data.items() if isinstance(v, list)}
+    auth.record("data_export", actor_id or citizen_id or "citizen", "citizen", counts)
+    get_db().commit()
+    resp = jsonify(data)
+    resp.headers["Content-Disposition"] = 'attachment; filename="anvaya-my-data.json"'
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @bp.post("/sessions/<sid>/passport-code")
@@ -132,11 +246,12 @@ def passport_code(sid):
 def passport_resume():
     """Passport code + PIN → a new session from the saved profile. At a kiosk the operator's token makes it a kiosk
     session; a personal device needs no account."""
+    rate_limit("passport_resume", current_app.config["SESSION_CREATE_LIMIT_PER_MIN"])
     u = current_user()
     operator_id = None
     if u and u["role"] in ("operator", "admin"):
         g.user, operator_id = u, u["user_id"]
-    return accounts.resume(body(), operator_id), 201
+    return accounts.resume(body(), operator_id, device_id=profile.kiosk_device()), 201
 
 
 @bp.get("/sessions/<sid>/passports")
@@ -153,18 +268,21 @@ def session_changes(sid):
 
 @bp.post("/sessions")
 def create_session():
+    rate_limit("session_create", current_app.config["SESSION_CREATE_LIMIT_PER_MIN"])
     b = body()
     mode = b.get("mode", "personal")
     operator_id = None
+    device_id = b.get("device_id")
     if mode == "kiosk":
         u = current_user()
         if not u or u["role"] not in ("operator", "admin"):
             raise ApiError("OPERATOR_REQUIRED", "Kiosk sessions are started by a signed-in kiosk operator.", 401)
         g.user = u
         operator_id = u["user_id"]
+        device_id = profile.kiosk_device()  # the session is bound to the device that sends this header
     # "demo": true marks demo data, which (unlike real citizen data) may be sent to free-tier LLM providers.
     # A signed-in citizen (anonymous or linked) owns a personal session; kiosks never keep anything (no account).
-    s = profile.create_session(mode, b.get("language", "en"), device_id=b.get("device_id"), operator_id=operator_id,
+    s = profile.create_session(mode, b.get("language", "en"), device_id=device_id, operator_id=operator_id,
                                is_demo=b.get("demo") is True, claims=auth.citizen_claims() if mode == "personal" else None)
     return {**{k: s[k] for k in ("session_id", "mode", "language", "workflow_state", "expires_at")},
             "demo": bool(s["is_demo"]), "account": s.get("account"),
@@ -491,6 +609,35 @@ def verify_rule(rule_id):
                                           "note": (b.get("note") or "")[:500]})
     db.commit()
     return {"rule_id": rule_id, "source_verified_at": iso(), "source_verified_by": g.user["username"]}
+
+
+@bp.get("/admin/staff")
+@require_role("admin")
+def admin_staff():
+    return {"staff": auth.staff_accounts()}
+
+
+@bp.post("/admin/staff/<user_id>/reset-mfa")
+@require_role("admin")
+def admin_reset_mfa(user_id):
+    """Remove a staff member's authenticator (lost phone): they enrol a new one at their next sign-in. Their current
+    sessions are signed out. Audited (who, whom, how many factors) without any secret."""
+    target = auth.get_user(user_id)
+    role = auth.staff_role({"app_metadata": (target or {}).get("app_metadata")})
+    if not target or not role:
+        raise ApiError("STAFF_NOT_FOUND", "No staff account with this id.", 404)
+    removed = auth.delete_factors(user_id)
+    auth.revoke_sessions(user_id, "mfa_reset")
+    auth.record("mfa_reset", g.user["user_id"], "admin", {"user_id": user_id, "role": role, "factors_removed": removed})
+    audit("admin.mfa_reset", details={"user_id": user_id, "factors_removed": removed})
+    get_db().commit()
+    return {"user_id": user_id, "factors_removed": removed}
+
+
+@bp.get("/admin/auth-events")
+@require_role("admin")
+def admin_auth_events():
+    return {"events": auth.recent_events(500)}
 
 
 @bp.post("/admin/schemes/import")

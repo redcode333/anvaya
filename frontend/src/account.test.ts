@@ -38,8 +38,9 @@ beforeEach(() => {
 describe("personal mode starts anonymous", () => {
   it("signs in anonymously only when there is no session", async () => {
     const f = fakeAuth();
-    expect(await ensureAnonymous(f.auth)).toBe("u-1");
-    expect(await ensureAnonymous(f.auth)).toBe("u-1");
+    const api = vi.fn().mockResolvedValue({});
+    expect(await ensureAnonymous(f.auth, null, api as any)).toBe("u-1");
+    expect(await ensureAnonymous(f.auth, null, api as any)).toBe("u-1");
     expect(f.calls.filter((c) => c[0] === "signInAnonymously")).toHaveLength(1);
   });
 });
@@ -85,8 +86,9 @@ describe("staff sign-in", () => {
     const f = fakeAuth(null);
     const api = vi.fn().mockResolvedValue({ user: { user_id: "s", username: "r@x.org", role: "reviewer", display_name: "r@x.org" } });
     const u = await staffSignIn(f.auth, "r@x.org", "pw", ["reviewer", "admin"], api as any);
-    expect(u.role).toBe("reviewer");
-    expect(f.named("signInWithPassword")).toEqual([{ email: "r@x.org", password: "pw" }]);
+    expect(u.user.role).toBe("reviewer");
+    expect(u.mfa_required).toBe(false);
+    expect(f.named("signInWithPassword")).toEqual([{ email: "r@x.org", password: "pw", options: {} }]);
     expect(f.named("signOut")).toEqual([]);
   });
 
@@ -127,15 +129,26 @@ describe("delete my account", () => {
     const signOut = f.auth.signOut;
     f.auth.signOut = (o) => { order.push("signOut"); return signOut(o); };
     const api = vi.fn().mockImplementation(async () => { order.push("api"); return { deleted: true }; });
-    await deleteAccount(f.auth, api as any);
+    await deleteAccount(f.auth, {}, api as any);
     expect(api).toHaveBeenCalledWith("/account", { method: "DELETE" });
     expect(order).toEqual(["api", "signOut"]);
+  });
+
+  it("keeps the session until a pending case is confirmed, then sends the confirmation", async () => {
+    const f = fakeAuth({ access_token: "a", user: { id: "u-1" } });
+    const api = vi.fn().mockRejectedValueOnce(new ApiError("PENDING_CASE_DOCUMENTS", "confirm", 409, { pending_cases: 1, documents: 2 }))
+      .mockResolvedValueOnce({ deleted: true });
+    await expect(deleteAccount(f.auth, {}, api as any)).rejects.toMatchObject({ code: "PENDING_CASE_DOCUMENTS", details: { documents: 2 } });
+    expect(f.named("signOut")).toEqual([]);
+    await deleteAccount(f.auth, { acknowledgePendingCase: true }, api as any);
+    expect(api).toHaveBeenLastCalledWith("/account", { method: "DELETE", body: { acknowledge_pending_case: true } });
+    expect(f.named("signOut")).toHaveLength(1);
   });
 
   it("keeps the session when the server refuses", async () => {
     const f = fakeAuth({ access_token: "a", user: { id: "u-1" } });
     const api = vi.fn().mockRejectedValue(new ApiError("ACCOUNT_DELETE_FAILED", "try again", 502));
-    await expect(deleteAccount(f.auth, api as any)).rejects.toMatchObject({ code: "ACCOUNT_DELETE_FAILED" });
+    await expect(deleteAccount(f.auth, {}, api as any)).rejects.toMatchObject({ code: "ACCOUNT_DELETE_FAILED" });
     expect(f.named("signOut")).toEqual([]);
   });
 });

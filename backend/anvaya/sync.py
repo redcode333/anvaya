@@ -29,7 +29,7 @@ def build_bundle() -> dict:
 def _ingest_offline_draft(device_id: str, ev: dict) -> dict:
     p = ev["payload"]
     lang = p.get("language", "en")
-    sess = profile.create_session("kiosk", lang, device_id=device_id)
+    sess = profile.create_session("kiosk", lang, device_id=device_id, synced=True)
     sid = sess["session_id"]
     for attr, value in (p.get("facts") or {}).items():
         if value is None or value == "":

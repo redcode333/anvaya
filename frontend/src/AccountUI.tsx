@@ -1,14 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { consentBody, pinProblem, saveWithConsent, sendEmailCode, startGoogle, verifyEmailCode, type AuthLike, type EmailFlow } from "./account";
-import { createIdleTimer, type IdleTimer } from "./idle";
+import { absoluteLimitMs, createIdleTimer, type IdleTimer } from "./idle";
 import { supabase } from "./auth";
 import { ErrorNote } from "./components";
-import { retentionText, t } from "./i18n";
+import { consentNotice, retentionText, t } from "./i18n";
 import { speak, voiceProvider } from "./speech";
 import { useApp } from "./state";
 
 const authClient = () => supabase!.auth as unknown as AuthLike;
+
+/** The itemised consent notice (purpose, what is stored, retention, how to withdraw) in the citizen's language. */
+export function ConsentNotice({ open = false }: { open?: boolean }) {
+  const { lang, config } = useApp();
+  if (!config) return null;
+  return (
+    <details className="small" open={open}>
+      <summary>{t("consentNoticeTitle", lang)} <span className="tiny mono">({config.retention.consent_version})</span></summary>
+      <div className="notice-text">
+        {consentNotice(lang, config.retention).map(([h, body]) => <div key={h}><h3>{h}</h3><p>{body}</p></div>)}
+      </div>
+    </details>
+  );
+}
 
 export function RetentionNote() {
   const { lang, config } = useApp();
@@ -97,6 +111,7 @@ export function SavePanel({ sessionId }: { sessionId: string }) {
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
         <span>{t("consentSave", lang)} <span className="tiny mono">({config?.retention.consent_version})</span></span>
       </label>
+      <ConsentNotice />
       {accounts && (
         <div className="stack">
           {!flow ? (
@@ -126,13 +141,21 @@ export function SavePanel({ sessionId }: { sessionId: string }) {
   );
 }
 
-/** Kiosk: after KIOSK_IDLE_SECONDS without input, a 30 s "Still there?" warning, then End session. */
+/** Kiosk: after KIOSK_IDLE_SECONDS without input, a 30 s "Still there?" warning, then End session. Separately, the
+ *  session ends at its absolute limit (KIOSK_MAX_SESSION_MINUTES, the server's expires_at) whatever the activity. */
 export function KioskIdleGuard() {
-  const { mode, sessionId, config, lang, endCitizenSession } = useApp();
+  const { mode, sessionId, sessionExpiresAt, config, lang, endCitizenSession } = useApp();
   const [warning, setWarning] = useState(false);
   const [left, setLeft] = useState(0);
   const timer = useRef<IdleTimer | null>(null);
   const active = mode === "kiosk" && !!sessionId && !!config;
+
+  useEffect(() => {
+    if (!active || !sessionExpiresAt) return;
+    const ms = absoluteLimitMs(sessionExpiresAt, Date.now());
+    const t = setTimeout(() => endCitizenSession("idle"), ms);
+    return () => clearTimeout(t);
+  }, [active, sessionId, sessionExpiresAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!active) return;

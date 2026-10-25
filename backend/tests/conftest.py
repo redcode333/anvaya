@@ -40,11 +40,17 @@ auth.fetch_jwks = _fake_fetch_jwks
 
 
 def token(sub=None, *, role=None, anonymous=False, email=None, expires_in=3600, iss=ISSUER, aud="authenticated",
-          key=None, kid=KID, alg="ES256") -> str:
-    """A Supabase-style access token (claims as documented: iss, aud, sub, exp, iat, role, is_anonymous, app_metadata)."""
+          key=None, kid=KID, alg="ES256", aal="aal1", signed_in_at=None) -> str:
+    """A Supabase-style access token (claims as documented: iss, aud, sub, exp, iat, role, is_anonymous, aal, amr,
+    app_metadata). amr lists the sign-in methods with their times, most recent first; totp is added at aal2."""
     t = int(time.time())
+    first = int(signed_in_at if signed_in_at is not None else t - 5)
+    amr = [{"method": "anonymous" if anonymous else "password", "timestamp": first}]
+    if aal == "aal2":
+        amr.insert(0, {"method": "totp", "timestamp": first + 1})
     claims = {"iss": iss, "aud": aud, "sub": sub or str(uuid.uuid4()), "iat": t - 5, "exp": t + expires_in,
-              "role": "authenticated", "is_anonymous": anonymous, "aal": "aal1", "session_id": str(uuid.uuid4()),
+              "role": "authenticated", "is_anonymous": anonymous, "aal": aal, "amr": amr,
+              "session_id": str(uuid.uuid4()),
               "email": email or ("" if anonymous else "citizen@example.org"),
               "app_metadata": {"provider": "anonymous" if anonymous else "email", **({"role": role} if role else {})},
               "user_metadata": {}}
@@ -55,8 +61,21 @@ def bearer(tok: str) -> dict:
     return {"Authorization": f"Bearer {tok}"}
 
 
-def staff(role: str) -> dict:
-    return bearer(token(f"00000000-0000-4000-8000-{role[:3].encode().hex():0>12}", role=role, email=f"{role}@anvaya.test"))
+def staff_id(role: str) -> str:
+    return f"00000000-0000-4000-8000-{role[:3].encode().hex():0>12}"
+
+
+def staff(role: str, aal: str = "aal2", **kw) -> dict:
+    """Staff headers; aal2 (TOTP verified) unless a test asks for a password-only sign-in."""
+    return bearer(token(staff_id(role), role=role, email=f"{role}@anvaya.test", aal=aal, **kw))
+
+
+KIOSK_DEVICE = "KD-test-kiosk-0001"
+
+
+def kiosk(role: str = "operator", device: str = KIOSK_DEVICE, **kw) -> dict:
+    """Operator headers at a kiosk device (kiosk sessions are bound to both)."""
+    return {**staff(role, **kw), "X-Kiosk-Device": device}
 
 _schemas: list[str] = []
 
@@ -90,6 +109,8 @@ def app(tmp_path_factory):
     db = db_config(tmp_path_factory.mktemp("db") / "test.db")
     # LLM extraction is off unless a test turns it on with mocked providers (tests/test_llm.py).
     app = create_app({**db, "TESTING": True, "CODE_LOOKUP_LIMIT_PER_MIN": 1000,
+                      "SESSION_CREATE_LIMIT_PER_MIN": 100000, "AUTH_EVENT_LIMIT_PER_MIN": 100000,
+                      "STAFF_MFA_REQUIRED": True, "DIGILOCKER_ENABLED": False,
                       "SUPABASE_URL": SUPABASE_URL, "SUPABASE_SECRET_KEY": "sb_secret_test_never_sent",
                       "LLM_EXTRACTION": False, "LLM_PROVIDERS": [], "LLM_ALLOW_REAL_DATA": False,
                       # never trace to a real Langfuse from tests (tests/test_tracing.py uses a fake exporter)
@@ -117,7 +138,7 @@ def admin():
 
 @pytest.fixture()
 def operator():
-    return staff("operator")
+    return kiosk("operator")  # an operator works at a kiosk device
 
 
 def start(client, utterance, lang="en", confirm=True):

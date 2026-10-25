@@ -264,7 +264,7 @@ LATE_COLUMNS = [("facts", "confusable", "ALTER TABLE facts ADD COLUMN confusable
                 ("sessions", "is_demo", "ALTER TABLE sessions ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0")]
 
 # Names of the in-memory caches' version rows (db.cached / db.bump).
-CACHE_VERSIONS = ("catalogue", "tts")
+CACHE_VERSIONS = ("catalogue", "tts", "auth")
 
 
 def ddl(sql: str, dialect: str) -> str:
@@ -389,12 +389,68 @@ def _m5_document_uploads(db: Database) -> None:
                    ("CREATE INDEX IF NOT EXISTS idx_document_uploads_session ON document_uploads(session_id, doc_key)", ())])
 
 
+AUTH_TABLES = [
+    # Sign-in and account events: actor id, event, time and the IP prefix only (/24 or /48) — never emails, codes,
+    # tokens or profile values.
+    """CREATE TABLE IF NOT EXISTS auth_events (
+        {seq}
+        event_id TEXT PRIMARY KEY,
+        ts TEXT NOT NULL,
+        event TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        actor_role TEXT NOT NULL,
+        ip_prefix TEXT,
+        details_json TEXT NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_auth_events_ts ON auth_events(ts)",
+    # Sign-outs of every device: tokens of sessions that started before revoked_before are refused by this backend
+    # (Supabase revokes the refresh tokens; this also stops access tokens that are still unexpired).
+    """CREATE TABLE IF NOT EXISTS auth_revocations (
+        user_id TEXT PRIMARY KEY,
+        revoked_before TEXT NOT NULL,
+        reason TEXT NOT NULL
+    )""",
+    # OpenID Connect sign-in in progress (DigiLocker): state, nonce and the PKCE verifier, single use, 10 minutes.
+    """CREATE TABLE IF NOT EXISTS oidc_states (
+        state_hash TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        auth_user_id TEXT NOT NULL,
+        session_id TEXT,
+        nonce TEXT NOT NULL,
+        code_verifier TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+    )""",
+    # An external identity linked to a citizen: provider + sha256(pepper + subject); no raw subject, no tokens.
+    """CREATE TABLE IF NOT EXISTS linked_identities (
+        provider TEXT NOT NULL,
+        subject_hash TEXT NOT NULL,
+        citizen_id TEXT NOT NULL,
+        linked_at TEXT NOT NULL,
+        PRIMARY KEY (provider, subject_hash)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_linked_identities_citizen ON linked_identities(citizen_id)",
+]
+
+
+def _m6_auth_hardening(db: Database) -> None:
+    """Auth audit events, global sign-out revocations, OIDC state, linked identities, facts.verified."""
+    if db.dialect == "postgres":
+        cols = ["ALTER TABLE facts ADD COLUMN IF NOT EXISTS verified INTEGER NOT NULL DEFAULT 0"]
+    else:
+        have = {r[1] for r in db.execute("PRAGMA table_info(facts)")}
+        cols = [] if "verified" in have else ["ALTER TABLE facts ADD COLUMN verified INTEGER NOT NULL DEFAULT 0"]
+    db.query_many([(ddl(s, db.dialect), ()) for s in AUTH_TABLES + cols])
+    db.execute("INSERT INTO data_versions(name, version) VALUES ('auth', 1) ON CONFLICT DO NOTHING")
+
+
 MIGRATIONS = [
     (1, "initial schema", _m1_initial_schema),
     (2, "late columns: facts.confusable, facts.alternatives_json, sessions.is_demo", _m2_late_columns),
     (3, "lookup indexes, unique case codes, cache versions", _m3_lookup_indexes_and_versions),
     (4, "citizen accounts, passport versions, passport code attempts; drop local staff passwords", _m4_accounts),
     (5, "document uploads", _m5_document_uploads),
+    (6, "auth events, sign-out revocations, OIDC state, linked identities, facts.verified", _m6_auth_hardening),
 ]
 
 ENABLE_RLS = """DO $$

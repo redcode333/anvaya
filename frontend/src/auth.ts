@@ -1,24 +1,20 @@
-// Supabase is used in the browser for sign-in ONLY (anonymous sessions, email OTP, Google, staff email + password).
-// It never reads tables or storage: every data request goes to the Flask API with the access token, which the
-// server verifies itself. Only the project URL and the publishable key are in the bundle.
+// Supabase is used in the browser for sign-in ONLY (anonymous sessions, email OTP, Google, staff email + password +
+// TOTP). It never reads tables or storage: every data request goes to the Flask API with the access token, which the
+// server verifies itself. Only the project URL, the publishable key and the Turnstile site key are in the bundle.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { setTokenProvider } from "./api";
+import { authStorage } from "./authStorage";
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
-// Kiosks keep nothing: their sign-in lives in sessionStorage (gone when the browser closes), personal devices keep
-// the (anonymous or linked) session in localStorage so a reload does not lose an unsaved passport.
-const kiosk = () => { try { return sessionStorage.getItem("anvaya.mode") === "kiosk"; } catch { return false; } };
-const store = (): Storage | null => { try { return kiosk() ? sessionStorage : localStorage; } catch { return null; } };
-const adaptiveStorage = {
-  getItem: (k: string) => store()?.getItem(k) ?? null,
-  setItem: (k: string, v: string) => { try { store()?.setItem(k, v); } catch { /* storage blocked */ } },
-  removeItem: (k: string) => { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch { /* blocked */ } },
-};
+/** Cloudflare Turnstile site key; unset (local dev) = no widget, sign-in requests go without a captchaToken. */
+export const turnstileSiteKey = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) || "";
+if (!turnstileSiteKey) console.warn("anvaya: VITE_TURNSTILE_SITE_KEY is not set; sign-in runs without the Turnstile CAPTCHA (local dev only).");
 
+// flowType "pkce": an OAuth redirect (Google) returns a one-time code in the query, never tokens in the URL fragment.
 export const supabase: SupabaseClient | null = url && key
-  ? createClient(url, key, { auth: { storage: adaptiveStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } })
+  ? createClient(url, key, { auth: { storage: authStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce" } })
   : null;
 
 export const authConfigured = () => supabase !== null;

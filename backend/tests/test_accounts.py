@@ -10,6 +10,7 @@ from urllib.parse import quote
 import jwt
 import pytest
 from conftest import ISSUER, JWKS_FETCHES, OTHER_KEY, SIGNING_KEY, bearer, staff, start, token
+from conftest import kiosk as kiosk_headers
 
 from anvaya import accounts, auth
 from anvaya.db import connect, iso, now
@@ -71,7 +72,7 @@ def rows(app, sql, params=()):
 def test_valid_token_is_accepted(client):
     r = client.get("/api/v1/auth/me", headers=bearer(token("11111111-1111-4111-8111-111111111111", anonymous=True)))
     assert r.status_code == 200 and r.json["citizen"] == {
-        "user_id": "11111111-1111-4111-8111-111111111111", "is_anonymous": True, "email": None}
+        "user_id": "11111111-1111-4111-8111-111111111111", "is_anonymous": True, "email": None, "phone": None}
 
 
 @pytest.mark.parametrize("bad, code", [
@@ -137,7 +138,7 @@ def test_roles_come_only_from_app_metadata_and_are_enforced(client):
     kiosk = {"mode": "kiosk", "language": "en"}
     assert client.post("/api/v1/sessions", json=kiosk, headers=staff("reviewer")).status_code == 401
     assert client.post("/api/v1/sessions", json=kiosk, headers=citizen).status_code == 401
-    assert client.post("/api/v1/sessions", json=kiosk, headers=staff("operator")).status_code == 201
+    assert client.post("/api/v1/sessions", json=kiosk, headers=kiosk_headers()).status_code == 201
     me = client.get("/api/v1/auth/me", headers=staff("admin")).json["user"]
     assert me["role"] == "admin" and me["username"] == "admin@anvaya.test"
 
@@ -226,7 +227,7 @@ def test_consent_is_required_before_anything_is_kept(app, client):
 def test_kiosk_and_staff_cannot_save_to_an_account(client, consent):
     r = client.post("/api/v1/account/consent", json={"consent": consent}, headers=staff("operator"))
     assert r.status_code == 401 and r.json["error"]["code"] == "ACCOUNT_REQUIRED"
-    kiosk = client.post("/api/v1/sessions", json={"mode": "kiosk", "language": "en"}, headers=staff("operator")).json
+    kiosk = client.post("/api/v1/sessions", json={"mode": "kiosk", "language": "en"}, headers=kiosk_headers()).json
     assert kiosk["account"] is None
 
 
@@ -266,7 +267,8 @@ def test_what_changed_names_a_rule_version_change(app, client, consent):
                 o["rule_version"], o["outcome"] = o["rule_version"] + 1, "MISMATCH"
         db.execute("INSERT INTO passport_versions(version_id, citizen_id, session_id, eval_id, bundle_version,"
                    " created_at, facts_json, outcomes_json) VALUES (?,?,?,?,?,?,?,?)",
-                   ("PSV_rule", cid, sid, "EVAL_x", "rules-next", now().isoformat(timespec="microseconds"),
+                   ("PSV_rule", cid, sid, "EVAL_x", "rules-next",
+                    (now() + timedelta(seconds=1)).isoformat(timespec="microseconds"),  # never in the same clock tick
                     v["facts_json"], json.dumps(outs)))
         db.commit()
     finally:
@@ -309,7 +311,12 @@ def test_delete_account_removes_data_and_auth_user_but_keeps_consented_cases(app
                        headers={**user, "Idempotency-Key": uuid.uuid4().hex, "X-Session-Id": kept_sid}).json
     gone_sid = session_for(client, user)
     evaluate(client, gone_sid, user)
+    # The case is waiting for a reviewer: the first request only warns and deletes nothing
     r = client.delete("/api/v1/account", headers=user)
+    assert r.status_code == 409 and r.json["error"]["code"] == "PENDING_CASE_DOCUMENTS"
+    assert r.json["error"]["details"] == {"pending_cases": 1, "documents": 0} and deleted_auth_users == []
+    assert rows(app, "SELECT COUNT(*) FROM sessions WHERE citizen_id=?", (accounts.citizen_id_for(uid),))[0][0] == 2
+    r = client.delete("/api/v1/account", json={"acknowledge_pending_case": True}, headers=user)
     assert r.status_code == 200 and r.json["sessions_deleted"] == 1 and r.json["cases_kept"] == 1
     assert r.json["passport_versions"] == 2 and deleted_auth_users == [uid]
     cid = accounts.citizen_id_for(uid)

@@ -205,7 +205,7 @@ or `missing (missing VAR, …)`. It logs variable names, never values. Missing o
 | Citizen, personal phone | Automatically an **anonymous Supabase session**. "Save my passports" links an email (6-digit code) to the same user id, or Google when `GOOGLE_AUTH_ENABLED=true` | Nothing beyond the session until the citizen ticks the consent (text version + time are recorded) and links an email / Google identity or sets a Passport code + PIN |
 | Citizen without email | **Passport code + PIN** (`PSP-XXXX-XXXX` + 4 digits), on a phone or at a kiosk | The saved passport; the code can later be attached to an account |
 | Kiosk | The **operator** signs in; citizens never get an account on a kiosk | Nothing. Saving is possible only with a Passport code + PIN, shown large and read aloud. Idle sessions end on their own |
-| Operator / reviewer / admin | Supabase email + password; role from `app_metadata.role` | — |
+| Operator / reviewer / admin | Supabase email + password **+ TOTP** (authenticator app, enrolled on first sign-in); role from `app_metadata.role` | — |
 
 **How it fits together**
 
@@ -244,11 +244,23 @@ or `missing (missing VAR, …)`. It logs variable names, never values. Missing o
   A wrong code and a wrong PIN get the same answer (`401 PASSPORT_CODE_OR_PIN_WRONG`); limits give `429`.
 * Signed-in citizens can attach a code to their account (*My Passports → Add a Passport code*).
 
-**Kiosk hardening**
+**Kiosk temporary sessions**
 
-* Kiosk sign-in lives in `sessionStorage` (gone when the browser closes); citizens get no account and nothing is kept.
+* The operator's sign-in is kept **in memory only** at a kiosk (supabase-js storage adapter, `frontend/src/authStorage.ts`):
+  never `localStorage` or `sessionStorage`, so a reload or a new tab finds nothing and the operator signs in again.
+  Switching a browser to kiosk mode also drops any personal sign-in stored on it.
+* Session ids are **128-bit random** (`SES_` + 32 hex). The browser never puts one in a URL: every
+  `/sessions/<id>/...` call is sent as `/sessions/current/...` with the id in the `X-Session-Id` header, and request
+  logs hold the route pattern only. The kiosk keeps the id in memory only and never shows it on screen.
+* A kiosk session is **bound to the kiosk device id** (random, `X-Kiosk-Device`) **and the operator** who started it:
+  any other device, operator or citizen token gets `403 SESSION_FORBIDDEN`.
 * After `KIOSK_IDLE_SECONDS` (default 180) without input, a 30-second **"Still there?"** warning appears (and is read
   aloud). Without an answer the session ends exactly like *End session*: the server deletes everything not consented.
+* Absolute limit: a kiosk session ends after `KIOSK_MAX_SESSION_MINUTES` (default **30**) whatever the activity
+  (server `expires_at`; the page ends it at that moment too).
+* **Operator sign-out** (`POST /api/v1/kiosk/sign-out`) ends every citizen session still open on that device, with the
+  same deletion as *End session*. After *End session*, refreshing the browser cannot restore anything: the id is gone
+  from memory, the server answers `410` for it, and its unconsented data is already deleted.
 
 ### Document uploads
 
@@ -295,10 +307,80 @@ cleanup`. The policy is shown in English, Hindi and Telugu wherever something ca
 3. **Email templates:** put `{{ .Token }}` in *Magic Link* (returning sign-in) and *Change Email Address* (linking an
    email to an anonymous user) so citizens receive a 6-digit code rather than a link.
 4. **URL configuration:** add the app's URL to the redirect allow-list (needed for Google).
-5. Put the keys in `.env` (names below), then create staff accounts:
+5. **MFA:** keep *TOTP (App Authenticator)* enabled (it is by default). The backend refuses staff tokens below `aal2`.
+6. **CAPTCHA:** *Authentication → Attack Protection → Enable CAPTCHA protection*, provider *Cloudflare Turnstile*, with
+   the Turnstile **secret** key; put the **site** key in `VITE_TURNSTILE_SITE_KEY`. Supabase then requires a valid token
+   on sign-in requests (anonymous, email OTP, password), which the app sends. (Enabled on the live project.)
+7. Put the keys in `.env` (names below), then create staff accounts:
    `set -a && source .env && set +a && cd backend && python -m anvaya.manage seed-staff`.
-6. For the free tier: `.github/workflows/keepalive.yml` calls `APP_URL/api/v1/ready` daily (repository secret
+8. For the free tier: `.github/workflows/keepalive.yml` calls `APP_URL/api/v1/ready` daily (repository secret
    `APP_URL`), which runs cheap database queries so the project is not paused.
+
+### Auth hardening
+
+**Staff MFA (TOTP).** Operators, reviewers and admins enrol an authenticator app at their first sign-in (QR code, or
+the setup key typed in by hand) and enter its 6-digit code on every sign-in after that. The backend enforces it, not
+only the UI: `common.current_user()` / `require_role()` refuse a staff token whose `aal` claim is not `aal2` with
+`403 MFA_REQUIRED` on **every** staff call (reviewer, admin, kiosk session creation, Passport-code resume at a kiosk,
+reviewer document views). Only `GET /auth/me` answers at `aal1`, with `mfa_required: true`, so the page can ask for
+the code. *Security → Reset* (admin) removes a staff member's factors through the Auth admin API and signs their
+sessions out; they enrol again at the next sign-in. `ANVAYA_STAFF_MFA_REQUIRED=false` exists for a local demo only.
+
+**Bot protection.** A Cloudflare Turnstile widget (`VITE_TURNSTILE_SITE_KEY`) guards anonymous sign-in, email OTP and
+staff password sign-in; its token goes to supabase-js as `captchaToken` and Supabase verifies it. Tokens are single
+use: the widget resets after every attempt. Without a site key (local dev) the widget is skipped and both the browser
+console and the backend startup report warn. Our own session-creating endpoints are rate-limited per IP
+(`POST /sessions`, `POST /passport/resume`: `ANVAYA_SESSION_CREATE_LIMIT`, default 20/min; `POST /auth/events`:
+`ANVAYA_AUTH_EVENT_LIMIT`, 30/min), on top of the Passport-code attempt limits.
+
+**Sign out of all devices.** *My Passports* (citizens) and the staff bar have *Sign out of all devices*:
+`POST /api/v1/auth/sign-out-all` calls Supabase's global sign-out (all refresh tokens revoked) **and** records the
+time in `auth_revocations`. Supabase leaves already-issued access tokens valid until they expire, so the backend also
+refuses every token whose sign-in began before that time (the earliest `amr` timestamp, which a token refresh does
+not change) with `401 SESSION_REVOKED`. A staff password change (*Change password*) and `manage seed-staff` (which
+sets the password again) force the same global sign-out.
+
+**Citizen rights (DPDP Act 2023).** *Download my data* (`GET /api/v1/account/export`, or `/sessions/current/export`
+for a Passport-code holder or an unsaved session) returns JSON with the citizen's current facts and their source,
+passport versions, consents, the document list (names and states, never the files), document marks, case statuses
+and linked identities — nothing about other people (utterances and reviewer notes are left out because they can
+describe others). The consent notice (en/hi/te, version `save-2026-10-dpdp`) states the purpose, what is stored, how
+long, and how to withdraw. *Withdraw consent* is the existing *Delete my account and data*. Both are audited without
+values.
+
+**Auth audit.** `auth_events` records sign-in success/failure, OTP requested, MFA enrolled/verified/failed/required/
+reset, role changes, password changes, global and kiosk sign-outs, data exports, deletions and DigiLocker links:
+actor id, event, time and the **IP prefix only** (/24 or /48), with enums and counts as details — never emails, phone
+numbers, codes or tokens. Sign-in itself happens between the browser and Supabase, so those events are reported by
+the browser (`POST /auth/events`; the actor is the verified token's user when there is one). *Security* (admin) shows
+the last 500.
+
+**DigiLocker / Meri Pehchaan (disabled).** `backend/anvaya/digilocker.py` is a generic OAuth 2.0 / OpenID Connect
+authorization-code flow with **PKCE (S256)**, a single-use `state` (10 minutes, bound to the signed-in user) and a
+`nonce`; the ID token's signature is checked against `DIGILOCKER_JWKS_URL` (asymmetric algorithms only), with
+audience = client id, expiry and the optional `DIGILOCKER_ISSUER`. On success the provider subject is linked to the
+citizen (peppered hash; no tokens kept — Supabase's own identity linking supports only its built-in OAuth providers)
+and name, date of birth and gender become facts with `source="digilocker"`, confirmed and verified. Scopes naming
+Aadhaar are dropped and no Aadhaar number is ever read or stored. Everything comes from the environment
+(`DIGILOCKER_ENABLED=false`, `DIGILOCKER_CLIENT_ID`, `DIGILOCKER_CLIENT_SECRET`, `DIGILOCKER_AUTH_URL`,
+`DIGILOCKER_TOKEN_URL`, `DIGILOCKER_JWKS_URL`, `DIGILOCKER_REDIRECT_URI` → the app's `/auth/digilocker/callback`,
+`DIGILOCKER_SCOPES`); no real endpoint is in the code. The button is hidden unless `DIGILOCKER_ENABLED=true` and every
+value is set. It is tested end to end against a local mock OIDC provider (`tests/test_auth_hardening.py`: code
+exchange, PKCE, invalid / replayed state, expired code, bad signature, wrong nonce). **Not enabled in this build:**
+DigiLocker / Meri Pehchaan access requires partner onboarding — a registered Indian entity, an official domain, a
+digital signature, and approval by the onboarding committee.
+
+**Phone OTP (disabled).** `PHONE_OTP_ENABLED=false`. The sign-in UI (Indian mobile numbers, `+91`) and the backend
+paths (a phone-verified Supabase user is a linked citizen like an email one) are ready for Supabase phone auth. Indian
+SMS needs **DLT registration** (TRAI: the entity, sender ID and message templates) and a paid SMS provider configured
+in Supabase, so it is off here.
+
+**Browser security.** Flask sends a strict `Content-Security-Policy`: scripts only from this origin and
+`challenges.cloudflare.com`, network calls only to this origin and `SUPABASE_URL`, frames only for Turnstile and our
+own document previews, `data:` images for the MFA QR code, no inline scripts, no `eval`, `object-src 'none'` (plus
+`nosniff` and `Referrer-Policy: no-referrer`). supabase-js uses the PKCE flow, so an OAuth redirect carries a one-time
+code in the URL, never tokens; tokens are never logged. Sign-in storage per mode: kiosk memory only, personal device
+`localStorage`. (The Vite dev server does not send the CSP; the built app served by Flask does.)
 
 ---
 
@@ -330,6 +412,12 @@ read it, and `.env` is gitignored.
 | `ANVAYA_PASSPORT_PEPPER` | dev pepper, with a warning | pepper for Passport code hashes; set a long random value in production |
 | `PASSPORT_RETENTION_DAYS`, `ANVAYA_UNSAVED_RETENTION_HOURS`, `ANVAYA_RETENTION_INTERVAL_MIN` | `365`, `24`, `60` | retention of saved / unsaved data; how often retention runs in the app (0 = only `manage cleanup`) |
 | `KIOSK_IDLE_SECONDS` | `180` | kiosk idle timeout (a 30 s warning comes first) |
+| `KIOSK_MAX_SESSION_MINUTES` | `30` | absolute length of a kiosk citizen session |
+| `VITE_TURNSTILE_SITE_KEY` | unset | Cloudflare Turnstile site key (public). Unset: no CAPTCHA widget, startup warning |
+| `ANVAYA_STAFF_MFA_REQUIRED` | `true` | staff API calls need an `aal2` (TOTP) token; `false` only for a local demo |
+| `ANVAYA_SESSION_CREATE_LIMIT`, `ANVAYA_AUTH_EVENT_LIMIT` | `20`, `30` | per-IP requests per minute: session creation and Passport resume; browser auth-event reports |
+| `PHONE_OTP_ENABLED` | `false` | phone OTP sign-in (needs DLT registration and an SMS provider) |
+| `DIGILOCKER_ENABLED`, `DIGILOCKER_CLIENT_ID`, `DIGILOCKER_CLIENT_SECRET`, `DIGILOCKER_AUTH_URL`, `DIGILOCKER_TOKEN_URL`, `DIGILOCKER_JWKS_URL`, `DIGILOCKER_REDIRECT_URI`, `DIGILOCKER_SCOPES`, `DIGILOCKER_ISSUER` | `false`, unset, `openid` | DigiLocker / Meri Pehchaan OIDC adapter (see [Auth hardening](#auth-hardening)) |
 | `SUPABASE_STORAGE_BUCKET`, `REVIEWED_UPLOAD_RETENTION_DAYS` | `documents`, `30` | private bucket for uploads; days uploads are kept after the case is reviewed |
 | `SUPABASE_JWKS_CACHE_S` | `600` | how long signing keys are cached |
 | `ANVAYA_ADMIN_EMAIL` / `_PASSWORD`, `ANVAYA_REVIEWER_EMAIL` / `_PASSWORD`, `ANVAYA_OPERATOR_EMAIL` / `_PASSWORD` | unset | read only by `manage seed-staff` (Supabase staff accounts; password ≥ 8 characters) |
@@ -595,9 +683,10 @@ Gunicorn runs one worker with threads so the in-process counters stay complete.
 
 * **Handoff and case codes:** consent is required before handoff. Case codes are ~40-bit random, stored as SHA-256,
   expire after 72 h and are rate-limited, and a code returns status only.
-* **Access control:** every bearer token is verified by the backend (JWKS signature, issuer, audience, expiry).
-  Reviewer, admin and test-run routes check the role from `app_metadata` on the server; unauthenticated calls get
-  `401`. A signed-in citizen's sessions answer only to that citizen's token.
+* **Access control:** every bearer token is verified by the backend (JWKS signature, issuer, audience, expiry, and
+  not revoked by a global sign-out). Reviewer, admin and test-run routes check the role from `app_metadata` on the
+  server and require an `aal2` (TOTP) token; unauthenticated calls get `401`. A signed-in citizen's sessions answer
+  only to that citizen's token, a kiosk session only to its device and operator. See [Auth hardening](#auth-hardening).
 * **Accounts:** nothing is kept beyond the session without recorded consent; Passport codes are 40-bit random,
   stored as peppered SHA-256, PINs argon2-hashed, with per-code / per-IP limits and lockout (see
   [Accounts and modes](#accounts-and-modes)).
@@ -711,8 +800,11 @@ questions and summaries play from the cache.
 * Only the 17 curated rules work offline, and only typed input (no speech).
 
 ### Security (demo scope)
-* **Staff sign-in** is Supabase email + password (Supabase's own rate limits apply); there is no MFA requirement and no
-  SSO. Roles are only as good as whoever holds `SUPABASE_SECRET_KEY`.
+* **Staff sign-in** is Supabase email + password + TOTP; there is no SSO and there are no recovery codes (an admin
+  resets a lost authenticator). Roles are only as good as whoever holds `SUPABASE_SECRET_KEY`.
+* **Our own rate limits** (session creation, auth-event reports) live in process memory, like the case-code limiter.
+* **Document links** (5-minute upload, 2-minute view) are short-lived signed capability URLs, the one kind of token
+  that appears in a URL path; they are single purpose and the app never logs them.
 * **Passport code attempts** are counted per IP address as the app sees it; behind a proxy that hides client
   addresses, all citizens share one address (configure the proxy to pass the real address).
 * **Case-code rate limits live in process memory:** that limiter resets on restart and is not shared between

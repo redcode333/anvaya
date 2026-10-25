@@ -16,8 +16,8 @@ export default function Resume() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setErr(null);
     try {
-      const r = await api<{ session_id: string; mode: string }>("/passport/resume", { body: { code, pin, language: lang } });
-      setSessionId(r.session_id);
+      const r = await api<{ session_id: string; mode: string; expires_at: string }>("/passport/resume", { body: { code, pin, language: lang } });
+      setSessionId(r.session_id, r.expires_at);
       nav(r.mode === "kiosk" ? "/kiosk" : "/citizen");
     } catch (x) { setErr(x); }
   };
