@@ -240,6 +240,58 @@ STATE_ALIASES = {
 }
 for _s in STATES:
     STATE_ALIASES.setdefault(_s, [_s.lower()])
+# Hindi names for the rest, so a Hindi speaker can name any state.
+for _s, _names in {
+    "Assam": ["असम"], "Chhattisgarh": ["छत्तीसगढ़", "छत्तीसगढ"], "Haryana": ["हरियाणा"], "Himachal Pradesh": ["हिमाचल प्रदेश", "हिमाचल"],
+    "Jammu and Kashmir": ["जम्मू और कश्मीर", "जम्मू कश्मीर"], "Kerala": ["केरल", "केरला"], "Uttarakhand": ["उत्तराखंड", "उत्तराखण्ड"],
+    "Goa": ["गोवा"], "Manipur": ["मणिपुर"], "Meghalaya": ["मेघालय"], "Mizoram": ["मिजोरम"], "Nagaland": ["नागालैंड"], "Sikkim": ["सिक्किम"],
+    "Tripura": ["त्रिपुरा"], "Arunachal Pradesh": ["अरुणाचल प्रदेश", "अरुणाचल"], "Chandigarh": ["चंडीगढ़", "चंडीगढ"], "Ladakh": ["लद्दाख"],
+    "Puducherry": ["पुडुचेरी", "पांडिचेरी"],
+}.items():
+    STATE_ALIASES[_s] = [*STATE_ALIASES[_s], *_names]
+
+
+def _script(s: str) -> str:
+    c = s[:1]
+    return "deva" if "ऀ" <= c <= "ॿ" else "telu" if "ఀ" <= c <= "౿" else "latin"
+
+
+def _lev(a: str, b: str) -> int:
+    """Edit distance (insert, delete, replace one character)."""
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
+def _fuzzy_state(low: str) -> tuple[str, str] | None:
+    """A state named the way speech recognition spells it ("Charkhand", "झारखणंड" for Jharkhand): one slip in a short name, two in
+    a long one, in the same script. Names under six letters are never guessed, and a tie between two states returns nothing."""
+    toks = _TOKEN.findall(low)
+    phrases = set(toks) | {f"{a} {b}" for a, b in zip(toks, toks[1:])}
+    best: tuple[int, set[str], str] | None = None
+    for canonical, aliases in STATE_ALIASES.items():
+        for alias in aliases:
+            al = _nk(alias)
+            if len(al) < 6:
+                continue
+            limit = 1 if len(al) <= 8 else 2
+            for ph in phrases:
+                pn = _nk(ph)
+                if len(pn) < 5 or abs(len(pn) - len(al)) > limit or _script(pn) != _script(al):
+                    continue
+                d = _lev(pn, al)
+                if 0 < d <= limit:
+                    if best is None or d < best[0]:
+                        best = (d, {canonical}, ph)
+                    elif d == best[0]:
+                        best[1].add(canonical)
+    if best and len(best[1]) == 1:
+        return next(iter(best[1])), best[2]
+    return None
 
 DISTRICTS = {
     "guntur": ("Guntur", "Andhra Pradesh"), "గుంటూరు": ("Guntur", "Andhra Pradesh"),
@@ -490,9 +542,18 @@ _NO = {"नहीं", "नही", "नहि", "ना", "न", "गलत", "
        "లేదు", "లేవు", "కాదు", "తప్పు", "లేరు", "none"}
 
 
+_AFFIRM_SOUNDS = re.compile(r"\b(?:uh[\s-]?huh|mm+[\s-]?hm+|mhm+|hmm+\s+(?:yes|yeah|ok(?:ay)?)|yup|aha)\b")
+_NEG_SOUNDS = re.compile(r"\b(?:uh[\s-]?uh|nuh[\s-]?uh|mm+[\s-]?mm+|nah)\b")
+
+
 def polarity(text: str) -> bool | None:
     """True for a yes, False for a no, None when the words say neither (or both). "नहीं है" is a no and "जी नहीं" is a no:
-    है / जी only count towards yes when no "no" word is present."""
+    है / जी only count towards yes when no "no" word is present. Spoken sounds count too: "uh-huh" is yes, "uh-uh" no."""
+    low = (text or "").lower()
+    if _NEG_SOUNDS.search(low):
+        return False
+    if _AFFIRM_SOUNDS.search(low) and not _NEG_SOUNDS.search(low) and not {t for t in _TOKEN.findall(low)} & _NO:
+        return True
     toks = {t.lower() for t in _TOKEN.findall(text or "")}
     no, strong = bool(toks & _NO), bool(toks & _STRONG_YES)
     if no and strong:
@@ -663,11 +724,18 @@ def extract(text: str, default_state: str | None = None, asked: str | None = Non
 
     low = norm.lower()
     found_state = None
+    fuzzy_state = False
     for canonical, aliases in STATE_ALIASES.items():
         for a in sorted(aliases, key=len, reverse=True):
-            idx = low.find(a.lower())
+            al = a.lower()
+            idx = low.find(al)
+            if idx >= 0 and al.isascii() and re.search(rf"(?<![a-z]){re.escape(al)}(?![a-z])", low) is None:
+                idx = -1  # "goal" contains "goa", "assamese" is not a promise of Assam: Latin names must stand alone
             if idx >= 0 and (found_state is None or len(a) > len(found_state[1])):
                 found_state = (canonical, a)
+    if found_state is None:
+        found_state = _fuzzy_state(low)
+        fuzzy_state = found_state is not None
     for key, (district, state) in DISTRICTS.items():
         if key in low:
             facts.append(_fact("district", district, key))
@@ -676,7 +744,11 @@ def extract(text: str, default_state: str | None = None, asked: str | None = Non
                                    note=f"Inferred from district {district}."))
             break
     if found_state:
-        facts.append(_fact("state", found_state[0], found_state[1]))
+        if fuzzy_state:
+            facts.append(_fact("state", found_state[0], found_state[1], 0.7, inferred=True,
+                               note=f"Heard “{found_state[1]}”, understood as {found_state[0]}; please confirm."))
+        else:
+            facts.append(_fact("state", found_state[0], found_state[1]))
 
     if WIDOW.search(norm):
         m = WIDOW.search(norm)

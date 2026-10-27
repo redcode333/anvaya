@@ -193,6 +193,16 @@ MESSAGES = {
         "hi": "मुझे कोई जानकारी समझ नहीं आई। क्या आप दूसरे तरीके से बता सकते हैं?",
         "te": "నాకు ఏ వివరాలూ అర్థం కాలేదు. వేరే విధంగా చెప్పగలరా?",
     },
+    "guard_login": {
+        "en": "You don't need to log in or have an account to check schemes. Just tell me about your household. If you want to save your passport for later, you can sign in at the end.",
+        "hi": "योजनाएँ देखने के लिए लॉग इन या खाते की ज़रूरत नहीं है। बस अपने परिवार के बारे में बताइए। बाद के लिए पासपोर्ट सहेजना हो तो अंत में साइन इन कर सकते हैं।",
+        "te": "పథకాలు చూడటానికి లాగిన్ లేదా ఖాతా అవసరం లేదు. మీ కుటుంబం గురించి చెప్పండి. తరువాత కోసం పాస్‌పోర్ట్ సేవ్ చేయాలంటే చివర్లో సైన్ ఇన్ చేయవచ్చు.",
+    },
+    "nothing_heard_tips": {
+        "en": "I'm still not catching that. Please say one detail at a time, like “Bihar” or “I am 60 years old”, or type it instead.",
+        "hi": "मैं अभी भी समझ नहीं पा रहा हूँ। कृपया एक-एक जानकारी बताइए, जैसे “बिहार” या “मेरी उम्र 60 साल है”, या लिखकर बताइए।",
+        "te": "నాకు ఇంకా అర్థం కావడం లేదు. దయచేసి ఒక్కో వివరాన్ని చెప్పండి, ఉదా. “బీహార్” లేదా “నా వయస్సు 60 సంవత్సరాలు”, లేదా టైప్ చేయండి.",
+    },
     "guard_abuse": {
         "en": "I can't help with that kind of language. I'm here to find government schemes for your family — please tell me about your household.",
         "hi": "इस तरह की भाषा में मैं मदद नहीं कर सकता। मैं आपके परिवार के लिए सरकारी योजनाएँ खोजने के लिए हूँ — कृपया अपने परिवार के बारे में बताइए।",

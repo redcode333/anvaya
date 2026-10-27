@@ -479,7 +479,7 @@ def _turn_state(row) -> dict:
         data = json.loads(row["extracted_json"]) if row else {}
     except (TypeError, ValueError):
         return {}
-    return {"asked": data.get("asked"), "awaiting": data.get("awaiting") or []}
+    return {"asked": data.get("asked"), "awaiting": data.get("awaiting") or [], "misses": int(data.get("misses") or 0)}
 
 
 def handle_turn(session_id: str, utterance: str, channel: str = "text", language: str | None = None,
@@ -555,6 +555,7 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
 
     wf = refresh_workflow_state(session_id, session, facts)
     parts = []
+    misses = 0  # consecutive turns nothing was understood; from the second one the reply gives tips instead of repeating itself
     guard = blocked
     settled = [f for f in applied if not f["disputed"]]
     # By voice only what still needs a "yes" is read back; facts taken as heard are not repeated.
@@ -571,8 +572,14 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
         parts.append(_read(to_read))
     elif not applied and not said_yes and not said_no:
         kind = blocked or (guardrails.no_details(utterance) if not result["other_people"] else "nothing_heard")
-        guard = guard or (kind if kind != "nothing_heard" else None)
-        parts.append(i18n.t(i18n.MESSAGES, "nothing_heard" if kind == "nothing_heard" else f"guard_{kind}", lang))
+        guard = guard or (kind if kind not in ("nothing_heard", "ack") else None)
+        if kind == "ack":
+            parts.append(i18n.t(i18n.MESSAGES, "okay", lang))
+        elif kind == "nothing_heard":
+            misses = prior.get("misses", 0) + 1
+            parts.append(i18n.t(i18n.MESSAGES, "nothing_heard_tips" if misses >= 2 else "nothing_heard", lang))
+        else:
+            parts.append(i18n.t(i18n.MESSAGES, f"guard_{kind}", lang))
         if kind == "nothing_heard" and asked in extraction.BOOL_ATTRS:
             parts.append(i18n.t(i18n.MESSAGES, "answer_yes_no", lang))
     for f in applied:
@@ -624,7 +631,7 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
     db.execute(
         "INSERT INTO turns(turn_id, session_id, language, utterance, channel, extracted_json, reply, created_at) VALUES (?,?,?,?,?,?,?,?)",
         (new_id("TRN"), session_id, lang, guardrails.placeholder(blocked) if blocked else utterance, channel,
-         dumps({**result, "llm": llm_summary, "asked": next_asked, "awaiting": next_awaiting}), reply,
+         dumps({**result, "llm": llm_summary, "asked": next_asked, "awaiting": next_awaiting, "misses": misses}), reply,
          now().isoformat()),  # microseconds: the next turn finds this one as the latest even within the same second
     )
     metrics.TURNS.labels(channel, lang).inc()

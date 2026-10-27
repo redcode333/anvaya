@@ -7,7 +7,9 @@ are stored as a placeholder, not as typed.
   abuse      profanity, sexual or hateful words (clear terms always; soft ones only when no detail was found)
   injection  attempts to override the assistant's instructions or read its prompt
   sensitive  Aadhaar / card / PAN numbers, OTPs, passwords: they must never be typed here
-  smalltalk  hello / thanks / "what can you do" (answered, then the pending question is asked again)
+  smalltalk  hello, "how are you", thanks, "what can you do" (answered, then the pending question is asked again)
+  login      "where do I log in?" (answered: no account is needed to check schemes)
+  ack        a bare yes / uh-huh / no with nothing waiting for it ("Okay.", then the pending question)
   offtopic   a question that is not about schemes or the household (answered with what this assistant is for)
 """
 from __future__ import annotations
@@ -36,15 +38,21 @@ _INJECTION = (
 _SENSITIVE_WORDS = (r"\b(otp|cvv|password|passwd|pan\s*(number|no)|card\s*number|"
                     r"aadhaar\s*(number|no)|aadhar\s*(number|no))\b|पासवर्ड|ओटीपी")
 
-_GREETING = (r"^\s*(hi+|hello+|hey+|namaste|namaskar|namaskaram|hola|good\s+(morning|afternoon|evening)"
-             r"|नमस्ते|नमस्कार|హలో|నమస్తే|నమస్కారం)\W*$")
-_THANKS = r"^\s*(thanks?( you)?|thank u|thx|ok(ay)?|okk+|shukriya|dhanyavad|धन्यवाद|शुक्रिया|ధన్యవాదాలు)\W*$"
+_HELLO = (r"(?:hi+|hello+|hey+|namaste|namaskar|namaskaram|hola|good\s+(?:morning|afternoon|evening)"
+          r"|नमस्ते|नमस्कार|हेलो|हैलो|హలో|నమస్తే|నమస్కారం)(?:\s+(?:there|ji|sir|madam))?")
+_HOW_ARE_YOU = (r"(?:how\s+are\s+you(?:\s+doing)?(?:\s+today)?|how\s+r\s+u|how\s+do\s+you\s+do|how'?s\s+it\s+going|what'?s\s+up|sup"
+                r"|kaise\s+ho|kaise\s+hain|aap\s+kaise\s+hain|आप\s+कैसे\s+(?:हैं|हो)|कैसे\s+हो|ఎలా\s+ఉన్నారు|ఎలా\s+ఉన్నావు)")
+_GREETING = rf"^\s*(?=\S)(?:{_HELLO}\W*)?(?:{_HOW_ARE_YOU}\W*)?$"
+_THANKS = (r"^\s*(?:ok(?:ay)?\W*)?(?:thanks?(?:\s+(?:you|a\s+lot|so\s+much|very\s+much))*|thank\s+u|thx|okk+|shukriya|dhanyavad"
+           r"|धन्यवाद|शुक्रिया|ధన్యవాదాలు)\W*$")
+_LOGIN = (r"\b(?:log\s*in|login|log\s*on|sign\s*in|sign\s*up|register|create\s+(?:an\s+)?account|my\s+account)\b"
+          r"|लॉग\s*इन|लॉगइन|साइन\s*इन|रजिस्टर|खाता\s+बना|అకౌంట్|లాగిన్|సైన్\s*ఇన్")
 _HELP = (r"\b(help|what can you do|who are you|what are you|how does this work|how do i use|kya kar sakte|aap kaun)\b"
          r"|मदद|आप कौन|సహాయం")
 _QUESTION = r"(\?|^\s*(what|why|how|when|where|who|which|can you|could you|tell me about|explain|write|give me|show me)\b)"
 
 _rx = {k: re.compile(v, re.I | re.U) for k, v in {
-    "strong": rf"(?<!\w)(?:{_STRONG})(?!\w)", "soft": rf"(?<!\w)(?:{_SOFT})(?!\w)", "inj": _INJECTION,
+    "strong": rf"(?<!\w)(?:{_STRONG})(?!\w)", "soft": rf"(?<!\w)(?:{_SOFT})(?!\w)", "inj": _INJECTION, "login": _LOGIN,
     "words": _SENSITIVE_WORDS, "greet": _GREETING, "thanks": _THANKS, "help": _HELP, "q": _QUESTION}.items()}
 
 _LOOKALIKE = str.maketrans({"*": "u", "@": "a", "$": "s", "0": "o", "3": "e", "!": "i"})
@@ -82,6 +90,11 @@ def no_details(utterance: str) -> str:
         return "abuse"
     if _rx["greet"].match(t) or _rx["thanks"].match(t) or _rx["help"].search(t):
         return "smalltalk"
+    if _rx["login"].search(t):
+        return "login"
+    from . import extraction
+    if len(t.split()) <= 3 and extraction.polarity(utterance) is not None:
+        return "ack"  # a bare "yes" / "uh-huh" / "no" with nothing waiting for it: acknowledge and carry on
     if _rx["q"].search(t) and len(t.split()) >= 3:
         return "offtopic"
     return "nothing_heard"

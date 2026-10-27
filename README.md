@@ -1339,6 +1339,22 @@ Voice is the interface, so its limits are the product's limits.
 * **No filing:** drafts are prepared for a citizen to take to an office or portal; there is no submission, status sync
   from a government system, or CSC hand-off.
 
+### Talking to the bot: what it now understands
+Found by replaying a real spoken conversation (`backend/tests/test_voice_conversation.py` replays it turn by turn):
+* **Greetings and small talk.** "Hello, how are you?", "how are you doing today", "hi there", "आप कैसे हैं" and "thank you so much" are answered, then the pending
+  question is asked again. Before, anything with a "?" was refused as off-topic.
+* **"Where do I log in?"** is answered: no login or account is needed to check schemes; the passport can be saved at the end (`guard_login`, English / Hindi / Telugu).
+* **"Uh-huh" is a yes.** Spoken sounds count: *uh-huh, mm-hmm, mhm, yup* are yes; *uh-uh, nah* are no. After the bot reads a fact back ("Is that right?"), that
+  confirms it. A bare yes / no with nothing waiting for it gets "Okay." and the next question, not "I could not pick out any details".
+* **States as speech recognition spells them.** "Charkhand" and "झारखणंड" are understood as Jharkhand, "Chattisgarh" as Chhattisgarh, "Maharastra" as Maharashtra:
+  one slip in a short name, two in a long one, same script only. A name under six letters is never guessed, a tie between two states returns nothing, and
+  a fuzzy match is always read back for a "yes" (it is never taken as heard). Latin names must stand alone ("goal" is not Goa). Hindi names for every state were added.
+* **No more repeating itself.** The first miss says "I could not pick out any details"; from the second miss in a row the bot gives tips instead ("say one detail at a time,
+  like “Bihar” or “I am 60 years old”, or type it"). The counter (`misses`, kept with the turn) starts again once something is understood.
+* **Still not solved by any code here:** what the speech recogniser hears. "latency is slaying" for a Hindi sentence is a VerbX transcription error. The language
+  tabs choose what the recogniser listens for; the tips above are what the bot does when the transcript is unusable. The new sentences are not in the prerendered
+  audio cache, so they are spoken live.
+
 ### Citizen start screen
 `/citizen` before a conversation begins is a welcome screen, not a bare card: a hero card with the pulsing mic orb, the headline, a one-line promise, a
 large *Start* button (with *Resume with Passport code* beside it) and three reassurance chips (*Free*, *No Aadhaar number asked*, *Audio is not stored*), and
