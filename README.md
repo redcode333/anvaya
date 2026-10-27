@@ -1374,7 +1374,7 @@ Staff have one entry point, **`/staff`** (the *Staff* tab, and the footer link o
 
 | State | What `/staff` shows |
 |---|---|
-| Signed out | The staff sign-in (email + password, then the authenticator code). Operators, reviewers and admins all use it. *Sign in* in the header is the **citizen** sign-in and never accepts staff accounts. |
+| Signed out | The staff sign-in (email + password, then the authenticator code). Operators, reviewers and admins all use it. The header's *Sign in* / profile button opens the **citizen** sign-in, which never accepts staff accounts; that page ends with a *Staff, reviewer or admin? Staff sign-in →* link to `/staff` (shown on shared devices too). |
 | Signed in | A hub with only the tools that role may use, and the sign-out buttons. |
 
 | Role | Tools |

@@ -27,6 +27,16 @@ const renderAt = (ui: React.ReactNode, mode?: "kiosk") => {
 // Requests to the sign-in options themselves (the app also reads its own public settings from /auth/config).
 const nonConfigCalls = () => fetchMock.mock.calls.filter(([u]) => /\/auth\/(digilocker|phone)/.test(String(u)));
 
+describe("staff door", () => {
+  afterEach(cleanup);
+  it("is on the citizen sign-in page, also on a shared device, and points to /staff", async () => {
+    serveConfig("off", "off");
+    renderAt(<SignIn />, "kiosk");
+    const link = await screen.findByTestId("staff-link");
+    expect(link.querySelector("a")?.getAttribute("href")).toBe("/staff");
+  });
+});
+
 beforeEach(() => { sessionStorage.clear(); sessionStorage.setItem("anvaya.lang", "en"); resetConfigCache(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 

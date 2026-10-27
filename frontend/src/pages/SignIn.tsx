@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { startDigiLocker } from "../account";
 import { api } from "../api";
 import { ErrorNote } from "../components";
@@ -137,6 +137,7 @@ export default function SignIn() {
       )}
       {kiosk && <p className="notice info small" data-testid="kiosk-note">{tt("kioskVerifiedOff")}</p>}
       <p className="notice small">{tt("notApproval")}</p>
+      <p className="signin-staff small muted" data-testid="staff-link">{tt("staffLead")} <Link to="/staff">{tt("staffLink")} →</Link></p>
     </div>
   );
 }

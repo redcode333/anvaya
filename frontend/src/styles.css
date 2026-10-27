@@ -280,6 +280,7 @@ main.main-landing { max-width: none; padding: 0; }
 .modal-back { position: fixed; inset: 0; z-index: 50; background: rgba(22, 24, 29, .45); display: flex; align-items: flex-start; justify-content: center; padding: 18vh 16px 16px; }
 .modal { width: 100%; max-width: 420px; }
 
+.signin-staff { margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line); }
 .staff-tile { display: block; text-decoration: none; color: inherit; transition: transform .15s, box-shadow .15s; }
 .staff-tile:hover { transform: translateY(-2px); box-shadow: 0 8px 24px -10px rgba(29, 36, 34, .25); }
 .staff-tile h2 { color: var(--primary); }

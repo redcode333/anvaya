@@ -228,6 +228,8 @@ const S = {
   },
   phoneOnSub: { en: "We’ll text you a 6-digit code.", hi: "हम आपको 6 अंकों का कोड भेजेंगे।", te: "మేము మీకు 6 అంకెల కోడ్ పంపుతాము." },
   phoneLabel: { en: "Mobile number", hi: "मोबाइल नंबर", te: "మొబైల్ నంబర్" },
+  staffLead: { en: "Staff, reviewer or admin?", hi: "कर्मचारी, समीक्षक या एडमिन?", te: "సిబ్బంది, సమీక్షకుడు లేదా అడ్మిన్?" },
+  staffLink: { en: "Staff sign-in", hi: "स्टाफ़ साइन-इन", te: "సిబ్బంది సైన్ ఇన్" },
   kioskVerifiedOff: {
     en: "Shared device: DigiLocker and phone sign-in are turned off here.",
     hi: "साझा डिवाइस: यहाँ DigiLocker और फ़ोन साइन-इन बंद हैं।",
