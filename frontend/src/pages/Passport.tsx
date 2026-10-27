@@ -131,6 +131,9 @@ function SchemeCard({ r, lang, onDraft, onAnswer }: { r: SchemeResult; lang: Lan
   );
 }
 
+const STAT_LABEL = { candidates: "statSuit", info: "statInfo", no: "statNo" } as const;
+const TONE = { candidates: "ok", info: "check", no: "no" } as const;
+
 export default function Passport() {
   const { lang, sessionId, mode } = useApp();
   const nav = useNavigate();
@@ -142,8 +145,8 @@ export default function Passport() {
   const run = useCallback(async () => {
     if (!sessionId) return;
     setErr(null);
-    try { setEv(await api<Evaluation>(`/sessions/${sessionId}/eligibility/evaluate`, { body: {} })); } catch (e) { setErr(e); }
-  }, [sessionId]);
+    try { setEv(await api<Evaluation>(`/sessions/${sessionId}/eligibility/evaluate`, { body: { language: lang } })); } catch (e) { setErr(e); }
+  }, [sessionId, lang]);
   useEffect(() => { run(); }, [run, lang]);
 
   if (!sessionId) return <div className="card">No active session. <Link to={mode === "kiosk" ? "/kiosk" : "/citizen"}>Start here</Link>.</div>;
@@ -166,7 +169,7 @@ export default function Passport() {
     else if (used !== "cancelled") setVoiceMsg(`Spoken via ${used}`);
   };
 
-  const groups: [string, SchemeResult[]][] = ev ? [
+  const groups: [keyof typeof TONE, SchemeResult[]][] = ev ? [
     ["candidates", ev.results.filter((r) => ["MATCH", "PROVISIONAL"].includes(r.outcome))],
     ["info", ev.results.filter((r) => ["INSUFFICIENT_INFORMATION", "NEEDS_HUMAN_REVIEW"].includes(r.outcome))],
     ["no", ev.results.filter((r) => r.outcome === "MISMATCH")],
@@ -195,10 +198,22 @@ export default function Passport() {
               </div>
             </div>
             <p className="notice small">{t("notApproval", lang)}</p>
-            <div className="stat-row">
-              {([["candidates", "statSuit", "ok"], ["info", "statInfo", "info"], ["no", "statNo", "no"]] as const).map(([k, label, tone]) => (
-                <div key={k} className={`pstat t-${tone}`}><b>{groups.find(([g]) => g === k)?.[1].length ?? 0}</b><span>{t(label, lang)}</span></div>
-              ))}
+            <div className="docs-progress">
+              <div className="row spread">
+                <strong>{t("schemesScreened", lang).replace("{n}", String(ev.results.length))}</strong>
+                <span className="tiny">{t("jumpTo", lang)}</span>
+              </div>
+              <div className="docs-bar" role="img" aria-label={groups.map(([k, l]) => `${t(STAT_LABEL[k], lang)} ${l.length}`).join(", ")}>
+                {groups.map(([k, l]) => <i key={k} className={TONE[k]} style={{ width: `${ev.results.length ? (l.length / ev.results.length) * 100 : 0}%` }} />)}
+              </div>
+              <div className="docs-legend">
+                {groups.map(([k, l]) => (
+                  <button key={k} type="button" className={TONE[k]} disabled={l.length === 0}
+                    onClick={() => document.getElementById(`grp-${k}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+                    ● {t(STAT_LABEL[k], lang)} {l.length}
+                  </button>
+                ))}
+              </div>
             </div>
             <p className={`small summary${moreSummary ? "" : " clamp"}`}>{ev.voice_summary}
               {ev.voice_summary_machine_translated && <> <span className="chip" title="Scheme names in this summary were translated automatically by VerbX">{t("machineTranslated", lang)}</span></>}</p>
@@ -221,7 +236,7 @@ export default function Passport() {
             )}
           </div>
           {groups.map(([k, list]) => list.length > 0 && (
-            <section key={k} className="stack">
+            <section key={k} id={`grp-${k}`} className="stack">
               <h2 className={`group-h t-${k === "candidates" ? "ok" : k === "no" ? "no" : "info"}`}>{headings[k][lang]} <span className="chip">{list.length}</span></h2>
               {list.map((r) => <SchemeCard key={r.rule_id} r={r} lang={lang} onDraft={draft} onAnswer={answer} />)}
             </section>

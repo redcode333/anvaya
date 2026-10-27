@@ -75,11 +75,11 @@ export default function Documents() {
   const [docs, setDocs] = useState<Doc[] | null>(null);
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [err, setErr] = useState<unknown>(null);
-  const load = () => sessionId && api<{ documents: Doc[]; upload: Policy }>(`/sessions/${sessionId}/documents`)
+  const load = () => sessionId && api<{ documents: Doc[]; upload: Policy }>(`/sessions/${sessionId}/documents?language=${lang}`)
     .then((r) => { setDocs(r.documents); setPolicy(r.upload); }).catch(setErr);
   useEffect(() => { load(); }, [sessionId, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const mark = async (doc: string, status: string) => {
-    try { setDocs((await api<{ documents: Doc[] }>(`/sessions/${sessionId}/documents/${doc}`, { method: "PUT", body: { status } })).documents); }
+    try { setDocs((await api<{ documents: Doc[] }>(`/sessions/${sessionId}/documents/${doc}`, { method: "PUT", body: { status, language: lang } })).documents); }
     catch (e) { setErr(e); }
   };
   if (!sessionId) return <div className="card">No active session.</div>;

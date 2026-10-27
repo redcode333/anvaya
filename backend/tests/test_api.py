@@ -431,3 +431,37 @@ def test_case_status_explains_a_passport_code_and_a_malformed_code_in_the_site_l
     assert short.status_code == 422 and short.json["error"]["code"] == "INVALID_CODE_FORMAT"
     miss = client.post("/api/v1/cases/status", json={"code": "ANV-ZZZZ-ZZZZ", "language": "hi"})
     assert miss.status_code == 404 and miss.json["error"]["code"] == "CODE_NOT_FOUND" and "ANV-XXXX-XXXX" in miss.json["error"]["message"]
+
+
+def test_results_and_documents_follow_the_language_the_site_is_shown_in_not_the_one_the_session_started_in(client):
+    nonascii = lambda text: any(ord(ch) > 127 for ch in text)
+    sid = client.post("/api/v1/sessions", json={"mode": "personal", "language": "hi"}).json["session_id"]
+    client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": BIHAR})
+    for fid in client.post(f"/api/v1/sessions/{sid}/profile/confirm-all").json["needs_confirmation"]:
+        client.patch(f"/api/v1/sessions/{sid}/profile/facts/{fid}", json={"confirmed": True})
+    hi = client.post(f"/api/v1/sessions/{sid}/eligibility/evaluate").json
+    assert any("ऀ" <= ch <= "ॿ" for ch in hi["voice_summary"])  # no language given: the session's (Hindi)
+    en = client.post(f"/api/v1/sessions/{sid}/eligibility/evaluate", json={"language": "en"}).json
+    assert not any("ऀ" <= ch <= "ॿ" for ch in en["voice_summary"]) and not nonascii(en["results"][0]["outcome_label"])
+    te = client.post(f"/api/v1/sessions/{sid}/eligibility/evaluate", json={"language": "te"}).json
+    assert any("ఀ" <= ch <= "౿" for ch in te["voice_summary"])
+    unknown = client.post(f"/api/v1/sessions/{sid}/eligibility/evaluate", json={"language": "xx"}).json
+    assert unknown["results"][0]["outcome_label"] == hi["results"][0]["outcome_label"]
+    assert not nonascii(client.get(f"/api/v1/sessions/{sid}/eligibility/latest?language=en").json["results"][0]["outcome_label"])
+    docs_en = client.get(f"/api/v1/sessions/{sid}/documents?language=en").json["documents"]
+    docs_hi = client.get(f"/api/v1/sessions/{sid}/documents").json["documents"]
+    assert docs_en and not nonascii(docs_en[0]["label"]) and nonascii(docs_hi[0]["label"])
+    marked = client.put(f"/api/v1/sessions/{sid}/documents/{docs_en[0]['doc_key']}", json={"status": "available", "language": "en"}).json["documents"]
+    assert not nonascii(marked[0]["label"]) and not nonascii(marked[0]["status_label"])
+
+
+def test_the_spoken_summary_counts_the_same_groups_as_the_page(client):
+    """"May suit you" and "need more information or review" in the summary sentence equal the sizes of the two groups on the page."""
+    sid = client.post("/api/v1/sessions", json={"mode": "personal", "language": "en"}).json["session_id"]
+    client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": BIHAR})
+    for fid in client.post(f"/api/v1/sessions/{sid}/profile/confirm-all").json["needs_confirmation"]:
+        client.patch(f"/api/v1/sessions/{sid}/profile/facts/{fid}", json={"confirmed": True})
+    ev = client.post(f"/api/v1/sessions/{sid}/eligibility/evaluate", json={"language": "en"}).json
+    suit = sum(r["outcome"] in ("MATCH", "PROVISIONAL") for r in ev["results"])
+    info = sum(r["outcome"] in ("INSUFFICIENT_INFORMATION", "NEEDS_HUMAN_REVIEW") for r in ev["results"])
+    assert f"{suit} schemes may suit you provisionally, {info} need more information" in ev["voice_summary"]

@@ -434,7 +434,7 @@ def summary_parts(evaluation: dict, lang: str, doc_marks: dict, names: dict[str,
     names = names or {}
     results = evaluation["results"]
     prov = [r for r in results if r["outcome"] in ("MATCH", "PROVISIONAL")]
-    info = [r for r in results if r["outcome"] == "INSUFFICIENT_INFORMATION"]
+    info = [r for r in results if r["outcome"] in ("INSUFFICIENT_INFORMATION", "NEEDS_HUMAN_REVIEW")]  # the same group the page shows
     parts = [i18n.t(i18n.MESSAGES, "summary_intro", lang),
              i18n.t(i18n.MESSAGES, "summary_count", lang, n=len(prov), m=len(info))]
     for r in prov[:4]:

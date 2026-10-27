@@ -1373,10 +1373,16 @@ beside it three numbered steps (*Tell us about your family*, *Check what we unde
 is English, Hindi and Telugu (`wStep*`, `wChip*` in `frontend/src/i18n.ts`). The Turnstile check, error notes, the retention notice and the voice line are
 unchanged, and the Start button stays disabled until the check passes.
 
+### Language on the journey pages
+The language buttons now change the *content* of the Scheme Passport and Document Guide, not only the labels. Before, results were translated using the language stored on the server-side session
+(the language the conversation started in), so a Hindi-started session still showed Hindi after choosing English. Now `POST /sessions/<id>/eligibility/evaluate` takes `{"language": "en|hi|te"}`,
+`GET /sessions/<id>/eligibility/latest` and `GET /sessions/<id>/documents` take `?language=`, and `PUT /sessions/<id>/documents/<doc>` takes `language` in its body (so marking a document does not
+flip the list back); the pages send the language they are showing. An unknown value falls back to the session's language, and nothing is written to the session. The spoken summary counts the same
+groups as the page ("may suit you" and "need more information or review").
+
 ### Scheme Passport page layout
 `/citizen/schemes` (and the other two journey pages) share a connected **stepper** (*Your details → Scheme Passport → Document Guide*: a tick for finished
-steps, an orange ring on the current one). The Passport page opens with a summary card: three **result tiles** (*May suit you*, *Need more information*,
-*Do not match*, each with its count), the notice, the spoken summary clamped to two lines (*Show more*), and the technical screening details folded away.
+steps, an orange ring on the current one). The Passport page opens with a summary card: a **progress bar** like the Document Guide's ("12 schemes screened", green may suit you, amber need more information, grey do not match) with a legend whose items jump to that group, the notice, the spoken summary clamped to two lines (*Show more*), and the technical screening details folded away.
 Each scheme is a card with a coloured edge (green likely, amber needs information, grey no match), a **criteria progress bar** ("5 of 5 criteria met", in
 English / Hindi / Telugu), neutral amber chips for documents still to check (not alarm-red), and its actions in one fixed place: the outcome badge, **Prepare
 draft** (visible on the card for likely schemes, no longer hidden inside *Why*) and *Why*. On a phone the actions drop below the card text and the buttons

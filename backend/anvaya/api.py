@@ -422,30 +422,34 @@ def session_search(sid):
 @bp.post("/sessions/<sid>/eligibility/evaluate")
 def evaluate(sid):
     loaded = {}
-    ev = catalogue.evaluate_session(sid, loaded=loaded)
-    return with_summary(ev, sid, loaded["session"]["language"], loaded["marks"])
+    lang = body().get("language")
+    ev = catalogue.evaluate_session(sid, loaded=loaded, language=lang)
+    return with_summary(ev, sid, lang if lang in i18n.SUPPORTED_LANGUAGES else loaded["session"]["language"], loaded["marks"])
 
 
 @bp.get("/sessions/<sid>/eligibility/latest")
 def latest(sid):
     s = profile.get_session(sid)
+    lang = request.args.get("language")
+    lang = lang if lang in i18n.SUPPORTED_LANGUAGES else s["language"]
     ev = catalogue.latest_evaluation(sid)
     if not ev:
         raise ApiError("NO_EVALUATION", "No screening has been run yet.", 404)
-    ev["results"] = [catalogue.localize_result(r, s["language"]) for r in ev["results"]]
-    return with_summary(ev, sid, s["language"])
+    ev["results"] = [catalogue.localize_result(r, lang) for r in ev["results"]]
+    return with_summary(ev, sid, lang)
 
 
 @bp.get("/sessions/<sid>/documents")
 def session_documents(sid):
-    return catalogue.document_guide(sid)
+    return catalogue.document_guide(sid, request.args.get("language"))
 
 
 @bp.put("/sessions/<sid>/documents/<doc_key>")
 def mark_document(sid, doc_key):
     profile.get_session(sid)
-    catalogue.set_doc_mark(sid, doc_key, body().get("status", ""))
-    return catalogue.document_guide(sid)
+    b = body()
+    catalogue.set_doc_mark(sid, doc_key, b.get("status", ""))
+    return catalogue.document_guide(sid, b.get("language") or request.args.get("language"))
 
 
 @bp.post("/sessions/<sid>/documents/<doc_key>/upload-url")

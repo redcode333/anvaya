@@ -95,6 +95,8 @@ const S = {
   voiceOff: { en: "Voice is not available on this device. You can type instead.", hi: "इस डिवाइस पर आवाज़ उपलब्ध नहीं है। आप लिखकर बता सकते हैं।", te: "ఈ పరికరంలో వాయిస్ అందుబాటులో లేదు. మీరు టైప్ చేయవచ్చు." },
   voiceInput: { en: "Voice", hi: "आवाज़", te: "వాయిస్" },
   allConfirmedMsg: { en: "Confirmed ✓ All the details you checked.", hi: "पुष्टि हो गई ✓ आपने जो जानकारी जाँची वह सब।", te: "నిర్ధారించబడింది ✓ మీరు చూసిన వివరాలన్నీ." },
+  schemesScreened: { en: "{n} schemes screened", hi: "{n} योजनाओं की जाँच हुई", te: "{n} పథకాలను పరిశీలించారు" },
+  jumpTo: { en: "Tap a group to jump to it.", hi: "किसी समूह पर दबाइए, वहाँ पहुँच जाएँगे।", te: "ఒక సమూహంపై నొక్కితే అక్కడికి వెళ్తారు." },
   stopListening: { en: "Stop", hi: "रोकें", te: "ఆపండి" },
   updatedAt: { en: "Updated", hi: "अपडेट", te: "నవీకరణ" },
   reviewerNote: { en: "Reviewer note", hi: "समीक्षक का नोट", te: "సమీక్షకుని గమనిక" },

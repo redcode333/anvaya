@@ -216,12 +216,13 @@ def localize_result(res: dict, lang: str) -> dict:
     return res
 
 
-def evaluate_session(session_id: str, *, require_confirmed=True, origin="online", loaded: dict | None = None) -> dict:
+def evaluate_session(session_id: str, *, require_confirmed=True, origin="online", loaded: dict | None = None, language: str | None = None) -> dict:
     """Screen the session's facts against the candidate rules. Reads the session, facts, document marks and previous
-    evaluation in one round trip and writes in one more. `loaded` (if given) receives the session and marks."""
+    evaluation in one round trip and writes in one more. `loaded` (if given) receives the session and marks. `language` (en / hi / te)
+    is the language the citizen is viewing the site in: the text comes back in it, whatever language the session started in."""
     session, fact_set, (marks_rows, prev_rows) = profile.load(
         session_id, extra=[(DOC_MARKS_SQL, (session_id,)), (LATEST_EVAL_SQL, (session_id,))])
-    lang = session["language"]
+    lang = language if language in i18n.SUPPORTED_LANGUAGES else session["language"]
     pending = fact_set.unconfirmed_critical()
     if require_confirmed and pending:
         metrics.CONFIRMATION_BLOCKS.inc()
@@ -315,14 +316,14 @@ def set_doc_mark(session_id: str, doc_key: str, status: str, by: str = "citizen"
     return doc_marks(session_id)
 
 
-def document_guide(session_id: str) -> dict:
+def document_guide(session_id: str, language: str | None = None) -> dict:
     """Union of evidence requirements across the latest non-mismatch results."""
     from . import documents
     session, ev_row, marks_rows, case_rows, upload_rows = get_db().query_many([
         (profile.SESSION_SQL, (session_id,)), (LATEST_EVAL_SQL, (session_id,)), (DOC_MARKS_SQL, (session_id,)),
         (documents.CASES_SQL, (session_id,)), (documents.SESSION_UPLOADS_SQL, (session_id,))])
     session = profile._checked_session(session.fetchone(), allow_ended=False)
-    lang = session["language"]
+    lang = language if language in i18n.SUPPORTED_LANGUAGES else session["language"]
     ev = latest_evaluation(session_id, ev_row.fetchone())
     marks = {r["doc_key"]: r["status"] for r in marks_rows}
     docs: dict[str, dict] = {}
