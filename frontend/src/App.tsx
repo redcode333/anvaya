@@ -18,6 +18,7 @@ import Reviewer from "./pages/Reviewer";
 import Resume from "./pages/Resume";
 import ReviewerCase from "./pages/ReviewerCase";
 import SignIn from "./pages/SignIn";
+import Staff from "./pages/Staff";
 import TestRuns from "./pages/TestRuns";
 import { useApp } from "./state";
 
@@ -31,7 +32,7 @@ function StatusBar() {
   const bundle = getBundle();
   const pending = getOutbox().filter((e) => e.sync.state !== "SYNCED").length;
   void tick;
-  const staffPage = /^\/(reviewer|admin|test-runs)/.test(loc.pathname);
+  const staffPage = /^\/(staff|reviewer|admin|test-runs)/.test(loc.pathname);
   const kioskPage = mode === "kiosk" && !staffPage && loc.pathname !== "/";
   if (loc.pathname === "/" || (!kioskPage && online && pending === 0)) return null;
   return (
@@ -70,7 +71,7 @@ export default function App() {
   const landing = loc.pathname === "/";
   const role = staff?.role;
   const reviewer = role === "reviewer" || role === "admin";
-  const inStaffArea = /^\/(reviewer|admin|test-runs|profile)/.test(loc.pathname);
+  const inStaffArea = /^\/(staff|reviewer|admin|test-runs|profile)/.test(loc.pathname);
   return (
     <>
       <header className={`topbar${landing ? " is-landing" : ""}`}>
@@ -80,22 +81,21 @@ export default function App() {
             <img className="brand-mark dark" src="/brand/anvaya-mark-white.svg" alt="" width="28" height="28" />
             Anvaya AI
           </NavLink>
-          {/* The landing page shows only the name and logo; the rest of the site gets the public tabs, and staff tabs
-              appear only after a staff sign-in. */}
+          {/* The landing page shows only the name and logo; the rest of the site gets the public tabs and a Staff door. */}
           {!landing && (
             <>
               <nav className="nav" aria-label="Main">
                 <NavLink to={mode === "kiosk" ? "/kiosk" : "/citizen"}>Citizen</NavLink>
                 {mode !== "kiosk" && <NavLink to="/citizen/passports">{t("myPassports", lang)}</NavLink>}
                 <NavLink to="/case">Case status</NavLink>
-                {/* Staff tabs belong to the staff area: a signed-in admin browsing as a citizen never sees Security next to
-                    Citizen. From public pages, signed-in staff get one link back in. */}
+                {/* The public tabs end with one "Staff" door (/staff: sign-in, or a hub for the signed-in role). The role tabs
+                    only show inside the staff area, so a signed-in admin browsing as a citizen never sees Security. */}
                 {inStaffArea && reviewer && <NavLink to="/reviewer">Reviewer</NavLink>}
                 {inStaffArea && reviewer && <NavLink to="/admin/schemes">Catalogue</NavLink>}
                 {inStaffArea && role === "admin" && <NavLink to="/admin/security">Security</NavLink>}
                 {inStaffArea && role === "admin" && <NavLink to="/test-runs">TC1–TC5</NavLink>}
-                {!inStaffArea && reviewer && <NavLink to={role === "admin" ? "/admin/security" : "/reviewer"}>Staff area</NavLink>}
                 <NavLink to="/signin">Sign in</NavLink>
+                <NavLink to="/staff">Staff</NavLink>
               </nav>
               <LangSwitch />
             </>
@@ -123,6 +123,7 @@ export default function App() {
           <Route path="/auth/digilocker/callback" element={<DigiLockerCallback />} />
           <Route path="/test-runs" element={<TestRuns />} />
           <Route path="/signin" element={<SignIn />} />
+          <Route path="/staff" element={<Staff />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="*" element={<div className="card">Page not found.</div>} />
         </Routes>

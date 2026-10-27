@@ -198,7 +198,7 @@ export default function Landing() {
         <div className="l-wrap l-foot-inner">
           <span className="l-foot-brand"><img src="/brand/anvaya-mark-white.svg" alt="" width="28" height="28" />Anvaya AI</span>
           <nav aria-label="Footer">
-            <Link to="/case">Case status</Link><Link to="/admin/schemes">Scheme sources</Link><Link to="/signin">{t("signIn", lang)}</Link><Link to="/reviewer">Staff</Link>
+            <Link to="/case">Case status</Link><Link to="/admin/schemes">Scheme sources</Link><Link to="/signin">{t("signIn", lang)}</Link><Link to="/staff">Staff</Link>
           </nav>
           <p>{t("notApproval", lang)}</p>
         </div>

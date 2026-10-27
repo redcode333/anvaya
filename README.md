@@ -52,7 +52,7 @@ live monitoring stack. Rules, text and numbers on screen are what the app produc
 | Landing: a headline that rotates through Hinglish, Hindi, English and Telugu, with a live demo | Sign in: no account needed; verified options are visible and honest |
 |---|---|
 | ![Landing, desktop](docs/screenshots/01d-landing-desktop.png) | ![Sign in](docs/screenshots/18d-signin-desktop.png) |
-| One tap on the microphone starts a conversation. The demo card plays a Telugu / Hinglish exchange; below it the page explains how it works and races a seven-step portal against one sentence. Kiosk, case status, *Resume with Passport code* and *My Passports* sit under the microphone. The landing header is only the logo and name, so nothing competes with the headline; the crowd of citizens walking past is on the first screen, with the demo card kept compact. The site opens in **English**; the hero's language tabs switch it. On the other pages the header shows the public tabs (*Citizen*, *My Passports*, *Case status*, *Sign in*), centred, with a language pill that slides to the chosen language, an underline that grows under the current tab, and a short fade-in on page change (all off for visitors who prefer reduced motion). Staff tabs (*Reviewer*, *Catalogue*, *Security*, *TC1–TC5*) appear only after a staff sign-in. Connection and offline-bundle details show only at a kiosk, when the connection is down, or while kiosk events wait to sync. | *Continue without account* is the main path. **Meri Pehchaan (DigiLocker)** and **phone OTP** show as "Coming soon" until they are switched on (`GET /api/config`); a disabled option never fires a request. At a kiosk, verified and phone sign-in are never offered. |
+| One tap on the microphone starts a conversation. The demo card plays a Telugu / Hinglish exchange; below it the page explains how it works and races a seven-step portal against one sentence. Kiosk, case status, *Resume with Passport code* and *My Passports* sit under the microphone. The landing header is only the logo and name, so nothing competes with the headline; the crowd of citizens walking past is on the first screen, with the demo card kept compact. The site opens in **English**; the hero's language tabs switch it. On the other pages the header shows the public tabs (*Citizen*, *My Passports*, *Case status*, *Sign in*, *Staff*), centred, with a language pill that slides to the chosen language, an underline that grows under the current tab, and a short fade-in on page change (all off for visitors who prefer reduced motion). The *Staff* tab opens `/staff`: the staff sign-in when signed out, and a hub listing only the tools the signed-in role may use (see [Staff access](#staff-access)). The role tabs (*Reviewer*, *Catalogue*, *Security*, *TC1–TC5*) appear only inside the staff area, so an admin who is still signed in never sees *Security* while browsing as a citizen. Connection and offline-bundle details show only at a kiosk, when the connection is down, or while kiosk events wait to sync. | *Continue without account* is the main path. **Meri Pehchaan (DigiLocker)** and **phone OTP** show as "Coming soon" until they are switched on (`GET /api/config`); a disabled option never fires a request. At a kiosk, verified and phone sign-in are never offered. |
 
 | Landing on a phone | How it works | Seven steps, or one sentence |
 |---|---|---|
@@ -1332,6 +1332,25 @@ Voice is the interface, so its limits are the product's limits.
 * **No notifications:** nothing is sent to the citizen when a reviewer acts (SMS needs DLT registration). **(planned)**
 * **No filing:** drafts are prepared for a citizen to take to an office or portal; there is no submission, status sync
   from a government system, or CSC hand-off.
+
+### Staff access
+Staff have one entry point, **`/staff`** (the *Staff* tab, and the footer link on the landing page).
+
+| State | What `/staff` shows |
+|---|---|
+| Signed out | The staff sign-in (email + password, then the authenticator code). Operators, reviewers and admins all use it. *Sign in* in the header is the **citizen** sign-in and never accepts staff accounts. |
+| Signed in | A hub with only the tools that role may use, and the sign-out buttons. |
+
+| Role | Tools |
+|---|---|
+| operator | Kiosk (`/kiosk`) |
+| reviewer | Reviewer (`/reviewer`), Catalogue (`/admin/schemes`) |
+| admin | everything above, Security (`/admin/security`), TC1–TC5 (`/test-runs`) |
+
+* The role tabs show only on staff pages (`/staff`, `/reviewer`, `/admin/*`, `/test-runs`), never beside *Citizen*.
+* *Sign out* keeps you on the same page, which turns back into the sign-in form, so signing in again (as the same or a different role) is one step.
+* Hiding a tab is convenience only: every staff page asks for a sign-in again if the role does not fit, and the server checks the role and the authenticator (aal2) on every staff request.
+* If the *Sign in* button is greyed out, the Cloudflare Turnstile check is still running; a short note says so, and it unlocks when the check finishes.
 
 ### Security (demo scope)
 * **Staff sign-in** is Supabase email + password + TOTP; there is no SSO and there are no recovery codes (an admin

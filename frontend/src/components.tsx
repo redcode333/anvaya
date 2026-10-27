@@ -102,6 +102,7 @@ export function StaffLogin({ roles, title, hint }: { roles: string[]; title: str
       {captcha.widget}
       <ErrorNote error={err} />
       <button className="btn primary" type="submit" disabled={busy || !captcha.ready}>Sign in</button>
+      {!captcha.ready && <p className="tiny" role="status">Running the security check… the button unlocks when it finishes.</p>}
       <p className="tiny">Staff accounts are created by an administrator; the role and the authenticator code are checked by the server on every request.</p>
     </form>
   );
