@@ -65,6 +65,21 @@ function LangSwitch() {
   );
 }
 
+/** Profile shortcut: the account page when signed in, the sign-in page otherwise. */
+function ProfileButton() {
+  const { staff, citizen } = useApp();
+  const signedIn = !!staff || (!!citizen && !citizen.is_anonymous);
+  const label = signedIn ? "Profile" : "Sign in";
+  return (
+    <NavLink to={signedIn ? "/profile" : "/signin"} className="profile-btn" aria-label={label} title={label}>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" />
+      </svg>
+      <span className="profile-label">{label}</span>
+    </NavLink>
+  );
+}
+
 export default function App() {
   const { mode, lang, staff, sessionId, endCitizenSession } = useApp();
   const loc = useLocation();
@@ -85,7 +100,8 @@ export default function App() {
             <img className="brand-mark dark" src="/brand/anvaya-mark-white.svg" alt="" width="28" height="28" />
             Anvaya AI
           </NavLink>
-          {/* The landing page shows only the name and logo; the rest of the site gets the public tabs and a Staff door. */}
+          {/* The landing page shows the name and logo with the profile and language buttons; the rest of the site
+              also gets the public tabs and a Staff door. */}
           {!landing && (
             <>
               <nav className="nav" aria-label="Main">
@@ -98,12 +114,14 @@ export default function App() {
                 {inStaffArea && reviewer && <NavLink to="/admin/schemes">Catalogue</NavLink>}
                 {inStaffArea && role === "admin" && <NavLink to="/admin/security">Security</NavLink>}
                 {inStaffArea && role === "admin" && <NavLink to="/test-runs">TC1–TC5</NavLink>}
-                <NavLink to="/signin">Sign in</NavLink>
                 <NavLink to="/staff">Staff</NavLink>
               </nav>
-              <LangSwitch />
             </>
           )}
+          <div className="topbar-actions">
+            <LangSwitch />
+            <ProfileButton />
+          </div>
         </div>
         <StatusBar />
       </header>
