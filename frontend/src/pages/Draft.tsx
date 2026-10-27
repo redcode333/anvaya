@@ -27,6 +27,7 @@ const DT = {
   prepared: { en: "Prepared {d}", hi: "तैयार: {d}", te: "తయారు: {d}" },
   details: { en: "Draft details", hi: "ड्राफ़्ट का विवरण", te: "డ్రాఫ్ట్ వివరాలు" },
   screening: { en: "Screening result", hi: "जाँच का नतीजा", te: "పరిశీలన ఫలితం" },
+  notice: { en: "This is a draft for review. It has not been submitted to any government portal.", hi: "यह समीक्षा के लिए ड्राफ़्ट है। इसे किसी सरकारी पोर्टल पर जमा नहीं किया गया है।", te: "ఇది సమీక్ష కోసం డ్రాఫ్ట్. దీన్ని ఏ ప్రభుత్వ పోర్టల్‌లోనూ సమర్పించలేదు." },
 } satisfies Record<string, Record<Lang, string>>;
 const dt = (k: keyof typeof DT, lang: Lang) => DT[k][lang];
 
@@ -96,7 +97,7 @@ export default function DraftPage() {
           <h1>{d.scheme_name}</h1>
           <StatusBadge status={d.case?.status ?? d.status} />
         </div>
-        <p className="notice small">{d.notice}</p>
+        <p className="notice small">{dt("notice", lang)}</p>
         <div className="draft-meta">
           <span className="tiny muted">{dt("screening", lang)}</span><OutcomeBadge outcome={d.eligibility_snapshot.outcome} lang={lang} />
           <span className="tiny muted">· {dt("prepared", lang).replace("{d}", when)}</span>

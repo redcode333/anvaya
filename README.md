@@ -1393,6 +1393,13 @@ The panel opens with the verdict in plain sentences ("You meet every condition w
 The official wording of each condition is behind *Show the official wording*. Rule operators (`>= 65`, `18–60`, `yes`) are turned into sentences, in English, Hindi and Telugu (`frontend/src/why.ts`, tested).
 Answering a missing detail, the officer's checks and *Prepare draft* work as before.
 
+### The Form Helper section of the draft ("what to take to the office")
+The lower half of the draft page no longer repeats the details card above it. It has one job and four short blocks: **Ready to copy** (only the values that exist, in a two-column grid, each with *Copy*, plus
+*Copy all*); **Bring to the office** (one panel that merges what is still missing, each with what to bring, and the items Anvaya never asks for, such as the Aadhaar number and bank account); the
+**Document checklist** (with a link to update it); **How to apply** (numbered steps, *Read the steps aloud*); and the **Official source** card (QR code, "Scan the code or open the page", an *Open the official
+page* button). *Download PDF draft* is in the header. The two banners that repeated the "not submitted" notice and the stray "3 · Bring to the office" line are gone. The fixed choices (rural / urban, gender,
+marital status, occupation) and the draft notice are shown in the site language, in the details card and in the dropdowns.
+
 ### Plain words for statuses and sources
 Every status badge says what it means ("Draft saved", "With a reviewer", "Correction requested") in the site language, and each draft field says where its value came from ("Confirmed", "You entered",
 "Please check", "To fill in") instead of `DRAFT_SAVED` / `citizen_entered` / `missing` (`frontend/src/statusLabels.ts`). The draft header shows the screening result and the date; the draft id, version and rule id are under

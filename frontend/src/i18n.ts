@@ -451,10 +451,28 @@ export const STATES = [
 
 const YES = { en: "Yes", hi: "हाँ", te: "అవును" };
 const NO = { en: "No", hi: "नहीं", te: "కాదు" };
+/** Words for the fixed choices (rural / urban, gender, marital status, occupation) in each language. */
+const CHOICE_LABELS: Record<string, Record<string, Record<Lang, string>>> = {
+  area: { rural: { en: "Rural", hi: "ग्रामीण", te: "గ్రామీణ" }, urban: { en: "Urban", hi: "शहरी", te: "పట్టణ" } },
+  gender: { male: { en: "Male", hi: "पुरुष", te: "పురుషుడు" }, female: { en: "Female", hi: "महिला", te: "మహిళ" }, other: { en: "Other", hi: "अन्य", te: "ఇతర" } },
+  marital_status: {
+    married: { en: "Married", hi: "विवाहित", te: "వివాహితులు" }, widowed: { en: "Widowed", hi: "विधवा", te: "వితంతువు" },
+    single: { en: "Single", hi: "अविवाहित", te: "అవివాహితులు" }, divorced: { en: "Divorced", hi: "तलाकशुदा", te: "విడాకులు తీసుకున్న" },
+  },
+  occupation: {
+    farmer: { en: "Farmer", hi: "किसान", te: "రైతు" }, construction_worker: { en: "Construction worker", hi: "निर्माण मज़दूर", te: "నిర్మాణ కార్మికుడు" },
+    weaver: { en: "Weaver", hi: "बुनकर", te: "నేతపనివాడు" }, labourer: { en: "Labourer", hi: "मज़दूर", te: "కూలీ" }, student: { en: "Student", hi: "छात्र", te: "విద్యార్థి" },
+    self_employed: { en: "Self-employed", hi: "स्वरोज़गार", te: "స్వయం ఉపాధి" }, salaried: { en: "Salaried", hi: "वेतनभोगी", te: "జీతగాడు" },
+    homemaker: { en: "Homemaker", hi: "गृहिणी", te: "గృహిణి" }, other: { en: "Other", hi: "अन्य", te: "ఇతర" },
+  },
+};
+
 export function showValue(attr: string, v: any, lang: Lang): string {
   if (v === null || v === undefined) return "—";
   if (typeof v === "boolean") return v ? YES[lang] : NO[lang];
   if (attr === "annual_income") return `₹${Number(v).toLocaleString("en-IN")}`;
+  const choice = CHOICE_LABELS[attr]?.[String(v)];
+  if (choice) return choice[lang];
   return String(v).replace(/_/g, " ");
 }
 

@@ -3,7 +3,7 @@ import type { ApiError } from "./api";
 import { changeStaffPassword, nextMfaStep, staffSignIn, verifyMfa, type AuthLike, type MfaStep } from "./account";
 import { supabase } from "./auth";
 import { useCaptcha } from "./Turnstile";
-import { attrLabel, BOOL_ATTRS, ENUMS, NUM_ATTRS, OUTCOME_LABEL, STATES, t, type Lang } from "./i18n";
+import { attrLabel, BOOL_ATTRS, ENUMS, NUM_ATTRS, OUTCOME_LABEL, showValue, STATES, t, type Lang } from "./i18n";
 import { statusLabel } from "./statusLabels";
 import { useApp } from "./state";
 
@@ -183,7 +183,7 @@ export function ValueInput({ attr, value, onChange, lang }: { attr: string; valu
   if (ENUMS[attr])
     return (
       <select id={id} aria-label={attrLabel(attr, lang)} value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}>
-        <option value="">—</option>{ENUMS[attr].map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
+        <option value="">—</option>{ENUMS[attr].map((s) => <option key={s} value={s}>{showValue(attr, s, lang)}</option>)}
       </select>
     );
   if (BOOL_ATTRS.includes(attr))

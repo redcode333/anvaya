@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { showValue as showValueReal } from "./i18n";
 import { statusLabel, sourceLabel } from "./statusLabels";
 import { humanExpected, reasonText, reasonTone, REASON_CODES, WHY_KEYS, whyText } from "./why";
 
@@ -34,6 +35,18 @@ describe("plain wording for the Why panel", () => {
     expect(humanExpected("== rural", "area", "en", show)).toBe("rural");
     expect(humanExpected("!= widowed", "marital_status", "en", show)).toBe("not widowed");
     expect(humanExpected(">= 60", "age", "te", show)).toBe("కనీసం 60 years");
+  });
+
+  it("shows the fixed choices in the site language, and anything unknown as readable text", () => {
+    expect(showValueReal("area", "rural", "hi")).toBe("ग्रामीण");
+    expect(showValueReal("area", "urban", "te")).toBe("పట్టణ");
+    expect(showValueReal("gender", "female", "en")).toBe("Female");
+    expect(showValueReal("marital_status", "widowed", "hi")).toBe("विधवा");
+    expect(showValueReal("occupation", "self_employed", "en")).toBe("Self-employed");
+    expect(showValueReal("occupation", "something_new", "en")).toBe("something new");
+    expect(showValueReal("bpl", true, "hi")).toBe("हाँ");
+    expect(showValueReal("annual_income", 60000, "en")).toBe("₹60,000");
+    expect(showValueReal("district", "Guntur", "hi")).toBe("Guntur");
   });
 
   it("names statuses and sources in words", () => {
