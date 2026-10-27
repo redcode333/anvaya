@@ -1339,6 +1339,13 @@ Voice is the interface, so its limits are the product's limits.
 * **No filing:** drafts are prepared for a citizen to take to an office or portal; there is no submission, status sync
   from a government system, or CSC hand-off.
 
+### Citizen start screen
+`/citizen` before a conversation begins is a welcome screen, not a bare card: a hero card with the pulsing mic orb, the headline, a one-line promise, a
+large *Start* button (with *Resume with Passport code* beside it) and three reassurance chips (*Free*, *No Aadhaar number asked*, *Audio is not stored*), and
+beside it three numbered steps (*Tell us about your family*, *Check what we understood*, *See your schemes*). It stacks to one column on a phone. All text
+is English, Hindi and Telugu (`wStep*`, `wChip*` in `frontend/src/i18n.ts`). The Turnstile check, error notes, the retention notice and the voice line are
+unchanged, and the Start button stays disabled until the check passes.
+
 ### Case status and a fresh start
 * **Case status** (`/case`, `POST /cases/status`) answers in the language the site is showing, not the one the case was started in: the request carries
   `language` (`en`/`hi`/`te`; anything else falls back to the case's language). The status, the notice, the labels and the scheme name (machine-translated,

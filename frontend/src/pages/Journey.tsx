@@ -142,16 +142,34 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
     return (
       <div className="stack">
       {mode === "kiosk" && <KioskOperatorBar />}
-      <div className="card stack" style={{ maxWidth: 560 }}>
-        <h1>{t("tagline", lang)}</h1>
-        <p className="muted">{t("intro", lang)}</p>
-        <ErrorNote error={err} />
-        {needsCaptcha && captcha.widget}
-        <button className="btn primary" onClick={begin} disabled={needsCaptcha && !captcha.ready}>{t("start", lang)}</button>
-        <button className="btn ghost small" onClick={() => nav("/resume")}>{t("resume", lang)}</button>
-        <RetentionNote />
-        <p className="tiny">Voice: {provider === "verbx" ? "VerbX" : provider === "browser" ? `browser speech (VerbX ${verbxFailedOver() ? "unavailable" : "not configured"})` : "not available — text only"}.
-          Audio is not stored by Anvaya.</p>
+      <div className="welcome">
+        <section className="welcome-main">
+          <span className="welcome-orb" aria-hidden="true"><span className="orb-ring" /><span className="orb-ring r2" /><MicIcon size={30} /></span>
+          <h1>{t("tagline", lang)}</h1>
+          <p className="welcome-intro">{t("intro", lang)}</p>
+          <ErrorNote error={err} />
+          {needsCaptcha && captcha.widget}
+          <div className="welcome-actions">
+            <button className="btn primary welcome-start" onClick={begin} disabled={needsCaptcha && !captcha.ready}>
+              <MicIcon size={20} />{t("start", lang)}
+            </button>
+            <button className="btn ghost" onClick={() => nav("/resume")}>{t("resume", lang)}</button>
+          </div>
+          <ul className="welcome-chips">
+            {(["wChip1", "wChip2", "wChip3"] as const).map((k) => <li key={k}>{t(k, lang)}</li>)}
+          </ul>
+          <RetentionNote />
+          <p className="tiny">Voice: {provider === "verbx" ? "VerbX" : provider === "browser" ? `browser speech (VerbX ${verbxFailedOver() ? "unavailable" : "not configured"})` : "not available — text only"}.
+            Audio is not stored by Anvaya.</p>
+        </section>
+        <ol className="welcome-steps" aria-label="How it works">
+          {([1, 2, 3] as const).map((n) => (
+            <li key={n}>
+              <span className="welcome-num" aria-hidden="true">{n}</span>
+              <div><b>{t(`wStep${n}T` as "wStep1T", lang)}</b><span>{t(`wStep${n}D` as "wStep1D", lang)}</span></div>
+            </li>
+          ))}
+        </ol>
       </div>
       </div>
     );
