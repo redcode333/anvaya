@@ -59,6 +59,12 @@ TEXT = {
     "footer": {"en": "Anvaya AI does not submit applications. Check every detail before you submit it yourself.",
                "hi": "Anvaya AI आवेदन जमा नहीं करता। ख़ुद जमा करने से पहले हर जानकारी जाँच लें।",
                "te": "Anvaya AI దరఖాస్తులను సమర్పించదు. మీరే సమర్పించే ముందు ప్రతి వివరాన్ని తనిఖీ చేయండి."},
+    "draft_badge": {"en": "DRAFT · NOT SUBMITTED", "hi": "ड्राफ़्ट · जमा नहीं किया गया", "te": "డ్రాఫ్ట్ · సమర్పించలేదు"},
+    "scan": {"en": "Scan to open the official page", "hi": "आधिकारिक पेज खोलने के लिए स्कैन करें",
+             "te": "అధికారిక పేజీ తెరవడానికి స్కాన్ చేయండి"},
+    "page": {"en": "Page", "hi": "पृष्ठ", "te": "పేజీ"},
+    "draft_id": {"en": "Draft ID", "hi": "ड्राफ़्ट आईडी", "te": "డ్రాఫ్ట్ ఐడీ"},
+    "version": {"en": "Version", "hi": "संस्करण", "te": "వెర్షన్"},
     "masked": {"en": "(number hidden — give it at the office)", "hi": "(नंबर छिपाया गया — कार्यालय में दें)",
                "te": "(నంబర్ దాచబడింది — కార్యాలయంలో ఇవ్వండి)"},
 }
@@ -258,8 +264,18 @@ def portal_qr_svg(scheme_id: str) -> str:
 
 # ---------------------------------------------------------------- PDF
 
+# Palette (RGB): the site's deep green, a warm amber for "needs attention", neutral greys.
+INK, MUTED, RULE = (29, 36, 34), (95, 105, 102), (222, 226, 224)
+BRAND, BRAND_SOFT = (15, 92, 77), (232, 243, 240)
+AMBER, AMBER_SOFT = (176, 108, 0), (253, 242, 220)
+GREEN, BLUE = (31, 122, 58), (21, 94, 156)
+TAG_COLOR = {"confirmed": GREEN, "citizen_entered": GREEN, "inferred": BLUE, "missing": AMBER}
+
+
 def render_pdf(h: dict) -> bytes:
-    """The draft as a PDF in h["language"] with Noto fonts (HarfBuzz shaping for Devanagari / Telugu)."""
+    """The draft as a PDF in h["language"] with Noto fonts (HarfBuzz shaping for Devanagari / Telugu): a branded header
+    band, a title block with the draft details, a ruled table with the source of every value, a "bring to the office"
+    panel, the document checklist, numbered steps and the official link with its QR code."""
     import segno
     from fpdf import FPDF
 
@@ -268,34 +284,53 @@ def render_pdf(h: dict) -> bytes:
 
     class DraftPDF(FPDF):
         def header(self):
-            # Watermark on every page, under the content.
-            self.set_font("noto", "B", 26)
-            self.set_text_color(222, 222, 222)
+            # Faint watermark on every page, under the content.
+            self.set_font("noto", "B", 19)
+            self.set_text_color(238, 238, 238)
             with self.rotation(32, x=self.w / 2, y=self.h / 2):
                 text = h["watermark"]
                 self.text(self.w / 2 - self.get_string_width(text) / 2, self.h / 2, text)
-            self.set_text_color(0, 0, 0)
-            self.set_font("noto", "", 8)
-            self.set_y(6)
-            self.cell(0, 4, h["watermark"], align="C", new_x="LMARGIN", new_y="NEXT")
-            self.set_y(14)
+            # Brand band.
+            self.set_fill_color(*BRAND)
+            self.rect(0, 0, self.w, 15, style="F")
+            self.set_fill_color(232, 131, 58)
+            self.rect(0, 15, self.w, 1, style="F")
+            self.set_text_color(255, 255, 255)
+            self.set_font("noto", "B", 13)
+            self.set_xy(self.l_margin, 4.2)
+            self.cell(40, 7, "Anvaya AI")
+            self.set_font("noto", "", 8.5)
+            badge = t("draft_badge", lang)
+            self.set_xy(self.w - self.r_margin - 80, 5)
+            self.cell(80, 5, badge, align="R")
+            self.set_text_color(*INK)
+            self.set_y(22)
 
         def footer(self):
-            self.set_y(-14)
-            self.set_font("noto", "", 8)
-            self.set_text_color(90, 90, 90)
-            wrap_lines = _wrap(self, f"{t('footer', lang)} · {h['watermark_local']} · {self.page_no()}", self.epw)
-            for line in wrap_lines:
-                self.cell(0, 4, line, align="C", new_x="LMARGIN", new_y="NEXT")
-            self.set_text_color(0, 0, 0)
+            self.set_y(-17)
+            self.set_draw_color(*RULE)
+            self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+            self.ln(1.5)
+            self.set_font("noto", "", 7.5)
+            self.set_text_color(*MUTED)
+            for line in _wrap(self, f"{t('footer', lang)} · {h['watermark_local']}", self.epw - 22):
+                self.set_x(self.l_margin)
+                self.cell(self.epw - 22, 3.6, line, new_x="LMARGIN", new_y="NEXT")
+            self.set_xy(self.w - self.r_margin - 20, -15.5)
+            self.cell(20, 4, f"{t('page', lang)} {self.page_no()}", align="R")
+            self.set_text_color(*INK)
+            self.set_draw_color(0, 0, 0)
             # The footer is the last thing drawn on a page (and the last page's is drawn inside output()), so all
             # glyphs used so far are in the subset now.
             _map_substituted_glyphs(self)
 
     pdf = DraftPDF(format="A4")
-    pdf.set_auto_page_break(True, margin=18)
+    pdf.set_margins(16, 22, 16)
+    pdf.set_auto_page_break(True, margin=22)
     pdf.set_title(f"{h['scheme_name']} — draft")
+    pdf.set_author("Anvaya AI")
     pdf.set_creator("Anvaya AI")
+    pdf.set_subject(t("title", lang))
     pdf.add_font("noto", "", str(FONT_DIR / "NotoSans-Regular.ttf"))
     pdf.add_font("noto", "B", str(FONT_DIR / "NotoSans-Bold.ttf"))
     if script == "deva":
@@ -310,72 +345,179 @@ def render_pdf(h: dict) -> bytes:
     pdf.set_text_shaping(True)
     pdf.add_page()
 
-    def para(text, size=10, style="", gap=1.5, indent=0.0):
+    def room(height):
+        if pdf.get_y() + height > pdf.h - 24:
+            pdf.add_page()
+
+    def para(text, size=10, style="", gap=1.5, indent=0.0, color=INK, width=None):
         pdf.set_font("noto", style, size)
+        pdf.set_text_color(*color)
         lh = size * 0.5
-        for line in _wrap(pdf, text, pdf.epw - indent):
+        w = (width if width is not None else pdf.epw) - indent
+        for line in _wrap(pdf, text, w):
+            room(lh)
             pdf.set_x(pdf.l_margin + indent)
-            pdf.cell(pdf.epw - indent, lh, line, new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(w, lh, line, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(*INK)
         pdf.ln(gap)
 
     def heading(text):
-        pdf.ln(2)
-        para(text, 13, "B", gap=1)
+        room(16)
+        pdf.ln(4)
+        y = pdf.get_y()
+        pdf.set_fill_color(*BRAND)
+        pdf.rect(pdf.l_margin, y + 0.6, 1.4, 6, style="F")
+        pdf.set_xy(pdf.l_margin + 4, y)
+        pdf.set_font("noto", "B", 12.5)
+        pdf.set_text_color(*BRAND)
+        pdf.cell(pdf.epw - 4, 7.2, text, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_draw_color(*RULE)
+        pdf.line(pdf.l_margin, pdf.get_y() + 0.8, pdf.w - pdf.r_margin, pdf.get_y() + 0.8)
+        pdf.set_draw_color(0, 0, 0)
+        pdf.set_text_color(*INK)
+        pdf.ln(3.5)
 
-    para(f"{t('title', lang)}: {h['scheme_name']}", 16, "B")
-    para(h["status_label"], 11, "B")
-    para(f"{h['draft_id']} · v{h['version']} · {t('prepared', lang)} {iso()[:10]}", 8)
+    # ---- title block
+    para(t("title", lang).upper() if lang == "en" else t("title", lang), 9, "B", gap=0.5, color=MUTED)
+    para(h["scheme_name"], 19, "B", gap=2.5, color=BRAND)
+    pill = h["status_label"]
+    pdf.set_font("noto", "B", 9.5)
+    pw = min(pdf.epw, pdf.get_string_width(pill) + 10)
+    y = pdf.get_y()
+    pdf.set_fill_color(*AMBER_SOFT)
+    pdf.set_draw_color(*AMBER)
+    pdf.rect(pdf.l_margin, y, pw, 7.4, style="DF", round_corners=True, corner_radius=3.7)
+    pdf.set_text_color(*AMBER)
+    pdf.set_xy(pdf.l_margin + 5, y + 0.9)
+    pdf.cell(pw - 10, 5.6, pill)
+    pdf.set_text_color(*INK)
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_y(y + 11)
+
+    # Details strip: draft id, version, prepared date (and the case code when the citizen shared the draft).
+    cells = [(t("draft_id", lang), h["draft_id"]), (t("version", lang), f"v{h['version']}"), (t("prepared", lang), iso()[:10])]
+    if h["case"] and h["case"].get("code"):
+        cells.append((t("case_code", lang), h["case"]["code"]))
+    y = pdf.get_y()
+    pdf.set_fill_color(*BRAND_SOFT)
+    pdf.rect(pdf.l_margin, y, pdf.epw, 13, style="F")
+    colw = pdf.epw / len(cells)
+    for i, (k, v) in enumerate(cells):
+        pdf.set_xy(pdf.l_margin + i * colw + 4, y + 1.6)
+        pdf.set_font("noto", "", 7.5)
+        pdf.set_text_color(*MUTED)
+        pdf.cell(colw - 4, 4, k)
+        pdf.set_xy(pdf.l_margin + i * colw + 4, y + 6)
+        pdf.set_font("noto", "B", 10 if len(v) < 22 else 8.5)
+        pdf.set_text_color(*INK)
+        pdf.cell(colw - 4, 5, v)
+    pdf.set_y(y + 14)
     if h["case"]:
-        para(f"{t('case', lang)}: {h['case']['case_id']} — {h['case']['status_label']}", 10)
-        if h["case"].get("code"):
-            para(f"{t('case_code', lang)}: {h['case']['code']}", 12, "B")
+        pdf.ln(1.5)
+        para(f"{t('case', lang)}: {h['case']['case_id']} — {h['case']['status_label']}", 9, color=MUTED)
 
+    # ---- details table
     heading(t("fields", lang))
-    widths = [pdf.epw * 0.36, pdf.epw * 0.38, pdf.epw * 0.26]
-    _row(pdf, [t("field", lang), t("value", lang), t("source", lang)], widths, bold=True)
-    for f in h["fields"]:
+    widths = [pdf.epw * 0.34, pdf.epw * 0.40, pdf.epw * 0.26]
+    _row(pdf, [t("field", lang), t("value", lang), t("source", lang)], widths, head=True)
+    for i, f in enumerate(h["fields"]):
         value = f["value"] if f["value"] is not None else f"— {t('bring', lang)}: {f['bring']}"
-        _row(pdf, [f["label"], value, f["tag_label"]], widths, shade=f["tag"] == "missing")
-    pdf.ln(2)
-    heading(t("bring", lang))
-    for o in h["office_only"]:
-        para(f"• {o['label']}: {o['hint']}", 10, gap=0.5)
-    for f in h["fields"]:
-        if f["tag"] == "missing":
-            para(f"• {f['label']}: {f['bring']}", 10, gap=0.5)
+        _row(pdf, [f["label"], value, f["tag_label"]], widths, shade=f["tag"] == "missing", zebra=i % 2 == 1,
+             tag_color=TAG_COLOR.get(f["tag"]))
+    pdf.set_draw_color(*RULE)
+    pdf.line(pdf.l_margin, pdf.get_y(), pdf.l_margin + sum(widths), pdf.get_y())
+    pdf.set_draw_color(0, 0, 0)
 
+    # ---- bring to the office: a panel
+    heading(t("bring", lang))
+    items = [f"{o['label']}: {o['hint']}" for o in h["office_only"]]
+    items += [f"{f['label']}: {f['bring']}" for f in h["fields"] if f["tag"] == "missing"]
+    pdf.set_font("noto", "", 9.5)
+    lines = [_wrap(pdf, it, pdf.epw - 14) for it in items]
+    box_h = sum(len(ls) * 5 + 1.6 for ls in lines) + 5
+    room(box_h)
+    y = pdf.get_y()
+    pdf.set_fill_color(*AMBER_SOFT)
+    pdf.rect(pdf.l_margin, y, pdf.epw, box_h, style="F")
+    pdf.set_fill_color(*AMBER)
+    pdf.rect(pdf.l_margin, y, 1.4, box_h, style="F")
+    cy = y + 3
+    for ls in lines:
+        pdf.set_fill_color(*AMBER)
+        pdf.ellipse(pdf.l_margin + 6, cy + 1.7, 1.4, 1.4, style="F")
+        for j, line in enumerate(ls):
+            pdf.set_xy(pdf.l_margin + 10, cy)
+            pdf.cell(pdf.epw - 14, 5, line)
+            cy += 5
+        cy += 1.6
+    pdf.set_y(y + box_h)
+
+    # ---- document checklist
     heading(t("documents", lang))
     for d in h["documents"]:
         pdf.set_font("noto", "", 10)
+        room(7)
         y = pdf.get_y()
-        pdf.rect(pdf.l_margin, y + 1, 3.5, 3.5)
         if d["ready"]:
-            pdf.line(pdf.l_margin + 0.6, y + 2.8, pdf.l_margin + 1.5, y + 4.0)
-            pdf.line(pdf.l_margin + 1.5, y + 4.0, pdf.l_margin + 3.2, y + 1.4)
-        para(f"{d['label']} — {d['status_label']}", 10, gap=0.5, indent=6)
+            pdf.set_fill_color(*GREEN)
+            pdf.rect(pdf.l_margin, y + 0.9, 4.2, 4.2, style="F", round_corners=True, corner_radius=0.8)
+            pdf.set_draw_color(255, 255, 255)
+            pdf.set_line_width(0.5)
+            pdf.line(pdf.l_margin + 0.9, y + 3.1, pdf.l_margin + 1.8, y + 4.1)
+            pdf.line(pdf.l_margin + 1.8, y + 4.1, pdf.l_margin + 3.4, y + 1.8)
+            pdf.set_line_width(0.2)
+            pdf.set_draw_color(0, 0, 0)
+        else:
+            pdf.set_draw_color(*MUTED)
+            pdf.rect(pdf.l_margin, y + 0.9, 4.2, 4.2, round_corners=True, corner_radius=0.8)
+            pdf.set_draw_color(0, 0, 0)
+        para(f"{d['label']} — {d['status_label']}", 10, gap=1.2, indent=8, color=INK if d["ready"] else (60, 66, 64))
 
+    # ---- steps
     heading(t("steps", lang) + (f" ({t('mt', lang)})" if h["steps_machine_translated"] else ""))
     if h["steps_note"]:
-        para(h["steps_note"], 9)
+        para(h["steps_note"], 9, color=MUTED)
     if not h["steps"]:
         para(t("no_steps", lang), 10)
     n = 0
     for s in h["steps"]:
         if s["heading"]:
-            para(s["text"], 10, "B", gap=0.5)
+            para(s["text"], 10, "B", gap=1, color=BRAND)
             n = 0
             continue
         n += 1
-        para(f"{n}. {s['text']}", 10, gap=0.8, indent=2)
+        pdf.set_font("noto", "", 9.5)
+        need = len(_wrap(pdf, s["text"], pdf.epw - 11)) * 4.75 + 3
+        room(need)
+        y = pdf.get_y()
+        pdf.set_fill_color(*BRAND_SOFT)
+        pdf.ellipse(pdf.l_margin, y + 0.2, 5.6, 5.6, style="F")
+        pdf.set_font("noto", "B", 8.5)
+        pdf.set_text_color(*BRAND)
+        pdf.set_xy(pdf.l_margin, y + 0.9)
+        pdf.cell(5.6, 4.2, str(n), align="C")
+        pdf.set_text_color(*INK)
+        pdf.set_y(y)
+        para(s["text"], 9.5, gap=2, indent=9)
 
+    # ---- official link + QR
     if h["official_link"]:
         heading(t("official_link", lang))
-        para(f"{h['official_link']['label']}: {h['official_link']['url']}", 9)
         buf = io.BytesIO()
-        segno.make(h["official_link"]["url"], error="m").save(buf, kind="png", scale=6, border=2)
-        if pdf.get_y() + 36 > pdf.h - 20:
-            pdf.add_page()
-        pdf.image(io.BytesIO(buf.getvalue()), x=pdf.l_margin, w=32)
+        segno.make(h["official_link"]["url"], error="m").save(buf, kind="png", scale=6, border=1)
+        room(36)
+        y = pdf.get_y()
+        pdf.set_draw_color(*RULE)
+        pdf.set_fill_color(250, 251, 250)
+        pdf.rect(pdf.l_margin, y, pdf.epw, 33, style="DF", round_corners=True, corner_radius=2)
+        pdf.set_draw_color(0, 0, 0)
+        pdf.image(io.BytesIO(buf.getvalue()), x=pdf.l_margin + 3, y=y + 3, w=27)
+        tx = pdf.l_margin + 34
+        pdf.set_xy(tx, y + 4)
+        pdf.set_y(y + 4)
+        para(t("scan", lang), 9, "B", gap=1.5, indent=34, color=BRAND)
+        para(f"{h['official_link']['label']}: {h['official_link']['url']}", 8.5, gap=0, indent=34, color=MUTED)
+        pdf.set_y(y + 35)
 
     return bytes(pdf.output())  # the last footer (rendered here) maps the glyphs it adds
 
@@ -402,26 +544,45 @@ def _wrap(pdf, text: str, width: float) -> list[str]:
     return lines or [""]
 
 
-def _row(pdf, cells: list[str], widths: list[float], bold=False, shade=False) -> None:
-    pdf.set_font("noto", "B" if bold else "", 9.5)
+def _row(pdf, cells: list[str], widths: list[float], head=False, shade=False, zebra=False, tag_color=None) -> None:
+    pdf.set_font("noto", "B" if head else "", 9.5)
     lh = 5
-    wrapped = [_wrap(pdf, c, w - 2) for c, w in zip(cells, widths)]
-    height = max(len(w) for w in wrapped) * lh + 1.5
-    if pdf.get_y() + height > pdf.h - 20:
+    wrapped = [_wrap(pdf, c, w - 5) for c, w in zip(cells, widths)]
+    height = max(len(w) for w in wrapped) * lh + 3.5
+    if pdf.get_y() + height > pdf.h - 24:
         pdf.add_page()
     x0, y0 = pdf.l_margin, pdf.get_y()
-    if shade:
-        pdf.set_fill_color(253, 236, 206)
-        pdf.rect(x0, y0, sum(widths), height, style="F")
+    total = sum(widths)
+    if head:
+        pdf.set_fill_color(*BRAND)
+        pdf.rect(x0, y0, total, height, style="F")
+    elif shade:
+        pdf.set_fill_color(*AMBER_SOFT)
+        pdf.rect(x0, y0, total, height, style="F")
+    elif zebra:
+        pdf.set_fill_color(246, 248, 247)
+        pdf.rect(x0, y0, total, height, style="F")
     x = x0
-    for lines, w in zip(wrapped, widths):
+    for col, (lines, w) in enumerate(zip(wrapped, widths)):
+        pdf.set_font("noto", "B" if head or col == 0 else "", 9.5)
+        if head:
+            pdf.set_text_color(255, 255, 255)
+        elif col == 2 and tag_color:
+            pdf.set_text_color(*tag_color)
+            pdf.set_font("noto", "B", 9)
+        elif col == 1 and shade:
+            pdf.set_text_color(*AMBER)
+        else:
+            pdf.set_text_color(*INK)
         for i, line in enumerate(lines):
-            pdf.set_xy(x + 1, y0 + 0.75 + i * lh)
-            pdf.cell(w - 2, lh, line)
+            pdf.set_xy(x + 2.5, y0 + 1.75 + i * lh)
+            pdf.cell(w - 5, lh, line)
         x += w
-    pdf.set_draw_color(200, 200, 200)
-    pdf.line(x0, y0 + height, x0 + sum(widths), y0 + height)
-    pdf.set_draw_color(0, 0, 0)
+    pdf.set_text_color(*INK)
+    if not head:
+        pdf.set_draw_color(*RULE)
+        pdf.line(x0, y0 + height, x0 + total, y0 + height)
+        pdf.set_draw_color(0, 0, 0)
     pdf.set_xy(x0, y0 + height)
 
 

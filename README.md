@@ -520,6 +520,12 @@ The draft page has a **Form Helper**. Anvaya never submits anything to a governm
 * **PDF** (`GET /api/v1/drafts/<id>/pdf?language=…`): fields with source tags, the document checklist, the case code
   (only if the citizen's browser sends it in `X-Case-Code` and it matches: codes are stored hashed), the steps, the
   link + QR, and the watermark "Draft prepared by Anvaya AI — not submitted to any government office" on every page.
+  Layout (A4): a green brand band with a "DRAFT · NOT SUBMITTED" badge on every page; a title block (scheme name, status pill,
+  a strip with draft id, version, date and case code); a ruled table with a coloured source tag per value (green confirmed /
+  citizen-entered, blue inferred, amber missing, whose row is shaded); an amber "Bring to the office" panel; a tick-box
+  document checklist; numbered steps; the official link in a card with its QR code and a "Scan to open the official page"
+  line; and a footer with the disclaimer and the page number. All labels come in English, Hindi and Telugu
+  (`TEXT` in `formhelper.py`); the colours are the `INK/BRAND/AMBER…` constants above `render_pdf`.
   Noto Sans / Devanagari / Telugu (SIL OFL, `backend/anvaya/data/fonts/`) are embedded, shaped with HarfBuzz
   (fpdf2 + uharfbuzz). Only the draft's owner (same session rules as the draft, including kiosk device + operator) or a
   reviewer / admin once the draft has a case can read it (aal2 for staff); each download is audited without values.
