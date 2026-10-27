@@ -1363,6 +1363,15 @@ Not sure*) fills with its own colour when chosen. The upload form (consent, file
 line that opens by itself once a file is uploaded, so the page is no longer a wall of upload text. *Check schemes again* is a full-width button at the end.
 With no screening yet, an empty state links to the Scheme Passport. Behaviour is unchanged: marking, upload rules, masking and consent work as before.
 
+### Draft page layout
+`/citizen/draft/<id>` opens with a hero card (*Application draft* eyebrow, the scheme name, the case status badge, the "not submitted" notice and a row of small chips:
+draft id, version, origin, screening outcome, rule). Below it, on a wide screen, the details sit on the left and **Send to reviewer** on the right (it stays in
+view while you scroll; on a phone it follows the details). Each detail is a row with a coloured edge (green confirmed, blue inferred, amber missing, which is
+also the row you can fill in) and its source chip. The send card lists the three steps (*check the details, agree to share, get a case code*); once sent, the
+case code is shown on one line with **Copy code** and *Check case status*. Under it, the **Form Helper** has *Download PDF draft* in its header, copy-ready
+fields, a "bring to the office" panel, a tick-box document checklist, numbered application steps and the official link with its QR code. No behaviour
+changed: editing, versions, consent, idempotent hand-off and the PDF are the same. (Document chips use `chip docchip`, not `doc`, which is the Document Guide card.)
+
 ### Read-aloud controls, copy, and the scheme passport download
 * **Stop whenever you like.** Every read-aloud button (scheme summary, Passport code, application steps, case status) turns into **⏹ Stop** while audio plays,
   and while anything plays a floating **Stop** pill shows on any page (so a chat reply read out at a kiosk can be cut off too). Audio also stops when you

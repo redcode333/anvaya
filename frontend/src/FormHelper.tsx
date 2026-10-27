@@ -46,8 +46,11 @@ export function FormHelper({ draftId, caseCode }: { draftId: string; caseCode?: 
   const missing = h.fields.filter((f) => f.tag === "missing");
 
   return (
-    <section className="card stack" aria-labelledby="helper-h">
-      <h2 id="helper-h">{t("formHelper", lang)}</h2>
+    <section className="card stack helper" aria-labelledby="helper-h">
+      <div className="hf-head">
+        <h2 id="helper-h">{t("formHelper", lang)}</h2>
+        <button className="btn primary" onClick={pdf}>⬇ {t("downloadPdf", lang)}</button>
+      </div>
       <div className="notice ok" role="status"><strong>{h.status_label}</strong> · {t("notSubmitted", lang)}</div>
       <p className="tiny">{h.watermark_local}</p>
 
@@ -72,16 +75,16 @@ export function FormHelper({ draftId, caseCode }: { draftId: string; caseCode?: 
       </div>
 
       <h3>{h.labels.documents}</h3>
-      <ul className="small" style={{ margin: 0, paddingLeft: "1.1rem", listStyle: "none" }}>
-        {h.documents.map((d) => <li key={d.doc_key}>{d.ready ? "☑" : "☐"} {d.label} — {d.status_label}</li>)}
+      <ul className="small hf-docs">
+        {h.documents.map((d) => <li key={d.doc_key} data-ready={d.ready}><span aria-hidden="true">{d.ready ? "✓" : ""}</span>{d.label} — {d.status_label}</li>)}
       </ul>
 
       <h3>{h.labels.steps} {h.steps_machine_translated && <span className="chip" title={h.labels.mt}>{h.labels.mt}</span>}</h3>
       {h.steps_note && <p className="tiny">{h.steps_note}</p>}
       {h.steps.length === 0 ? <p className="small">{t("noSteps", lang)}</p> : (
-        <ol className="small" style={{ margin: 0, paddingLeft: "1.3rem" }}>
+        <ol className="small hf-steps">
           {h.steps.map((s, i) => s.heading
-            ? <li key={i} style={{ listStyle: "none", marginLeft: "-1.3rem" }}><strong>{s.text}</strong></li>
+            ? <li key={i} className="hf-step-head"><strong>{s.text}</strong></li>
             : <li key={i}>{s.text}</li>)}
         </ol>
       )}
@@ -93,7 +96,7 @@ export function FormHelper({ draftId, caseCode }: { draftId: string; caseCode?: 
       )}
 
       {h.official_link && (
-        <div className="row" style={{ alignItems: "flex-start" }}>
+        <div className="hf-link">
           {h.qr_url && <img src={h.qr_url} alt={`QR: ${h.official_link.url}`} width={120} height={120} className="qr" />}
           <div className="small"><strong>{h.labels.official_link}</strong><br />
             <a href={h.official_link.url} target="_blank" rel="noopener noreferrer">{h.official_link.label}</a>
@@ -101,7 +104,6 @@ export function FormHelper({ draftId, caseCode }: { draftId: string; caseCode?: 
         </div>
       )}
 
-      <div className="row"><button className="btn primary" onClick={pdf}>⬇ {t("downloadPdf", lang)}</button></div>
       <ErrorNote error={err} />
     </section>
   );

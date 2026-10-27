@@ -60,7 +60,7 @@ function SchemeCard({ r, lang, onDraft, onAnswer }: { r: SchemeResult; lang: Lan
           {r.document_gaps.length > 0 && r.outcome !== "MISMATCH" && (
             <div className="row" style={{ marginTop: ".4rem" }}>
               {r.evidence.filter((e) => r.document_gaps.includes(e.doc_key)).map((e) => (
-                <span key={e.doc_key} className="chip doc" title={e.purpose}>📄 {e.label}: {e.status_label}</span>
+                <span key={e.doc_key} className="chip docchip" title={e.purpose}>📄 {e.label}: {e.status_label}</span>
               ))}
             </div>
           )}
