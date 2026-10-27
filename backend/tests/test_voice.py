@@ -445,3 +445,39 @@ def test_site_language_is_not_the_only_one_tried_for_english_screens(verbx, ctx)
     verbx.queue = [stt("(inaudible)", "en"), stt("मेरी उम्र साठ साल है और मैं बिहार में रहता हूँ")]
     r = voice.transcribe(b"audio", "audio/webm", "en")
     assert r["language"] == "hi" and [c["json"]["language"] for c in verbx.calls] == ["en", "hi"]
+
+
+# ---------------------------------------------------------------- the bot just asked a question; pauses and thinking sounds
+
+def test_a_doubtful_short_reply_to_a_question_is_checked_in_the_other_languages(verbx, ctx):
+    # English speech recognition hears "Telangana" as "The Londoner"; the Telugu reading names the state.
+    verbx.queue = [stt("The Londoner", "en"), stt("द लंडनर", "hi"), stt("తెలంగాణ", "te")]
+    r = voice.transcribe(b"audio", "audio/webm", "en", asked="state")
+    assert r["transcript"] == "తెలంగాణ" and r["language"] == "te" and r["tried"] == ["en", "hi", "te"]
+
+
+def test_without_a_question_a_short_reply_still_costs_one_call(verbx, ctx):
+    verbx.queue = [stt("The Londoner", "en")]
+    assert voice.transcribe(b"audio", "audio/webm", "en")["transcript"] == "The Londoner" and len(verbx.calls) == 1
+
+
+def test_a_short_reply_that_answers_the_question_costs_one_call(verbx, ctx):
+    verbx.queue = [stt("Bihar", "en")]
+    assert voice.transcribe(b"audio", "audio/webm", "en", asked="state")["transcript"] == "Bihar" and len(verbx.calls) == 1
+    verbx.calls.clear()
+    verbx.queue = [stt("no", "en")]
+    assert voice.transcribe(b"audio", "audio/webm", "en", asked="bpl")["transcript"] == "no" and len(verbx.calls) == 1
+
+
+@pytest.mark.parametrize("text", ["umm", "Uh", "hmm", "aa", "अ", "उम्म", "हम्म", "ఆ", "um, uh", "Er..."])
+def test_thinking_sounds_are_dropped_as_no_speech(verbx, ctx, text):
+    verbx.queue = [stt(text, "en")]
+    with pytest.raises(Exception) as e:
+        voice.transcribe(b"audio", "audio/webm", "en")
+    assert e.value.details["reason"] == "no_speech" and len(verbx.calls) == 1  # no retries spent on a pause
+
+
+@pytest.mark.parametrize("text", ["uh-huh", "uh-uh", "hmm yes", "yes", "no", "okay", "हाँ", "Bihar", "umm Bihar", "हम पाँच लोग हैं"])
+def test_real_answers_are_not_fillers(text):
+    from anvaya import extraction
+    assert not extraction.is_filler(text)

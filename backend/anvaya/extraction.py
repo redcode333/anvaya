@@ -565,6 +565,27 @@ def polarity(text: str) -> bool | None:
     return None
 
 
+# Thinking sounds ("umm", "aa", "hmm"): speech recognition writes them down, but they say nothing. "uh-huh" and "uh-uh" are
+# answers (see polarity), so they are not fillers.
+_FILLERS = {"um", "umm", "ummm", "uh", "uhh", "uhhh", "er", "erm", "err", "hm", "hmm", "hmmm", "mm", "mmm", "ah", "ahh", "aah",
+            "aa", "aaa", "oh", "ooh", "eh", "huh", "like", "so", "well", "ok", "okay",
+            "अ", "आ", "अं", "अम", "अम्म", "उम", "उम्म", "हम्म", "हं", "ऊं", "अह", "आह", "ओह", "एह",
+            "అ", "ఆ", "అహ", "ఉమ్", "హ్మ్", "అమ్"}
+_FILLERS_ALONE = {"ok", "okay", "so", "well", "like"}  # real words: only fillers when nothing else is said
+
+
+def is_filler(text: str) -> bool:
+    """True when the transcript is only thinking sounds. Real answers ("yes", "no", "uh-huh") never count."""
+    low = (text or "").lower()
+    if _AFFIRM_SOUNDS.search(low) or _NEG_SOUNDS.search(low):
+        return False
+    toks = _TOKEN.findall(low)
+    if not toks:
+        return True
+    hard = [t for t in toks if t in _FILLERS and t not in _FILLERS_ALONE]
+    return len(hard) == len(toks) and bool(hard)
+
+
 BOOL_ATTRS = ("bpl", "receives_other_pension", "owns_cultivable_land", "has_bank_account", "owns_pucca_house")
 
 # Masculine / feminine first-person verb forms ("रहता हूँ" / "रहती हूँ", "karta hoon" / "karti hoon").

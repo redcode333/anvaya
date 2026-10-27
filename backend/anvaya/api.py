@@ -373,7 +373,8 @@ def transcribe(sid):
     data = f.read()
     if len(data) > 5 * 1024 * 1024:
         raise ApiError("AUDIO_TOO_LARGE", "Audio must be under 5 MB.", 413)
-    return voice.transcribe(data, f.mimetype, request.form.get("language", s["language"]))
+    asked = profile.pending_question(sid)  # what the bot just asked, so a doubtful short reply is checked in the other languages
+    return voice.transcribe(data, f.mimetype, request.form.get("language", s["language"]), asked=asked)
 
 
 @bp.post("/sessions/<sid>/voice/speak")
