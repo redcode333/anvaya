@@ -470,21 +470,43 @@ def _valid(attribute: str, value) -> bool:
         return False
 
 
+LAST_TURN_SQL = "SELECT extracted_json FROM turns WHERE session_id=? ORDER BY created_at DESC LIMIT 1"
+
+
+def _turn_state(row) -> dict:
+    """{"asked": attribute the bot's last reply asked about, "awaiting": fact ids it read back for a yes}."""
+    try:
+        data = json.loads(row["extracted_json"]) if row else {}
+    except (TypeError, ValueError):
+        return {}
+    return {"asked": data.get("asked"), "awaiting": data.get("awaiting") or []}
+
+
 def handle_turn(session_id: str, utterance: str, channel: str = "text", language: str | None = None,
                 needed: set[str] | None = None) -> dict:
-    session, facts, _ = load(session_id)
+    session, facts, (last_turn,) = load(session_id, extra=[(LAST_TURN_SQL, (session_id,))])
     if language and language != session["language"]:
         session = set_language(session_id, language, session, commit=False)
     lang = session["language"]
     if not utterance or len(utterance) > 2000:
         raise ApiError("INVALID_UTTERANCE", "Utterance must be 1–2000 characters.", 422)
 
+    # What the previous turn left open: the attribute the bot asked about (so a bare "नहीं" or "चार" has a meaning) and
+    # the facts it read back and is waiting to hear "yes" for.
+    prior = _turn_state(last_turn.fetchone())
+    asked = prior.get("asked")
+    awaiting = [fid for fid in prior.get("awaiting", [])
+                if facts.get(fid) and not facts.get(fid)["confirmed"] and not facts.get(fid)["superseded_by"]]
+    awaiting_attrs = {facts.get(fid)["attribute"] for fid in awaiting}
+    spoken = channel == "voice"
+
     blocked = guardrails.screen(utterance)  # before extraction and before any LLM call
+    pol = None if blocked else extraction.polarity(utterance)
     if blocked:
         result = {"facts": [], "other_people": [], "intents": [], "glossary": []}
         candidates, llm_summary = [], {"used": False, "result": "blocked", "provider": None, "cached": False}
     else:
-        result = extraction.extract(utterance)
+        result = extraction.extract(utterance, asked=asked)
         candidates, llm_summary = _llm_turn(session, utterance, result["facts"], result["other_people"])
     held = facts.by_attribute()
     applied = []
@@ -492,9 +514,14 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
         if cand.get("source") == "llm" and cand["attribute"] in held:
             continue  # an LLM-only reading never replaces a fact the profile already holds
         # High-impact facts, confusable spoken numbers and values the two extractors disagree on always need explicit
-        # confirmation; voice-derived and LLM-proposed facts all do.
-        auto_confirm = channel == "text" and not cand.get("high_impact") and not cand.get("inferred") \
+        # confirmation (spoken: one "yes" to the read-back). Plain answers such as yes/no to a direct question are
+        # taken as heard; LLM-proposed facts always wait for confirmation.
+        auto_confirm = not cand.get("high_impact") and not cand.get("inferred") \
             and not cand.get("confusable") and not cand.get("hold") and cand.get("source") != "llm"
+        # Saying the value again while it is being read back confirms it.
+        if cand["attribute"] in awaiting_attrs and pol is not False and not cand.get("confusable") \
+                and held.get(cand["attribute"]) and json.loads(held[cand["attribute"]]["value_json"]) == cand["value"]:
+            auto_confirm = True
         alternatives = cand.get("alternatives")
         if channel == "voice" and not alternatives:
             # Speech recognition confuses sound-alike numbers (साठ 60 / सात 7): offer them as one-tap choices.
@@ -514,20 +541,40 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
         if res["changed"]:
             applied.append({**res["fact"], "previous": res["previous"]})
 
+    # A spoken "yes" to the read-back confirms everything that was read out.
+    said_yes = False
+    if awaiting and pol is True:
+        for fid in awaiting:
+            row = facts.get(fid)
+            if row and not row["confirmed"] and not row["superseded_by"]:
+                facts.confirm(row)
+                said_yes = True
+        if said_yes:
+            audit("profile.confirmed_by_voice", session_id=session_id, details={"fact_ids": awaiting})
+    said_no = bool(awaiting) and pol is False and not applied
+
     wf = refresh_workflow_state(session_id, session, facts)
     parts = []
     guard = blocked
     settled = [f for f in applied if not f["disputed"]]
-    if settled:
+    # By voice only what still needs a "yes" is read back; facts taken as heard are not repeated.
+    to_read = [f for f in settled if not f["confirmed"]] if spoken else settled
+
+    def _read(fs: list[dict]) -> str:
         heard = ", ".join(
             f"{i18n.t(i18n.ATTRIBUTE_LABELS, f['attribute'], lang)}: {display_value(f['attribute'], f['value'], lang)}"
-            for f in settled
+            for f in fs
         )
-        parts.append(f"{i18n.t(i18n.MESSAGES, 'heard', lang)} {heard}.")
-    elif not applied:
+        return f"{i18n.t(i18n.MESSAGES, 'heard', lang)} {heard}."
+
+    if to_read:
+        parts.append(_read(to_read))
+    elif not applied and not said_yes and not said_no:
         kind = blocked or (guardrails.no_details(utterance) if not result["other_people"] else "nothing_heard")
         guard = guard or (kind if kind != "nothing_heard" else None)
         parts.append(i18n.t(i18n.MESSAGES, "nothing_heard" if kind == "nothing_heard" else f"guard_{kind}", lang))
+        if kind == "nothing_heard" and asked in extraction.BOOL_ATTRS:
+            parts.append(i18n.t(i18n.MESSAGES, "answer_yes_no", lang))
     for f in applied:
         if f["disputed"]:
             a, b = (display_value(f["attribute"], v, lang) for v in f["alternatives"][:2])
@@ -541,19 +588,44 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
     for o in result["other_people"]:
         parts.append(i18n.t(i18n.MESSAGES, "relative_age_ignored", lang, relation=o["relation"], age=o["value"]))
     q = next_question(session_id, lang, needed, facts.current())
-    if wf == "PROFILE_NEEDS_CONFIRMATION":
-        parts.append(i18n.t(i18n.MESSAGES, "please_confirm", lang))
-    if q:
-        parts.append(q["text"])
-    elif wf != "PROFILE_NEEDS_CONFIRMATION":
-        parts.append(i18n.t(i18n.MESSAGES, "ready", lang))
+    next_asked, next_awaiting = None, []
+    if said_no:
+        # "No" to the read-back: ask for the right value instead of moving on.
+        attr = facts.get(awaiting[0])["attribute"]
+        parts.append(i18n.t(i18n.MESSAGES, "correct_it", lang, label=i18n.t(i18n.ATTRIBUTE_LABELS, attr, lang)))
+        next_asked = attr
+    elif spoken:
+        # Everything still unconfirmed and important is read back with one question, answered by one "yes".
+        waiting = [f for f in facts.unconfirmed_critical() if not f["disputed"] and f["fact_id"] not in {x["fact_id"] for x in to_read}]
+        if waiting and not to_read:
+            parts.append(_read(waiting))
+        if to_read or waiting:
+            parts.append(i18n.t(i18n.MESSAGES, "confirm_question", lang))
+            next_awaiting = [f["fact_id"] for f in to_read] + [f["fact_id"] for f in waiting]
+        else:
+            if said_yes:
+                parts.insert(0, i18n.t(i18n.MESSAGES, "okay", lang))
+            parts.append(q["text"] if q else i18n.t(i18n.MESSAGES, "ready", lang))
+            next_asked = q["attribute"] if q else None
+        disputed = next((f for f in applied if f["disputed"]), None)
+        if disputed:
+            next_asked = disputed["attribute"]
+    else:
+        if wf == "PROFILE_NEEDS_CONFIRMATION":
+            parts.append(i18n.t(i18n.MESSAGES, "please_confirm", lang))
+        if q:
+            parts.append(q["text"])
+        elif wf != "PROFILE_NEEDS_CONFIRMATION":
+            parts.append(i18n.t(i18n.MESSAGES, "ready", lang))
+        next_asked = q["attribute"] if q else None
     reply = " ".join(parts)
 
     db = get_db()
     db.execute(
         "INSERT INTO turns(turn_id, session_id, language, utterance, channel, extracted_json, reply, created_at) VALUES (?,?,?,?,?,?,?,?)",
         (new_id("TRN"), session_id, lang, guardrails.placeholder(blocked) if blocked else utterance, channel,
-         dumps({**result, "llm": llm_summary}), reply, iso()),
+         dumps({**result, "llm": llm_summary, "asked": next_asked, "awaiting": next_awaiting}), reply,
+         now().isoformat()),  # microseconds: the next turn finds this one as the latest even within the same second
     )
     metrics.TURNS.labels(channel, lang).inc()
     for f in applied:

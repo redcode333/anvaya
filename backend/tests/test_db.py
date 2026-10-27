@@ -223,7 +223,9 @@ def test_queries_per_request_stay_within_budget(app, client, caplog, monkeypatch
     sid = r.json["session_id"]
     assert (q, rt) == (3, 2)  # the session insert + audit, plus the rate-limit counter (a database round trip of its own)
     r, q, rt = _counts(caplog, lambda: client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": TC1}))
-    assert r.status_code == 200 and q <= 6 and rt <= 2, (q, rt)
+    # 7 queries: one is the previous turn (what the bot asked, what it is waiting for a "yes" on), batched into the
+    # session load so it costs no extra round trip.
+    assert r.status_code == 200 and q <= 7 and rt <= 2, (q, rt)
     pending = client.post(f"/api/v1/sessions/{sid}/profile/confirm-all").json["needs_confirmation"]
     for fid in pending:
         client.patch(f"/api/v1/sessions/{sid}/profile/facts/{fid}", json={"confirmed": True})

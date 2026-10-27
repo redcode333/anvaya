@@ -369,7 +369,9 @@ def test_turn_reply_and_summary_come_in_speakable_sentences(client):
     r = client.post(f"/api/v1/sessions/{sid}/turns", json={"utterance": BIHAR, "channel": "voice"}).json
     from anvaya import i18n
     assert r["reply"] == " ".join(r["reply_segments"])
-    assert i18n.t(i18n.MESSAGES, "please_confirm", "hi") in r["reply_segments"]
+    # By voice the important facts are read back with one spoken question, not sent to the profile card.
+    assert i18n.t(i18n.MESSAGES, "confirm_question", "hi") in r["reply_segments"]
+    assert i18n.t(i18n.MESSAGES, "please_confirm", "hi") not in r["reply_segments"]
 
 
 def test_cleanup_keeps_prerendered_audio(verbx, ctx):
