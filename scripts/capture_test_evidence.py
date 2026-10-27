@@ -587,10 +587,15 @@ def build_report(runs, env, pages):
         return s
 
     index = (OUT / "README.md").read_text(encoding="utf-8")
-    body = md_to_html(index.replace("TC1.md", "#tc1").replace("TC2.md", "#tc2").replace("TC3.md", "#tc3").replace("TC4.md", "#tc4").replace("TC5.md", "#tc5"))
+    for n in range(1, 6):  # links between pages become in-document anchors (only the "(TCn.md)" link targets, not the file names in prose)
+        index = index.replace(f"(TC{n}.md)", f"(#tc{n})")
+    index = "\n".join(ln for ln in index.splitlines() if "printable version" not in ln)  # the PDF does not point at itself
+    body = md_to_html(index)
     for tc, md in pages.items():
         body += f"<section class='tc' id='{tc.lower()}'>" + md_to_html(md) + "</section>"
-    css = ("body{font:14px/1.5 'Segoe UI',system-ui,sans-serif;color:#1d2422;max-width:980px;margin:2rem auto;padding:0 1rem}"
+    css = ("@page{size:A4;margin:14mm}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}"
+           "pre{white-space:pre-wrap;word-break:break-word}td,th{word-break:break-word}"
+           "body{font:14px/1.5 'Segoe UI',system-ui,sans-serif;color:#1d2422;max-width:980px;margin:2rem auto;padding:0 1rem}"
            "h1{font-size:24px;color:#0f5c4d;border-bottom:3px solid #E8833A;padding-bottom:.3rem}h2{font-size:17px;color:#0f5c4d;margin-top:1.6rem}"
            "table{border-collapse:collapse;width:100%;margin:.6rem 0;font-size:12.5px}th{background:#0f5c4d;color:#fff;text-align:left}"
            "th,td{border:1px solid #d9dedc;padding:5px 8px;vertical-align:top}tr:nth-child(even) td{background:#f6f8f7}"
@@ -606,7 +611,18 @@ def build_report(runs, env, pages):
 
 
 # ------------------------------------------------------------------------------------------------ main
+def docs_only():
+    """Rebuild the written pages, the HTML report and the PDF from the saved records (no servers, no browser, screenshots kept)."""
+    runs = {tc: json.loads((DATA / f"{tc}.json").read_text(encoding="utf-8")) for tc in ("TC1", "TC2", "TC3", "TC4", "TC5")}
+    env = json.loads((DATA / "environment.json").read_text(encoding="utf-8"))
+    pages, _ = write_docs(runs, env)
+    build_report(runs, env, pages)
+    print("docs rebuilt:", OUT)
+
+
 def main():
+    if "--docs-only" in sys.argv:
+        return docs_only()
     for d in (OUT, SHOTS, DATA):
         d.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:

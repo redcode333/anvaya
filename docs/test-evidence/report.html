@@ -1,16 +1,15 @@
-<!doctype html><html lang='en'><head><meta charset='utf-8'><title>Anvaya: official test cases, evidence</title><style>body{font:14px/1.5 'Segoe UI',system-ui,sans-serif;color:#1d2422;max-width:980px;margin:2rem auto;padding:0 1rem}h1{font-size:24px;color:#0f5c4d;border-bottom:3px solid #E8833A;padding-bottom:.3rem}h2{font-size:17px;color:#0f5c4d;margin-top:1.6rem}table{border-collapse:collapse;width:100%;margin:.6rem 0;font-size:12.5px}th{background:#0f5c4d;color:#fff;text-align:left}th,td{border:1px solid #d9dedc;padding:5px 8px;vertical-align:top}tr:nth-child(even) td{background:#f6f8f7}img{max-width:100%;border:1px solid #d9dedc;border-radius:8px;margin:.4rem 0}blockquote{margin:.5rem 0;padding:.4rem .8rem;border-left:4px solid #E8833A;background:#fdf2dc}code{background:#eef2f1;padding:1px 4px;border-radius:4px;font-size:.9em}pre{background:#eef2f1;padding:.6rem;border-radius:8px;overflow:auto}.li{margin:.15rem 0 .15rem 1rem}section.tc{page-break-before:always}p{margin:.4rem 0}</style></head><body><h1>Official test cases: evidence pack</h1>
+<!doctype html><html lang='en'><head><meta charset='utf-8'><title>Anvaya: official test cases, evidence</title><style>@page{size:A4;margin:14mm}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}pre{white-space:pre-wrap;word-break:break-word}td,th{word-break:break-word}body{font:14px/1.5 'Segoe UI',system-ui,sans-serif;color:#1d2422;max-width:980px;margin:2rem auto;padding:0 1rem}h1{font-size:24px;color:#0f5c4d;border-bottom:3px solid #E8833A;padding-bottom:.3rem}h2{font-size:17px;color:#0f5c4d;margin-top:1.6rem}table{border-collapse:collapse;width:100%;margin:.6rem 0;font-size:12.5px}th{background:#0f5c4d;color:#fff;text-align:left}th,td{border:1px solid #d9dedc;padding:5px 8px;vertical-align:top}tr:nth-child(even) td{background:#f6f8f7}img{max-width:100%;border:1px solid #d9dedc;border-radius:8px;margin:.4rem 0}blockquote{margin:.5rem 0;padding:.4rem .8rem;border-left:4px solid #E8833A;background:#fdf2dc}code{background:#eef2f1;padding:1px 4px;border-radius:4px;font-size:.9em}pre{background:#eef2f1;padding:.6rem;border-radius:8px;overflow:auto}.li{margin:.15rem 0 .15rem 1rem}section.tc{page-break-before:always}p{margin:.4rem 0}</style></head><body><h1>Official test cases: evidence pack</h1>
 <p>Prepared 27 October 2026 from commit <code>ff3627f</code> (3,534 catalogue schemes, 17 reviewed rules, rule bundle <code>rules-2026.10.1</code>).</p>
 <p>The brief asks to <i>run each scenario and capture the input, actual result and evidence, and explain any difference from the expected result.</i> This folder does exactly that.</p>
 <h2>Summary</h2>
 <table>
 <tr><th>Case</th><th>Scenario</th><th>Brief expects</th><th>Result</th><th>Checks</th><th>Page</th></tr>
-<tr><td>TC1</td><td>Eligible household</td><td>scheme list with rules quoted</td><td>✅ PASS</td><td>6/6</td><td><a href='#tc1'>#tc1</a></td></tr>
-<tr><td>TC2</td><td>Same scheme name in two states</td><td>correct state used</td><td>✅ PASS</td><td>6/6</td><td><a href='#tc2'>#tc2</a></td></tr>
-<tr><td>TC3</td><td>Age misheard</td><td>confirmed before filtering</td><td>✅ PASS</td><td>7/7</td><td><a href='#tc3'>#tc3</a></td></tr>
-<tr><td>TC4</td><td>Provisional eligibility</td><td>never promised as a benefit</td><td>✅ PASS</td><td>7/7</td><td><a href='#tc4'>#tc4</a></td></tr>
-<tr><td>TC5</td><td>Returning citizen</td><td>extra case</td><td>✅ PASS</td><td>8/8</td><td><a href='#tc5'>#tc5</a></td></tr>
+<tr><td>TC1</td><td>Eligible household</td><td>scheme list with rules quoted</td><td>✅ PASS</td><td>6/6</td><td><a href='#tc1'>TC1.md</a></td></tr>
+<tr><td>TC2</td><td>Same scheme name in two states</td><td>correct state used</td><td>✅ PASS</td><td>6/6</td><td><a href='#tc2'>TC2.md</a></td></tr>
+<tr><td>TC3</td><td>Age misheard</td><td>confirmed before filtering</td><td>✅ PASS</td><td>7/7</td><td><a href='#tc3'>TC3.md</a></td></tr>
+<tr><td>TC4</td><td>Provisional eligibility</td><td>never promised as a benefit</td><td>✅ PASS</td><td>7/7</td><td><a href='#tc4'>TC4.md</a></td></tr>
+<tr><td>TC5</td><td>Returning citizen</td><td>extra case</td><td>✅ PASS</td><td>8/8</td><td><a href='#tc5'>TC5.md</a></td></tr>
 </table>
-<p><b>34 of 34 checks pass</b> across the five scenarios. A printable version with all screenshots is in <a href='Anvaya-test-evidence.pdf'><code>Anvaya-test-evidence.pdf</code></a> (same content as <a href='report.html'><code>report.html</code></a>).</p>
 <p><img src='screenshots/00-test-runs-page.png' alt='All five scenarios on the test-runs page'></p>
 <h2>What each case shows</h2>
 <p class='li'><i> <b><a href='#tc1'>TC1</a></b>: a household's facts become a scheme list; every condition quotes the official sentence and links its source. Results are </i>provisional*, never "eligible".</p>
@@ -38,7 +37,7 @@ backend/.venv/Scripts/python.exe scripts/capture_test_evidence.py
 <p>It uses a throwaway database with no Supabase, no LLM and no speech service, so it is repeatable. The same scenarios can be run by an admin on the app's <code>/test-runs</code> page, and <code>POST /api/v1/test-runs/TC1…TC5</code> returns the same record.</p>
 <p>The automated test-suite also runs them (<code>backend/tests/test_api.py</code>).</p>
 <h2>Files</h2>
-<p><code>#tc1 … #tc5</code> (one page per case) · <code>report.html</code> / <code>Anvaya-test-evidence.pdf</code> (printable) · <code>data/TCn.json</code> (raw records) · <code>data/environment.json</code> · <code>screenshots/</code> · <code>../../scripts/capture_test_evidence.py</code> (regenerates everything).</p><section class='tc' id='tc1'><h1>TC1 · Eligible household</h1>
+<p><code>TC1.md … TC5.md</code> (one page per case) · <code>report.html</code> / <code>Anvaya-test-evidence.pdf</code> (printable) · <code>data/TCn.json</code> (raw records) · <code>data/environment.json</code> · <code>screenshots/</code> · <code>../../scripts/capture_test_evidence.py</code> (regenerates everything).</p><section class='tc' id='tc1'><h1>TC1 · Eligible household</h1>
 <table>
 <tr><th><b>Brief expects</b></th><th>scheme list with rules quoted</th></tr>
 <tr><td><b>Result</b></td><td>✅ PASS (6/6 checks)</td></tr>
