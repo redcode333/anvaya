@@ -560,7 +560,7 @@ def handoff(draft_id):
 
 @bp.post("/cases/status")
 def case_status():
-    return cases.public_status(body().get("code", ""))
+    return cases.public_status(body().get("code", ""), body().get("language"))
 
 
 # ---------------------------------------------------------------- reviewer

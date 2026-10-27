@@ -66,11 +66,15 @@ function LangSwitch() {
 }
 
 export default function App() {
-  const { mode, lang, staff } = useApp();
+  const { mode, lang, staff, sessionId, endCitizenSession } = useApp();
   const loc = useLocation();
   const landing = loc.pathname === "/";
   const role = staff?.role;
   const reviewer = role === "reviewer" || role === "admin";
+  // Pages that belong to a conversation in progress. Opening the Citizen tab from anywhere else starts a new one: a
+  // saved session is only picked up on purpose (Resume with Passport code, My Passports), never by browsing back.
+  const inJourney = loc.pathname === "/citizen" || /^\/citizen\/(schemes|documents|draft)(\/|$)/.test(loc.pathname);
+  const startFresh = () => { if (mode !== "kiosk" && sessionId && !inJourney) endCitizenSession("user"); };
   const inStaffArea = /^\/(staff|reviewer|admin|test-runs|profile)/.test(loc.pathname);
   return (
     <>
@@ -85,7 +89,7 @@ export default function App() {
           {!landing && (
             <>
               <nav className="nav" aria-label="Main">
-                <NavLink to={mode === "kiosk" ? "/kiosk" : "/citizen"}>Citizen</NavLink>
+                <NavLink to={mode === "kiosk" ? "/kiosk" : "/citizen"} onClick={startFresh}>Citizen</NavLink>
                 {mode !== "kiosk" && <NavLink to="/citizen/passports">{t("myPassports", lang)}</NavLink>}
                 <NavLink to="/case">Case status</NavLink>
                 {/* The public tabs end with one "Staff" door (/staff: sign-in, or a hub for the signed-in role). The role tabs

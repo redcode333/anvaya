@@ -1333,6 +1333,16 @@ Voice is the interface, so its limits are the product's limits.
 * **No filing:** drafts are prepared for a citizen to take to an office or portal; there is no submission, status sync
   from a government system, or CSC hand-off.
 
+### Case status and a fresh start
+* **Case status** (`/case`, `POST /cases/status`) answers in the language the site is showing, not the one the case was started in: the request carries
+  `language` (`en`/`hi`/`te`; anything else falls back to the case's language). The status, the notice, the labels and the scheme name (machine-translated,
+  cached) follow it, and the page asks again when the language is switched. After a lookup the summary is **read aloud automatically**, and the button
+  becomes *Stop* while it plays; opening the page from a link or switching language never starts audio by itself (browsers block it, and it would surprise
+  the visitor). If audio cannot play, the text stays on screen with an "audio unavailable" note.
+* **New conversation by default.** Opening the *Citizen* tab from any page other than a conversation in progress (profile, schemes, documents, draft) ends the
+  old session and starts a new one, so earlier details are not loaded again. A saved session returns only on purpose: *Resume with Passport code*, or *My Passports*.
+  A reload inside the same tab still keeps the conversation going.
+
 ### Conversation guardrails
 Every typed or spoken turn passes through `backend/anvaya/guardrails.py` **before** extraction and before any LLM call. The checks are plain
 pattern rules (no model), so they cannot be talked around, and the reply comes in the session language (English, Hindi, Telugu).

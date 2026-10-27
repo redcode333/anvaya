@@ -4,7 +4,7 @@ import secrets
 
 from flask import current_app, request
 
-from . import catalogue, i18n, metrics, profile, ratelimit, rules_engine
+from . import catalogue, i18n, metrics, profile, ratelimit, rules_engine, translation
 from .common import ApiError, audit, sha256
 from .db import dumps, get_db, iso, iso_in, new_id, now, parse_iso
 
@@ -255,8 +255,9 @@ def _find_case_by_code(code: str):
     return row, "OK"
 
 
-def public_status(code: str) -> dict:
-    """Citizen resume: status only. A code alone never returns profile facts."""
+def public_status(code: str, language: str | None = None) -> dict:
+    """Citizen resume: status only. A code alone never returns profile facts. Text comes back in the language the
+    citizen is viewing the site in (en/hi/te), else the language the case was started in."""
     rate_limit("public_status")
     row, st = _find_case_by_code(code)
     if st == "NOT_FOUND":
@@ -265,16 +266,19 @@ def public_status(code: str) -> dict:
         raise ApiError("CODE_NOT_FOUND", "No case matches this code.", 404)
     if st == "EXPIRED":
         raise ApiError("CODE_EXPIRED", "This code has expired. Ask the kiosk operator or reviewer for help.", 410)
-    lang = row["language"]
+    lang = language if language in ("en", "hi", "te") else row["language"]
     status_label = i18n.t(i18n.CASE_STATUS, row["status"], lang)
+    scheme_name = row["scheme_name"]
+    localized = translation.translate_many([scheme_name], "en", lang).get(scheme_name) if lang != "en" else None
     return {
         "status": row["status"], "status_label": status_label, "updated_at": row["updated_at"],
         "review_outcome": row["review_outcome"],
         "review_outcome_label": i18n.t(i18n.REVIEW_OUTCOMES, row["review_outcome"], lang) if row["review_outcome"] else None,
-        "scheme_name": row["scheme_name"], "language": lang,
+        "scheme_name": localized or scheme_name, "scheme_name_en": scheme_name, "scheme_name_machine_translated": bool(localized),
+        "language": lang,
         "spoken_summary": i18n.t(i18n.MESSAGES, "status_line", lang, status=status_label, ts=row["updated_at"][:16].replace("T", " ")),
         "correction_note": row["reviewer_note"] if row["status"] == "CORRECTION_REQUESTED" else None,
-        "notice": "Status of a draft review. No government submission has been made.",
+        "notice": i18n.t(i18n.MESSAGES, "status_notice", lang),
     }
 
 

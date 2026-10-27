@@ -41,6 +41,12 @@ const S = {
   source: { en: "Source", hi: "स्रोत", te: "మూలం" },
   prepareDraft: { en: "Prepare draft", hi: "ड्राफ़्ट तैयार करें", te: "డ్రాఫ్ట్ సిద్ధం చేయండి" },
   listen: { en: "Listen to summary", hi: "सारांश सुनें", te: "సారాంశం వినండి" },
+  stopListening: { en: "Stop", hi: "रोकें", te: "ఆపండి" },
+  updatedAt: { en: "Updated", hi: "अपडेट", te: "నవీకరణ" },
+  reviewerNote: { en: "Reviewer note", hi: "समीक्षक का नोट", te: "సమీక్షకుని గమనిక" },
+  codeHelp: { en: "The code shows status only. Personal details are never shown from a code alone; lookups are rate-limited.",
+    hi: "कोड केवल स्थिति दिखाता है। केवल कोड से व्यक्तिगत जानकारी कभी नहीं दिखाई जाती; खोजों की सीमा तय है।",
+    te: "కోడ్ స్థితిని మాత్రమే చూపిస్తుంది. కోడ్ ఒక్కటే ఉంటే వ్యక్తిగత వివరాలు చూపబడవు; శోధనలకు పరిమితి ఉంది." },
   audioUnavailable: { en: "Audio unavailable — please read the text.", hi: "ऑडियो उपलब्ध नहीं — कृपया लिखा हुआ पढ़ें।", te: "ఆడియో అందుబాటులో లేదు — దయచేసి వచనం చదవండి." },
   notApproval: {
     en: "Preliminary screening only — not an approval and not a guarantee of benefit.",

@@ -259,6 +259,11 @@ MESSAGES = {
         "te": "లేని పత్రాలు: {docs}.",
     },
     "summary_scheme": {"en": "{name}: {outcome}.", "hi": "{name}: {outcome}।", "te": "{name}: {outcome}."},
+    "status_notice": {
+        "en": "Status of a draft review. No government submission has been made.",
+        "hi": "यह ड्राफ़्ट समीक्षा की स्थिति है। सरकार को कोई आवेदन जमा नहीं किया गया है।",
+        "te": "ఇది డ్రాఫ్ట్ సమీక్ష స్థితి. ప్రభుత్వానికి ఎలాంటి దరఖాస్తు సమర్పించలేదు.",
+    },
     "status_line": {
         "en": "Your case status is: {status}. Updated {ts}.",
         "hi": "आपके केस की स्थिति: {status}। अपडेट {ts}।",

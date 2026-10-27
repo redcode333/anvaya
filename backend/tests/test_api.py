@@ -113,6 +113,11 @@ def test_handoff_needs_consent_and_is_idempotent(client):
     assert a["case_id"] == b["case_id"] and a["code"] == b["code"] and a["status"] == "PENDING_REVIEW"
     s = client.post("/api/v1/cases/status", json={"code": a["code"].lower()}).json
     assert s["status"] == "PENDING_REVIEW" and "facts" not in s
+    # The text follows the language the citizen is viewing the site in, not the one the case was started in.
+    hi = client.post("/api/v1/cases/status", json={"code": a["code"], "language": "hi"}).json
+    assert hi["language"] == "hi" and hi["status_label"] == "समीक्षक की प्रतीक्षा में" and "समीक्षक" in hi["spoken_summary"]
+    assert "सरकार" in hi["notice"] and hi["scheme_name_en"]
+    assert client.post("/api/v1/cases/status", json={"code": a["code"], "language": "xx"}).json["language"] == "en"
 
 
 def test_reviewer_requires_role_and_flow(client, reviewer, operator):
