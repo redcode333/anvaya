@@ -544,7 +544,7 @@ _NO = {"नहीं", "नही", "नहि", "ना", "न", "गलत", "
 
 _QUESTION_WORDS = {"क्यों", "क्यूँ", "क्यूं", "क्या", "कैसे", "कौन", "कब", "कहाँ", "कहां", "किसलिए", "why", "what", "how", "who", "when", "where",
                    "ఎందుకు", "ఏమిటి", "ఎలా", "ఎవరు", "ఎప్పుడు", "ఎక్కడ"}
-_FILLER = {"i", "do", "so", "please", "that", "that's", "thats", "s", "is", "it", "its", "the", "all", "good", "fine", "thank", "thanks", "you",
+_ANSWER_FILLER = {"i", "do", "so", "please", "that", "that's", "thats", "s", "is", "it", "its", "the", "all", "good", "fine", "thank", "thanks", "you",
            "sir", "ji", "bhai", "यह", "ये", "वह", "तो", "और", "भी", "बस", "अच्छा", "एकदम", "కదా", "అండి"}
 _AFFIRM_SOUNDS = re.compile(r"\b(?:uh[\s-]?huh|mm+[\s-]?hm+|mhm+|hmm+\s+(?:yes|yeah|ok(?:ay)?)|yup|aha)\b")
 _NEG_SOUNDS = re.compile(r"\b(?:uh[\s-]?uh|nuh[\s-]?uh|mm+[\s-]?mm+|nah)\b")
@@ -576,10 +576,31 @@ def is_plain_answer(text: str) -> bool:
     low = (text or "").lower()
     if _AFFIRM_SOUNDS.search(low) or _NEG_SOUNDS.search(low):
         low = _NEG_SOUNDS.sub(" ", _AFFIRM_SOUNDS.sub(" ", low))
-        extra = {t for t in _TOKEN.findall(low)} - _FILLER
+        extra = {t for t in _TOKEN.findall(low)} - _ANSWER_FILLER
         return not extra and polarity(text) is not None
     toks = {t for t in _TOKEN.findall(low)}
-    return bool(toks) and toks <= (_STRONG_YES | _WEAK_YES | _NO | _FILLER) and polarity(text) is not None
+    return bool(toks) and toks <= (_STRONG_YES | _WEAK_YES | _NO | _ANSWER_FILLER) and polarity(text) is not None
+
+
+# Thinking sounds ("umm", "aa", "hmm"): speech recognition writes them down, but they say nothing. "uh-huh" and "uh-uh" are
+# answers (see polarity), so they are not fillers.
+_FILLERS = {"um", "umm", "ummm", "uh", "uhh", "uhhh", "er", "erm", "err", "hm", "hmm", "hmmm", "mm", "mmm", "ah", "ahh", "aah",
+            "aa", "aaa", "oh", "ooh", "eh", "huh", "like", "so", "well", "ok", "okay",
+            "अ", "आ", "अं", "अम", "अम्म", "उम", "उम्म", "हम्म", "हं", "ऊं", "अह", "आह", "ओह", "एह",
+            "అ", "ఆ", "అహ", "ఉమ్", "హ్మ్", "అమ్"}
+_FILLERS_ALONE = {"ok", "okay", "so", "well", "like"}  # real words: only fillers when nothing else is said
+
+
+def is_filler(text: str) -> bool:
+    """True when the transcript is only thinking sounds. Real answers ("yes", "no", "uh-huh") never count."""
+    low = (text or "").lower()
+    if _AFFIRM_SOUNDS.search(low) or _NEG_SOUNDS.search(low):
+        return False
+    toks = _TOKEN.findall(low)
+    if not toks:
+        return True
+    hard = [t for t in toks if t in _FILLERS and t not in _FILLERS_ALONE]
+    return len(hard) == len(toks) and bool(hard)
 
 
 BOOL_ATTRS = ("bpl", "receives_other_pension", "owns_cultivable_land", "has_bank_account", "owns_pucca_house")

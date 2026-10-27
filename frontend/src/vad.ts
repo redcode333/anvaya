@@ -18,7 +18,7 @@ export type VadConfig = {
 
 export const DEFAULT_VAD: VadConfig = {
   minThreshold: 0.02, floorMultiple: 3.5, botMultiple: 1.8, onsetMs: 120, botOnsetMs: 260,
-  hangMs: 1000, minSpeechMs: 300, maxUtteranceMs: 30000,
+  hangMs: 1000, minSpeechMs: 450, maxUtteranceMs: 30000,
 };
 
 export class Vad {

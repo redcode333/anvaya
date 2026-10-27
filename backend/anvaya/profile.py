@@ -485,6 +485,12 @@ def _turn_state(row) -> dict:
             "skipped": data.get("skipped") or [], "quiet": bool(data.get("quiet"))}
 
 
+def pending_question(session_id: str) -> str | None:
+    """The attribute the bot's latest reply asked about (None when it asked nothing or there is no reply yet)."""
+    row = get_db().execute(LAST_TURN_SQL, (session_id,)).fetchone()
+    return _turn_state(row).get("asked")
+
+
 def handle_turn(session_id: str, utterance: str, channel: str = "text", language: str | None = None,
                 needed: set[str] | None = None) -> dict:
     session, facts, (last_turn,) = load(session_id, extra=[(LAST_TURN_SQL, (session_id,))])

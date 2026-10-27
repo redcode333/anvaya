@@ -116,18 +116,20 @@ def _plausible(text: str, lang: str) -> bool:
     return sum(c.isascii() for c in letters) / len(letters) >= 0.8
 
 
-def _fact_count(text: str) -> int:
-    return len(extraction.extract(text).get("facts", []))
+def _fact_count(text: str, asked: str | None = None) -> int:
+    return len(extraction.extract(text, asked=asked).get("facts", []))
 
 
-def transcribe(audio: bytes, mimetype: str, language: str) -> dict:
+def transcribe(audio: bytes, mimetype: str, language: str, asked: str | None = None) -> dict:
     """POST /v1/stt with base64 audio (wav/mp3/ogg/webm), asking for the site language first. That answer is accepted
     when it is believable (not a placeholder, not repeated-token noise, in the right script) and either yields two or
     more facts or is a short reply ("yes", "Bihar"). Anything thinner is compared with what VerbX hears when told the
     audio is English (and, if nothing is believable, with the third language), and the believable transcript with the
     most facts wins. So English or Hinglish spoken on a Hindi or Telugu screen, or the reverse, still works. An empty
     transcript counts as a failure: VerbX answers 200 with empty text and degraded=true for unusable audio, and that is
-    not retried."""
+    not retried. `asked` is the attribute the bot just asked about: with a question waiting, a short reply that gives no
+    fact ("The Londoner" for "Telangana") is not accepted on sight but compared with the other languages too. A transcript
+    of only thinking sounds ("umm", "aa") is dropped as no speech."""
     requested = _lang(language)
     # English second: it is the usual mismatch (English or Hinglish spoken on a Hindi / Telugu screen), and it is also
     # what VerbX returns for Hindi / Telugu speech it is told is English, so it doubles as a cross-check.
@@ -154,11 +156,17 @@ def transcribe(audio: bytes, mimetype: str, language: str) -> dict:
                 raise ApiError("VOICE_UNAVAILABLE", "No speech was recognised in that recording; please try again or type.",
                                503, {"reason": "no_speech"})
             continue
+        if extraction.is_filler(text):
+            if i == 0:
+                metrics.VOICE.labels("stt", "empty").inc()
+                raise ApiError("VOICE_UNAVAILABLE", "Only a pause or a thinking sound was heard; carrying on.", 503,
+                               {"reason": "no_speech"})
+            continue
         if not _plausible(text, lang):
             continue
-        facts = _fact_count(text)
+        facts = _fact_count(text, asked)
         found.append((facts, lang, text, body))
-        if facts >= 2 or len(text.split()) <= 2:
+        if facts >= 2 or (len(text.split()) <= 2 and (facts >= 1 or not asked)):
             break  # convincing (several facts) or a short reply ("yes", "Bihar"): no more calls
         if facts == 1:
             max_calls = 2  # one fact in a longer sentence is thin (a transliteration can still contain "बिहार"): compare once
