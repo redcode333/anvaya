@@ -135,11 +135,17 @@ export function StaffBar({ children }: { children?: ReactNode }) {
   if (!staff) return null;
   return (
     <div className="stack" style={{ marginBottom: "1rem" }}>
-      <div className="row spread small muted">
-        <span>Signed in as <strong>{staff.display_name}</strong> ({staff.role})</span>
+      <div className="staffbar">
+        <span className="staffbar-who"><span className="staffbar-avatar" aria-hidden="true">{(staff.display_name || "?").slice(0, 1).toUpperCase()}</span>
+          <strong>{staff.display_name}</strong><span className="chip">{staff.role}</span></span>
         <span className="row">{children}
-          <button className="btn small ghost" onClick={() => setChanging(true)}>Change password</button>
-          <button className="btn small ghost" onClick={() => signOutAll()}>Sign out of all devices</button>
+          <details className="menu">
+            <summary className="btn small ghost">Account</summary>
+            <div className="menu-pop">
+              <button className="btn small ghost" onClick={() => setChanging(true)}>Change password</button>
+              <button className="btn small ghost" onClick={() => signOutAll()}>Sign out of all devices</button>
+            </div>
+          </details>
           <button className="btn small" onClick={() => signOut()}>Sign out</button></span>
       </div>
       {changing && <ChangePassword onClose={() => setChanging(false)} />}

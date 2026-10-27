@@ -94,7 +94,8 @@ export default function App() {
   const startFresh = () => { if (mode !== "kiosk" && sessionId && !inJourney) endCitizenSession("user"); };
   // Audio never carries over to another page.
   useEffect(() => { stopSpeaking(); }, [loc.pathname]);
-  const inStaffArea = /^\/(staff|reviewer|admin|test-runs|profile)/.test(loc.pathname);
+  // The staff area gets its own header: only the staff tools for this role, no citizen tabs, no language switch.
+  const workArea = /^\/(staff|reviewer|admin|test-runs)/.test(loc.pathname);
   return (
     <>
       <header className={`topbar${landing ? " is-landing" : ""}`}>
@@ -106,25 +107,29 @@ export default function App() {
           </NavLink>
           {/* The landing page shows the name and logo with the profile and language buttons; the rest of the site
               also gets the public tabs and a Staff door. */}
-          {!landing && (
+          {workArea && (
+            <nav className="nav" aria-label="Staff tools">
+              {staff && <NavLink to="/staff" end>Overview</NavLink>}
+              {reviewer && <NavLink to="/reviewer">Reviewer</NavLink>}
+              {reviewer && <NavLink to="/admin/schemes">Catalogue</NavLink>}
+              {role === "admin" && <NavLink to="/admin/security">Security</NavLink>}
+              {role === "admin" && <NavLink to="/test-runs">TC1–TC5</NavLink>}
+            </nav>
+          )}
+          {!landing && !workArea && (
             <>
               <nav className="nav" aria-label="Main">
                 <NavLink to={mode === "kiosk" ? "/kiosk" : "/citizen"} onClick={startFresh}>Citizen</NavLink>
                 {mode !== "kiosk" && <NavLink to="/citizen/passports">{t("myPassports", lang)}</NavLink>}
                 <NavLink to="/case">Case status</NavLink>
                 {/* The public tabs end with one "Staff" door (/staff: sign-in, or a hub for the signed-in role). The role tabs
-                    only show inside the staff area, so a signed-in admin browsing as a citizen never sees Security. */}
-                {inStaffArea && reviewer && <NavLink to="/reviewer">Reviewer</NavLink>}
-                {inStaffArea && reviewer && <NavLink to="/admin/schemes">Catalogue</NavLink>}
-                {inStaffArea && role === "admin" && <NavLink to="/admin/security">Security</NavLink>}
-                {inStaffArea && role === "admin" && <NavLink to="/test-runs">TC1–TC5</NavLink>}
+                    live in the staff header, so a signed-in admin browsing as a citizen never sees Security. */}
                 <NavLink to="/staff">Staff</NavLink>
               </nav>
             </>
           )}
           <div className="topbar-actions">
-            <LangSwitch />
-            <ProfileButton />
+            {workArea ? <NavLink to="/" className="profile-btn">← Citizen site</NavLink> : <><LangSwitch /><ProfileButton /></>}
           </div>
         </div>
         <StatusBar />
