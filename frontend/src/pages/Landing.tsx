@@ -69,14 +69,18 @@ export default function Landing() {
                 <MicLabel active={line.id} />
               </div>
               <div className="l-cta-side">
-                <button type="button" className="l-link" onClick={() => go("personal")}>{t("typeInstead", lang)}</button>
-                <div className="l-alt">
-                  <button type="button" className="btn small" onClick={() => go("kiosk")}>{t("kiosk", lang)}</button>
-                  <button type="button" className="btn small ghost" onClick={() => nav("/case")}>{t("checkStatus", lang)}</button>
-                  <button type="button" className="btn small ghost" onClick={() => nav("/resume")}>{t("resume", lang)}</button>
-                  <button type="button" className="btn small ghost" onClick={() => nav("/citizen/passports")}>{t("myPassports", lang)}</button>
+                <button type="button" className="l-link" onClick={() => go("personal")}>
+                  <KeyboardIcon />{t("typeInstead", lang)}
+                </button>
+                <div className="l-alt" role="group" aria-label={t("heroMore", lang)}>
+                  <Tile icon={<KioskIcon />} label={t("kiosk", lang)} onClick={() => go("kiosk")} />
+                  <Tile icon={<StatusIcon />} label={t("checkStatus", lang)} onClick={() => nav("/case")} />
+                  <Tile icon={<ResumeIcon />} label={t("resume", lang)} onClick={() => nav("/resume")} />
+                  <Tile icon={<PassportIcon />} label={t("myPassports", lang)} onClick={() => nav("/citizen/passports")} />
                 </div>
-                <span className="l-trust">{t("heroTrust", lang)}</span>
+                <ul className="l-trust" aria-label={t("heroTrust", lang)}>
+                  {t("heroTrust", lang).split("·").map((x) => <li key={x}>{x.trim()}</li>)}
+                </ul>
               </div>
             </div>
           </div>
@@ -206,6 +210,19 @@ export default function Landing() {
     </div>
   );
 }
+
+/** One of the secondary entry points under the mic: an equal-size tile with an icon. */
+function Tile({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
+  return <button type="button" className="l-tile" onClick={onClick}><span className="l-tile-ic" aria-hidden="true">{icon}</span><span>{label}</span></button>;
+}
+const Svg = ({ children }: { children: ReactNode }) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
+);
+const KeyboardIcon = () => <Svg><rect x="2.5" y="6" width="19" height="12" rx="2.5" /><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7.5 14h9" /></Svg>;
+const KioskIcon = () => <Svg><rect x="4" y="3" width="16" height="12" rx="2" /><path d="M12 15v4M8 21h8" /></Svg>;
+const StatusIcon = () => <Svg><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2M8.5 11l1.8 1.8 3.2-3.4" /></Svg>;
+const ResumeIcon = () => <Svg><path d="M4 12a8 8 0 1 0 2.5-5.8" /><path d="M4 4v4h4M12 8v4l2.5 2" /></Svg>;
+const PassportIcon = () => <Svg><rect x="5" y="2.5" width="14" height="19" rx="2" /><circle cx="12" cy="10" r="2.8" /><path d="M8.5 16.5h7" /></Svg>;
 
 /** Every language's mic label shares one grid cell: the visible one swaps without moving anything (CLS 0). */
 function MicLabel({ active }: { active: string }) {
