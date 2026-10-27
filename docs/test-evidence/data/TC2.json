@@ -1,0 +1,369 @@
+{
+  "run_id": "RUN_b7154565b16e",
+  "tc_id": "TC2",
+  "title": "Same scheme name in two states",
+  "expected": "Identical query in Bihar vs Maharashtra uses each state's own IGNOAPS record and rule (60+ vs 65+); the central NSAP scheme is considered in both.",
+  "passed": true,
+  "ran_at": "2026-10-27T09:49:06+00:00",
+  "input": {
+    "utterance_template": "I am 62 years old, BPL household, I do not get any pension. I live in {state}.",
+    "states": [
+      "Bihar",
+      "Maharashtra"
+    ],
+    "query": "old age pension"
+  },
+  "actual": {
+    "Bihar": {
+      "outcomes": {
+        "R_IGNOAPS_BIHAR": "PROVISIONAL",
+        "R_NSAP_IGNOAPS": "PROVISIONAL",
+        "R_IGNWPS": "INSUFFICIENT_INFORMATION",
+        "R_PMAY_URBAN": "INSUFFICIENT_INFORMATION",
+        "R_PM_KISAN": "INSUFFICIENT_INFORMATION",
+        "R_PMSBY": "INSUFFICIENT_INFORMATION",
+        "R_PMUY_2": "INSUFFICIENT_INFORMATION",
+        "R_APY": "MISMATCH",
+        "R_PMJJBY": "MISMATCH"
+      },
+      "pension_results": [
+        {
+          "rule_id": "R_IGNOAPS_BIHAR",
+          "scheme": "Indira Gandhi National Old Age Pension Scheme- Bihar",
+          "outcome": "PROVISIONAL",
+          "criteria": [
+            {
+              "criterion_id": "c1",
+              "fact": "state",
+              "operator": "==",
+              "expected": "Bihar",
+              "observed": "Bihar",
+              "outcome": "PASS",
+              "fact_id": "F-b8ab19-002",
+              "quote": "The applicant (Woman/Man) should be a resident of Bihar."
+            },
+            {
+              "criterion_id": "c2",
+              "fact": "age",
+              "operator": ">=",
+              "expected": 60,
+              "observed": 62,
+              "outcome": "PASS",
+              "fact_id": "F-b8ab19-001",
+              "quote": "The applicant should be 60 years of age or older."
+            },
+            {
+              "criterion_id": "c3",
+              "fact": "bpl",
+              "operator": "is_true",
+              "expected": null,
+              "observed": true,
+              "outcome": "PASS",
+              "fact_id": "F-b8ab19-003",
+              "quote": "The applicant should belong to a Below Poverty Line (BPL) family."
+            },
+            {
+              "criterion_id": "c4",
+              "fact": "receives_other_pension",
+              "operator": "is_false",
+              "expected": null,
+              "observed": false,
+              "outcome": "PASS",
+              "fact_id": "F-b8ab19-004",
+              "quote": "The applicant should not be receiving pension benefits under any social security scheme."
+            }
+          ],
+          "source_url": "https://state.bihar.gov.in/cache/39/Chhatra%20Yojna/Mukhyamantri%20Samajik%20Sahayata%20Evam%20Protsahan%20Chhatra%20Yojna/IGNOAPS.pdf",
+          "rule_version": 1,
+          "document_gaps": [
+            "aadhaar",
+            "photo",
+            "residence_proof",
+            "age_proof",
+            "bpl_card",
+            "bank_passbook"
+          ],
+          "decision_reason": [
+            {
+              "code": "CRITERIA_PASSED",
+              "text": "All structured criteria pass on confirmed facts."
+            },
+            {
+              "code": "EVIDENCE_NOT_VERIFIED",
+              "docs": [
+                "aadhaar",
+                "photo",
+                "residence_proof",
+                "age_proof",
+                "bpl_card",
+                "bank_passbook"
+              ],
+              "text": "Required documents are not verified by a reviewer: aadhaar, photo, residence_proof, age_proof, bpl_card, bank_passbook"
+            },
+            {
+              "code": "SOURCE_NOT_VERIFIED",
+              "text": "Rule has not been verified against the official source."
+            }
+          ]
+        },
+        {
+          "rule_id": "R_NSAP_IGNOAPS",
+          "scheme": "NSAP - Indira Gandhi National Old Age Pension Scheme",
+          "outcome": "PROVISIONAL",
+          "criteria": [
+            {
+              "criterion_id": "c1",
+              "fact": "bpl",
+              "operator": "is_true",
+              "expected": null,
+              "observed": true,
+              "outcome": "PASS",
+              "fact_id": "F-b8ab19-003",
+              "quote": "The applicant should belong to a Below Poverty Line (BPL) household."
+            },
+            {
+              "criterion_id": "c2",
+              "fact": "age",
+              "operator": ">=",
+              "expected": 60,
+              "observed": 62,
+              "outcome": "PASS",
+              "fact_id": "F-b8ab19-001",
+              "quote": "The applicant should be 60 years of age or above."
+            }
+          ],
+          "source_url": "https://nsap.dord.gov.in/Guidelines/social_audit_guidelines.pdf",
+          "rule_version": 1,
+          "document_gaps": [
+            "age_proof",
+            "bpl_card",
+            "residence_proof",
+            "bank_passbook",
+            "photo",
+            "no_pension_affidavit"
+          ],
+          "decision_reason": [
+            {
+              "code": "CRITERIA_PASSED",
+              "text": "All structured criteria pass on confirmed facts."
+            },
+            {
+              "code": "EVIDENCE_NOT_VERIFIED",
+              "docs": [
+                "age_proof",
+                "bpl_card",
+                "residence_proof",
+                "bank_passbook",
+                "photo",
+                "no_pension_affidavit"
+              ],
+              "text": "Required documents are not verified by a reviewer: age_proof, bpl_card, residence_proof, bank_passbook, photo, no_pension_affidavit"
+            },
+            {
+              "code": "MANUAL_CHECKS_PENDING",
+              "text": "Some conditions can only be checked by an officer."
+            },
+            {
+              "code": "SOURCE_NOT_VERIFIED",
+              "text": "Rule has not been verified against the official source."
+            }
+          ]
+        }
+      ],
+      "catalogue_search": {
+        "query": "old age pension",
+        "total": 6,
+        "states_in_results": [
+          "Bihar",
+          "Central"
+        ]
+      }
+    },
+    "Maharashtra": {
+      "outcomes": {
+        "R_NSAP_IGNOAPS": "PROVISIONAL",
+        "R_IGNWPS": "INSUFFICIENT_INFORMATION",
+        "R_PMAY_URBAN": "INSUFFICIENT_INFORMATION",
+        "R_PM_KISAN": "INSUFFICIENT_INFORMATION",
+        "R_PMSBY": "INSUFFICIENT_INFORMATION",
+        "R_PMUY_2": "INSUFFICIENT_INFORMATION",
+        "R_APY": "MISMATCH",
+        "R_IGNOAPS_MAHARASHTRA": "MISMATCH",
+        "R_PMJJBY": "MISMATCH"
+      },
+      "pension_results": [
+        {
+          "rule_id": "R_NSAP_IGNOAPS",
+          "scheme": "NSAP - Indira Gandhi National Old Age Pension Scheme",
+          "outcome": "PROVISIONAL",
+          "criteria": [
+            {
+              "criterion_id": "c1",
+              "fact": "bpl",
+              "operator": "is_true",
+              "expected": null,
+              "observed": true,
+              "outcome": "PASS",
+              "fact_id": "F-ffe2f6-003",
+              "quote": "The applicant should belong to a Below Poverty Line (BPL) household."
+            },
+            {
+              "criterion_id": "c2",
+              "fact": "age",
+              "operator": ">=",
+              "expected": 60,
+              "observed": 62,
+              "outcome": "PASS",
+              "fact_id": "F-ffe2f6-001",
+              "quote": "The applicant should be 60 years of age or above."
+            }
+          ],
+          "source_url": "https://nsap.dord.gov.in/Guidelines/social_audit_guidelines.pdf",
+          "rule_version": 1,
+          "document_gaps": [
+            "age_proof",
+            "bpl_card",
+            "residence_proof",
+            "bank_passbook",
+            "photo",
+            "no_pension_affidavit"
+          ],
+          "decision_reason": [
+            {
+              "code": "CRITERIA_PASSED",
+              "text": "All structured criteria pass on confirmed facts."
+            },
+            {
+              "code": "EVIDENCE_NOT_VERIFIED",
+              "docs": [
+                "age_proof",
+                "bpl_card",
+                "residence_proof",
+                "bank_passbook",
+                "photo",
+                "no_pension_affidavit"
+              ],
+              "text": "Required documents are not verified by a reviewer: age_proof, bpl_card, residence_proof, bank_passbook, photo, no_pension_affidavit"
+            },
+            {
+              "code": "MANUAL_CHECKS_PENDING",
+              "text": "Some conditions can only be checked by an officer."
+            },
+            {
+              "code": "SOURCE_NOT_VERIFIED",
+              "text": "Rule has not been verified against the official source."
+            }
+          ]
+        },
+        {
+          "rule_id": "R_IGNOAPS_MAHARASHTRA",
+          "scheme": "Indira Gandhi National Old Age Pension Scheme (Maharashtra)",
+          "outcome": "MISMATCH",
+          "criteria": [
+            {
+              "criterion_id": "c1",
+              "fact": "state",
+              "operator": "==",
+              "expected": "Maharashtra",
+              "observed": "Maharashtra",
+              "outcome": "PASS",
+              "fact_id": "F-ffe2f6-002",
+              "quote": "The applicant should be a resident of Maharashtra."
+            },
+            {
+              "criterion_id": "c2",
+              "fact": "age",
+              "operator": ">=",
+              "expected": 65,
+              "observed": 62,
+              "outcome": "FAIL",
+              "fact_id": "F-ffe2f6-001",
+              "quote": "The applicant should be 65 years of age or older."
+            },
+            {
+              "criterion_id": "c3",
+              "fact": "bpl",
+              "operator": "is_true",
+              "expected": null,
+              "observed": true,
+              "outcome": "PASS",
+              "fact_id": "F-ffe2f6-003",
+              "quote": "The applicant should be from a Below Poverty Line (BPL) family."
+            },
+            {
+              "criterion_id": "c4",
+              "fact": "receives_other_pension",
+              "operator": "is_false",
+              "expected": null,
+              "observed": false,
+              "outcome": "PASS",
+              "fact_id": "F-ffe2f6-004",
+              "quote": "The applicant should not be receiving pension benefits under any social security scheme."
+            }
+          ],
+          "source_url": "https://sjsa.maharashtra.gov.in/en/scheme-category/special-assistance",
+          "rule_version": 1,
+          "document_gaps": [
+            "aadhaar",
+            "photo",
+            "residence_proof",
+            "age_proof",
+            "bpl_card",
+            "bank_passbook"
+          ],
+          "decision_reason": [
+            {
+              "code": "CRITERION_FAILED",
+              "criterion_id": "c2",
+              "text": "age = 62 does not satisfy >= 65"
+            }
+          ]
+        }
+      ],
+      "catalogue_search": {
+        "query": "old age pension",
+        "total": 5,
+        "states_in_results": [
+          "Central",
+          "Maharashtra"
+        ]
+      }
+    }
+  },
+  "checks": [
+    {
+      "name": "Bihar uses Bihar IGNOAPS rule (60+) → PROVISIONAL",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "Maharashtra uses Maharashtra IGNOAPS rule (65+) → MISMATCH for age 62",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "No cross-state rule leakage",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "Central NSAP IGNOAPS considered in both states",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "Different source URLs for the two state records",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "Catalogue search is jurisdiction-scoped",
+      "passed": true,
+      "detail": null
+    }
+  ],
+  "session_ids": [
+    "SES_2c6f3ead7766f3ead0b1a86881b8ab19",
+    "SES_d67d2ba4ef6731e9dc420481e3ffe2f6"
+  ]
+}

@@ -134,7 +134,7 @@ export default function Passport() {
     <div>
       <Steps active="/citizen/schemes" />
       {err?.code === "PROFILE_NEEDS_CONFIRMATION" ? (
-        <div className="notice">{err.message} <Link to={mode === "kiosk" ? "/kiosk" : "/citizen"}>{t("profile", lang)} →</Link></div>
+        <div className="notice">{t("needsConfirmMsg", lang)} <Link to={mode === "kiosk" ? "/kiosk" : "/citizen"}>{t("profile", lang)} →</Link></div>
       ) : <ErrorNote error={err} />}
       {ev && (
         <div className="stack">

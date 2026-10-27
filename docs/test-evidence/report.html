@@ -1,0 +1,242 @@
+<!doctype html><html lang='en'><head><meta charset='utf-8'><title>Anvaya: official test cases, evidence</title><style>body{font:14px/1.5 'Segoe UI',system-ui,sans-serif;color:#1d2422;max-width:980px;margin:2rem auto;padding:0 1rem}h1{font-size:24px;color:#0f5c4d;border-bottom:3px solid #E8833A;padding-bottom:.3rem}h2{font-size:17px;color:#0f5c4d;margin-top:1.6rem}table{border-collapse:collapse;width:100%;margin:.6rem 0;font-size:12.5px}th{background:#0f5c4d;color:#fff;text-align:left}th,td{border:1px solid #d9dedc;padding:5px 8px;vertical-align:top}tr:nth-child(even) td{background:#f6f8f7}img{max-width:100%;border:1px solid #d9dedc;border-radius:8px;margin:.4rem 0}blockquote{margin:.5rem 0;padding:.4rem .8rem;border-left:4px solid #E8833A;background:#fdf2dc}code{background:#eef2f1;padding:1px 4px;border-radius:4px;font-size:.9em}pre{background:#eef2f1;padding:.6rem;border-radius:8px;overflow:auto}.li{margin:.15rem 0 .15rem 1rem}section.tc{page-break-before:always}p{margin:.4rem 0}</style></head><body><h1>Official test cases: evidence pack</h1>
+<p>Prepared 27 October 2026 from commit <code>ff3627f</code> (3,534 catalogue schemes, 17 reviewed rules, rule bundle <code>rules-2026.10.1</code>).</p>
+<p>The brief asks to <i>run each scenario and capture the input, actual result and evidence, and explain any difference from the expected result.</i> This folder does exactly that.</p>
+<h2>Summary</h2>
+<table>
+<tr><th>Case</th><th>Scenario</th><th>Brief expects</th><th>Result</th><th>Checks</th><th>Page</th></tr>
+<tr><td>TC1</td><td>Eligible household</td><td>scheme list with rules quoted</td><td>✅ PASS</td><td>6/6</td><td><a href='#tc1'>#tc1</a></td></tr>
+<tr><td>TC2</td><td>Same scheme name in two states</td><td>correct state used</td><td>✅ PASS</td><td>6/6</td><td><a href='#tc2'>#tc2</a></td></tr>
+<tr><td>TC3</td><td>Age misheard</td><td>confirmed before filtering</td><td>✅ PASS</td><td>7/7</td><td><a href='#tc3'>#tc3</a></td></tr>
+<tr><td>TC4</td><td>Provisional eligibility</td><td>never promised as a benefit</td><td>✅ PASS</td><td>7/7</td><td><a href='#tc4'>#tc4</a></td></tr>
+<tr><td>TC5</td><td>Returning citizen</td><td>extra case</td><td>✅ PASS</td><td>8/8</td><td><a href='#tc5'>#tc5</a></td></tr>
+</table>
+<p><b>34 of 34 checks pass</b> across the five scenarios. A printable version with all screenshots is in <a href='Anvaya-test-evidence.pdf'><code>Anvaya-test-evidence.pdf</code></a> (same content as <a href='report.html'><code>report.html</code></a>).</p>
+<p><img src='screenshots/00-test-runs-page.png' alt='All five scenarios on the test-runs page'></p>
+<h2>What each case shows</h2>
+<p class='li'><i> <b><a href='#tc1'>TC1</a></b>: a household's facts become a scheme list; every condition quotes the official sentence and links its source. Results are </i>provisional*, never "eligible".</p>
+<p class='li'>* <b><a href='#tc2'>TC2</a></b>: the same scheme name in Bihar and Maharashtra is screened against each state's own record (age 60+ vs 65+); nothing leaks across states, and the central scheme applies to both.</p>
+<p class='li'>* <b><a href='#tc3'>TC3</a></b>: a misheard age (26 instead of 62) is held, read back in digits, blocks screening, cannot be confirmed by "confirm all", and its correction recomputes the results.</p>
+<p class='li'>* <b><a href='#tc4'>TC4</a></b>: criteria pass but proof is missing, so the result is provisional, the document gap is listed, the draft is idempotent, and nothing is promised as a benefit.</p>
+<p class='li'>* <b><a href='#tc5'>TC5</a></b> (extra): a returning citizen resumes with a Passport code + PIN and sees what changed and why.</p>
+<h2>Differences from the expected results, in one place</h2>
+<table>
+<tr><th>Case</th><th>Difference</th><th>Why</th></tr>
+<tr><td>TC1</td><td>Results say "Provisional match", never "Eligible"</td><td>Documents are unverified and the rule sources are not yet checked by a data steward; the safety rules forbid promising a benefit</td></tr>
+<tr><td>TC1</td><td>Only schemes with a reviewed rule are screened (17 of 3,534)</td><td>The engine does not guess at schemes nobody has reviewed</td></tr>
+<tr><td>TC2</td><td>The same person gets different answers in the two states</td><td>The two official records set different age limits (60 vs 65); the central scheme still applies in both</td></tr>
+<tr><td>TC3</td><td>The mishearing is simulated</td><td>A real recognition error cannot be triggered on demand; the test proves the system's handling of a wrong age</td></tr>
+<tr><td>TC3</td><td>"Confirm all" does not confirm the age, income or state</td><td>Stronger than the brief: high-impact facts are confirmed one by one</td></tr>
+<tr><td>TC4</td><td>none</td><td></td></tr>
+</table>
+<h2>How the evidence was produced (and how to reproduce it)</h2>
+<p>Each scenario is a function in <a href='../../backend/anvaya/testrunner.py'><code>backend/anvaya/testrunner.py</code></a> that drives the <b>real pipeline</b> (conversation → extraction → confirmation → rule engine → documents → draft) and records its input, the expected result,</p>
+<p>the actual result and a list of named checks. The screenshots are taken by a browser driving the real web app with the same inputs. The whole pack is generated by one script from the recorded data (no number in these pages is typed by hand):</p>
+<pre>
+backend/.venv/Scripts/python.exe -m pip install playwright      # once; Chrome must be installed
+backend/.venv/Scripts/python.exe scripts/capture_test_evidence.py
+</pre>
+<p>It uses a throwaway database with no Supabase, no LLM and no speech service, so it is repeatable. The same scenarios can be run by an admin on the app's <code>/test-runs</code> page, and <code>POST /api/v1/test-runs/TC1…TC5</code> returns the same record.</p>
+<p>The automated test-suite also runs them (<code>backend/tests/test_api.py</code>).</p>
+<h2>Files</h2>
+<p><code>#tc1 … #tc5</code> (one page per case) · <code>report.html</code> / <code>Anvaya-test-evidence.pdf</code> (printable) · <code>data/TCn.json</code> (raw records) · <code>data/environment.json</code> · <code>screenshots/</code> · <code>../../scripts/capture_test_evidence.py</code> (regenerates everything).</p><section class='tc' id='tc1'><h1>TC1 · Eligible household</h1>
+<table>
+<tr><th><b>Brief expects</b></th><th>scheme list with rules quoted</th></tr>
+<tr><td><b>Result</b></td><td>✅ PASS (6/6 checks)</td></tr>
+<tr><td><b>Run</b></td><td><code>RUN_b880ebfef025</code> · 2026-10-27T09:49:06+00:00 · evaluation <code>EVAL_47d3e36fcbc3</code></td></tr>
+</table>
+<h2>Input</h2>
+<p>A citizen types (or says) in English:</p>
+<blockquote>I am 67 years old, a farmer in a village in Guntur, Andhra Pradesh. Family of 4, yearly income 60,000 rupees. We have a BPL card, I do not get any pension, I own 2 acres of land and have a bank account.</blockquote>
+<h2>What the system did</h2>
+<p>It extracted the household's facts with stable ids, confirmed them, and screened them against the reviewed rules. <b>4 candidate schemes</b> came back,</p>
+<p>every one with the official sentence for each condition quoted next to the citizen's fact, and the source link:</p>
+<table>
+<tr><th>Scheme</th><th>Condition</th><th>Needs</th><th>Citizen's fact</th><th>Result</th><th>Official wording (quoted)</th></tr>
+<tr><td>INDIRAMMA Old Age Pension (Rural)</td><td>state</td><td>== Andhra Pradesh</td><td>Andhra Pradesh</td><td>PASS</td><td>“The applicant should be a local resident of the district.”</td></tr>
+<tr><td>INDIRAMMA Old Age Pension (Rural)</td><td>bpl</td><td>yes</td><td>True</td><td>PASS</td><td>“The applicant should be from a Below Poverty Line (BPL) family.”</td></tr>
+<tr><td>INDIRAMMA Old Age Pension (Rural)</td><td>area</td><td>== rural</td><td>rural</td><td>PASS</td><td>“The applicant should be from a rural area.”</td></tr>
+<tr><td>INDIRAMMA Old Age Pension (Rural)</td><td>receives_other_pension</td><td>no</td><td>False</td><td>PASS</td><td>“The applicant should not be covered under any other Pension Scheme.”</td></tr>
+<tr><td>INDIRAMMA Old Age Pension (Rural)</td><td>age</td><td>&gt;= 65</td><td>67</td><td>PASS</td><td>“The applicant should be 65 years of age or above in age.”</td></tr>
+<tr><td>NSAP - Indira Gandhi National Old Age Pension Scheme</td><td>bpl</td><td>yes</td><td>True</td><td>PASS</td><td>“The applicant should belong to a Below Poverty Line (BPL) household.”</td></tr>
+<tr><td>NSAP - Indira Gandhi National Old Age Pension Scheme</td><td>age</td><td>&gt;= 60</td><td>67</td><td>PASS</td><td>“The applicant should be 60 years of age or above.”</td></tr>
+</table>
+<p>(first two candidates shown; all 4 are in <code>data/TC1.json</code>.) Outcome of every rule screened: <code>R_AP_INDIRAMMA_OAP_RURAL</code> PROVISIONAL, <code>R_NSAP_IGNOAPS</code> PROVISIONAL, <code>R_PM_KISAN</code> PROVISIONAL, <code>R_PMSBY</code> PROVISIONAL, <code>R_AP_INDIRAMMA_WIDOW_RURAL</code> INSUFFICIENT_INFORMATION, <code>R_IGNWPS</code> INSUFFICIENT_INFORMATION, <code>R_PMUY_2</code> INSUFFICIENT_INFORMATION, <code>R_AP_SPECTACLES_SENIOR</code> NEEDS_HUMAN_REVIEW, <code>R_APY</code> MISMATCH, <code>R_AP_INDIRAMMA_OAP_URBAN</code> MISMATCH, <code>R_PMAY_URBAN</code> MISMATCH, <code>R_PMJJBY</code> MISMATCH.</p>
+<h2>Evidence</h2>
+<table>
+<tr><th>#</th><th>Check</th><th>Result</th></tr>
+<tr><td>1</td><td>Facts extracted with stable IDs</td><td>✅ pass</td></tr>
+<tr><td>2</td><td>At least 3 candidate schemes</td><td>✅ pass</td></tr>
+<tr><td>3</td><td>AP INDIRAMMA Old Age Pension (Rural) is a candidate</td><td>✅ pass</td></tr>
+<tr><td>4</td><td>Every candidate quotes rule text and cites a source</td><td>✅ pass</td></tr>
+<tr><td>5</td><td>Out-of-state schemes excluded (no Bihar/Telangana rules)</td><td>✅ pass</td></tr>
+<tr><td>6</td><td>Deterministic: same facts + rule version ⇒ same outcomes</td><td>✅ pass</td></tr>
+</table>
+<p>Raw record: <a href='data/TC1.json'><code>data/TC1.json</code></a> · runner page: <img src='screenshots/tc1-0-runner.png' alt='runner'></p>
+<h2>Screenshots</h2>
+<p><img src='screenshots/tc1-1-conversation.png' alt='The conversation: what the citizen typed and the facts the bot understood (each must be confirmed)'></p>
+<p><i>The conversation: what the citizen typed and the facts the bot understood (each must be confirmed)</i></p>
+<p><img src='screenshots/tc1-2-scheme-passport.png' alt='The Scheme Passport: 12 schemes screened, grouped; every likely scheme says "Provisional match"'></p>
+<p><i>The Scheme Passport: 12 schemes screened, grouped; every likely scheme says "Provisional match"</i></p>
+<p><img src='screenshots/tc1-3-rules-quoted.png' alt='"Why this result": each condition, what the rule needs, what the citizen said, and the official wording quoted'></p>
+<p><i>"Why this result": each condition, what the rule needs, what the citizen said, and the official wording quoted</i></p>
+<p><img src='screenshots/tc1-4-source-and-technical.png' alt='The official source link, and the technical details (rule id, source id, dates) folded below'></p>
+<p><i>The official source link, and the technical details (rule id, source id, dates) folded below</i></p>
+<h2>Difference from the expected result</h2>
+<p>Matches the brief: a scheme list, with each rule's own wording quoted and a source cited. Three things worth saying out loud:</p>
+<p class='li'>1. <b>The label is "Provisional match", never "Eligible".</b> All 4 candidates are provisional because their required documents are not yet verified by a reviewer and each rule's source has not been verified against the official website by a data steward. This is deliberate (see TC4). The scenario's name ("Eligible household") describes the household, not a promise the system makes.</p>
+<p class='li'>2. <b>Only schemes with a reviewed rule can be screened.</b> The catalogue holds 3,534 schemes and can be searched, but the screening engine evaluates the 17 rules that have been written and reviewed; the rest are not guessed at.</p>
+<p class='li'>3. <b>The input is typed text.</b> The speech path is exercised in TC3 with a simulated transcript; real microphone accuracy depends on the speech service and is not something this test can promise.</p></section><section class='tc' id='tc2'><h1>TC2 · Same scheme name in two states</h1>
+<table>
+<tr><th><b>Brief expects</b></th><th>correct state used</th></tr>
+<tr><td><b>Result</b></td><td>✅ PASS (6/6 checks)</td></tr>
+<tr><td><b>Run</b></td><td><code>RUN_b7154565b16e</code> · 2026-10-27T09:49:06+00:00</td></tr>
+</table>
+<h2>Input</h2>
+<p>The same sentence twice, once per state:</p>
+<blockquote>I am 62 years old, BPL household, I do not get any pension. I live in {state}.  with <code>{state}</code> = <b>Bihar</b>, then <b>Maharashtra</b>.</blockquote>
+<h2>What the system did</h2>
+<p>"Indira Gandhi National Old Age Pension Scheme" exists in both states' records with different rules and different official sources. Each citizen was screened against <b>their own state's</b> record:</p>
+<table>
+<tr><th>Rule</th><th>Scheme record</th><th>Outcome</th><th>Age condition</th></tr>
+<tr><td>R_IGNOAPS_BIHAR</td><td>Indira Gandhi National Old Age Pension Scheme- Bihar</td><td>PROVISIONAL</td><td>age &gt;= 60 (citizen: 62) → PASS</td></tr>
+<tr><td>R_NSAP_IGNOAPS</td><td>NSAP - Indira Gandhi National Old Age Pension Scheme</td><td>PROVISIONAL</td><td>age &gt;= 60 (citizen: 62) → PASS</td></tr>
+<tr><td>R_NSAP_IGNOAPS</td><td>NSAP - Indira Gandhi National Old Age Pension Scheme</td><td>PROVISIONAL</td><td>age &gt;= 60 (citizen: 62) → PASS</td></tr>
+<tr><td>R_IGNOAPS_MAHARASHTRA</td><td>Indira Gandhi National Old Age Pension Scheme (Maharashtra)</td><td>MISMATCH</td><td>age &gt;= 65 (citizen: 62) → FAIL</td></tr>
+</table>
+<p class='li'>* Bihar's record needs age ≥ 60 → a 62-year-old passes. Maharashtra's needs ≥ 65 → the same 62-year-old does <b>not</b> match the state scheme.</p>
+<p class='li'>* The <b>central</b> scheme (<code>R_NSAP_IGNOAPS</code>, age ≥ 60) is considered for both citizens: Bihar → PROVISIONAL, Maharashtra → PROVISIONAL.</p>
+<p class='li'>* No rule from the other state leaked in; the two state records cite different source documents.</p>
+<h2>Evidence</h2>
+<table>
+<tr><th>#</th><th>Check</th><th>Result</th></tr>
+<tr><td>1</td><td>Bihar uses Bihar IGNOAPS rule (60+) → PROVISIONAL</td><td>✅ pass</td></tr>
+<tr><td>2</td><td>Maharashtra uses Maharashtra IGNOAPS rule (65+) → MISMATCH for age 62</td><td>✅ pass</td></tr>
+<tr><td>3</td><td>No cross-state rule leakage</td><td>✅ pass</td></tr>
+<tr><td>4</td><td>Central NSAP IGNOAPS considered in both states</td><td>✅ pass</td></tr>
+<tr><td>5</td><td>Different source URLs for the two state records</td><td>✅ pass</td></tr>
+<tr><td>6</td><td>Catalogue search is jurisdiction-scoped</td><td>✅ pass</td></tr>
+</table>
+<p>Raw record: <a href='data/TC2.json'><code>data/TC2.json</code></a> · runner page: <img src='screenshots/tc2-0-runner.png' alt='runner'></p>
+<h2>Screenshots</h2>
+<p><img src='screenshots/tc2-1-bihar.png' alt='Bihar: the Bihar record is used (age ≥ 60) and the condition is met'></p>
+<p><i>Bihar: the Bihar record is used (age ≥ 60) and the condition is met</i></p>
+<p><img src='screenshots/tc2-2-maharashtra.png' alt='Maharashtra: the Maharashtra record is used (age ≥ 65) and the age condition is not met for a 62-year-old'></p>
+<p><i>Maharashtra: the Maharashtra record is used (age ≥ 65) and the age condition is not met for a 62-year-old</i></p>
+<h2>Difference from the expected result</h2>
+<p>Matches the brief: the correct state's record is used in each case. One thing to know: the <b>same person gets a different answer in the two states</b> (provisional in Bihar, "does not match" for Maharashtra's state scheme) because the two official records really do set different age limits (60 vs 65); the central NSAP scheme still shows as a provisional match in Maharashtra, so the citizen is not left with nothing. The thresholds come from the scheme text in the dataset, quoted in the "Why this result" panel.</p></section><section class='tc' id='tc3'><h1>TC3 · Age misheard</h1>
+<table>
+<tr><th><b>Brief expects</b></th><th>confirmed before filtering</th></tr>
+<tr><td><b>Result</b></td><td>✅ PASS (7/7 checks)</td></tr>
+<tr><td><b>Run</b></td><td><code>RUN_88d324a85d48</code> · 2026-10-27T09:49:06+00:00</td></tr>
+</table>
+<h2>Input</h2>
+<p>A Hindi voice transcript in which the speaker's age arrives as <b>26</b> (the real age is 62):</p>
+<blockquote>मेरी उम्र 26 साल है। मैं बिहार में रहता हूँ। बीपीएल कार्ड है, कोई पेंशन नहीं मिलती। सालाना आय 40000 रुपये।</blockquote>
+<h2>What the system did</h2>
+<p class='li'>1. Read the transcript, held the age (and income, state) as <b>unconfirmed</b> and read the age back <b>in digits</b>: “उम्र: 26 वर्ष”.</p>
+<p class='li'>2. <b>Blocked screening</b> with <code>PROFILE_NEEDS_CONFIRMATION</code> until those facts are confirmed.</p>
+<p class='li'>3. "Confirm all" did <b>not</b> confirm the high-impact facts; it confirmed only 1 low-impact fact and left 3 (age, income, state) for individual confirmation.</p>
+<p class='li'>4. The citizen <b>corrected</b> the age to 62: a new fact was created and the old one marked superseded (<code>F-e6bf5e-007</code>); the results were recomputed from the corrected fact:</p>
+<table>
+<tr><th>Rule</th><th>With the misheard age (26)</th><th>After the correction (62)</th></tr>
+<tr><td><code>R_IGNOAPS_BIHAR</code></td><td>MISMATCH</td><td>PROVISIONAL</td></tr>
+<tr><td><code>R_NSAP_IGNOAPS</code></td><td>MISMATCH</td><td>PROVISIONAL</td></tr>
+<tr><td><code>R_IGNWPS</code></td><td>MISMATCH</td><td>INSUFFICIENT_INFORMATION</td></tr>
+<tr><td><code>R_APY</code></td><td>INSUFFICIENT_INFORMATION</td><td>MISMATCH</td></tr>
+<tr><td><code>R_PMJJBY</code></td><td>INSUFFICIENT_INFORMATION</td><td>MISMATCH</td></tr>
+</table>
+<h2>Evidence</h2>
+<table>
+<tr><th>#</th><th>Check</th><th>Result</th></tr>
+<tr><td>1</td><td>Transcript age 26 extracted and held unconfirmed</td><td>✅ pass</td></tr>
+<tr><td>2</td><td>Screening blocked before confirmation</td><td>✅ pass</td></tr>
+<tr><td>3</td><td>Confirm-all leaves high-impact facts pending and screening blocked</td><td>✅ pass</td></tr>
+<tr><td>4</td><td>Age read back with digits for individual confirmation</td><td>✅ pass</td></tr>
+<tr><td>5</td><td>Correction creates new confirmed fact superseding the old one</td><td>✅ pass</td></tr>
+<tr><td>6</td><td>Re-evaluation uses the corrected fact ID</td><td>✅ pass</td></tr>
+<tr><td>7</td><td>Results changed: Bihar IGNOAPS MISMATCH → PROVISIONAL</td><td>✅ pass</td></tr>
+</table>
+<p>Raw record: <a href='data/TC3.json'><code>data/TC3.json</code></a> (includes the full fact history) · runner page: <img src='screenshots/tc3-0-runner.png' alt='runner'></p>
+<h2>Screenshots (the app in Hindi)</h2>
+<p><img src='screenshots/tc3-1-held-for-confirmation.png' alt='The misheard age is held for confirmation and read back; nothing is used yet'></p>
+<p><i>The misheard age is held for confirmation and read back; nothing is used yet</i></p>
+<p><img src='screenshots/tc3-2-screening-blocked.png' alt='Trying to check schemes now is refused: "confirm or correct the highlighted details first"'></p>
+<p><i>Trying to check schemes now is refused: "confirm or correct the highlighted details first"</i></p>
+<p><img src='screenshots/tc3-3-confirm-all-leaves-age.png' alt='"Confirm the others" leaves the age (and income, state) pending: they must be confirmed one by one'></p>
+<p><i>"Confirm the others" leaves the age (and income, state) pending: they must be confirmed one by one</i></p>
+<p><img src='screenshots/tc3-4-after-correction.png' alt='After the age is corrected to 62 the results are recomputed: the Bihar pension schemes become provisional matches'></p>
+<p><i>After the age is corrected to 62 the results are recomputed: the Bihar pension schemes become provisional matches</i></p>
+<h2>Difference from the expected result</h2>
+<p>Matches the brief and goes a step further: facts are confirmed before any filtering, <b>and "confirm all" cannot confirm the high-impact ones.</b> Two honest notes:</p>
+<p class='li'>1. <b>The mishearing is simulated.</b> The test injects a transcript that already contains the wrong age (channel "voice (simulated transcript)"), because a real speech-recognition error cannot be made to happen on demand. What the test proves is what the system does when it receives a wrong age.</p>
+<p class='li'>2. The bot also guessed the speaker's gender (male) from the verb form "रहता हूँ"; that guess is marked <i>inferred</i> and also waits for confirmation, so it cannot filter anything unconfirmed.</p></section><section class='tc' id='tc4'><h1>TC4 · Provisional eligibility</h1>
+<table>
+<tr><th><b>Brief expects</b></th><th>never promised as a benefit</th></tr>
+<tr><td><b>Result</b></td><td>✅ PASS (7/7 checks)</td></tr>
+<tr><td><b>Run</b></td><td><code>RUN_f870179f61ec</code> · 2026-10-27T09:49:06+00:00</td></tr>
+</table>
+<h2>Input</h2>
+<blockquote>I am 70 years old and live in Punjab. We have a BPL card. I do not get any pension.</blockquote>
+<p>Document marks entered by the citizen: <code>bpl_card</code> = missing, <code>age_proof</code> = unknown, <code>residence_proof</code> = available.</p>
+<h2>What the system did</h2>
+<table>
+<tr><th>Scheme</th><th>Condition</th><th>Needs</th><th>Citizen's fact</th><th>Result</th><th>Official wording (quoted)</th></tr>
+<tr><td>Indira Gandhi National Old Age Pension Scheme (Punjab)</td><td>state</td><td>== Punjab</td><td>Punjab</td><td>PASS</td><td>“The applicant should be a resident of Punjab.”</td></tr>
+<tr><td>Indira Gandhi National Old Age Pension Scheme (Punjab)</td><td>age</td><td>&gt;= 60</td><td>70</td><td>PASS</td><td>“The applicant should be 60 years of age or older.”</td></tr>
+<tr><td>Indira Gandhi National Old Age Pension Scheme (Punjab)</td><td>bpl</td><td>yes</td><td>True</td><td>PASS</td><td>“The applicant should be from a Below Poverty Line (BPL) family.”</td></tr>
+<tr><td>Indira Gandhi National Old Age Pension Scheme (Punjab)</td><td>receives_other_pension</td><td>no</td><td>False</td><td>PASS</td><td>“The applicant should not be receiving pension benefits under any social security scheme.”</td></tr>
+</table>
+<p>Every condition passes, but the required documents are not verified by a reviewer, so the outcome is <b>PROVISIONAL</b>, never MATCH:</p>
+<p>decision reasons <code>CRITERIA_PASSED, EVIDENCE_NOT_VERIFIED, SOURCE_NOT_VERIFIED</code>. The document gap lists <code>age_proof, bpl_card, bank_passbook</code>.</p>
+<p>Rules whose facts are still unknown (e.g. PM-KISAN needs land ownership) answer <code>INSUFFICIENT_INFORMATION</code> instead of guessing. A draft was saved (<code>DRF_0508af246c32</code>) and saving again returned the <b>same</b> draft (no duplicate).</p>
+<p>The spoken summary, word for word: “Here is what I found. These are preliminary results, not an approval. 2 schemes may suit you provisionally, 5 need more information. Indira Gandhi National Old Age Pension Scheme (Punjab): Provisional match. NSAP - Indira Gandhi N…”</p>
+<h2>Evidence</h2>
+<table>
+<tr><th>#</th><th>Check</th><th>Result</th></tr>
+<tr><td>1</td><td>Punjab IGNOAPS is PROVISIONAL (not MATCH)</td><td>✅ pass</td></tr>
+<tr><td>2</td><td>No result is MATCH while proof is unverified</td><td>✅ pass</td></tr>
+<tr><td>3</td><td>Document gap lists the missing BPL card</td><td>✅ pass</td></tr>
+<tr><td>4</td><td>Unknown facts produce INSUFFICIENT_INFORMATION (e.g. PM-KISAN land ownership)</td><td>✅ pass</td></tr>
+<tr><td>5</td><td>Draft saved with status DRAFT_SAVED</td><td>✅ pass</td></tr>
+<tr><td>6</td><td>Repeat save returns the same draft (no duplicate)</td><td>✅ pass</td></tr>
+<tr><td>7</td><td>Summary makes no approval/benefit promise</td><td>✅ pass</td></tr>
+</table>
+<p>Raw record: <a href='data/TC4.json'><code>data/TC4.json</code></a> · runner page: <img src='screenshots/tc4-0-runner.png' alt='runner'></p>
+<h2>Screenshots</h2>
+<p><img src='screenshots/tc4-1-provisional-not-match.png' alt='The Punjab pension is a "Provisional match"; the notice says it is not an approval and not a guarantee of benefit'></p>
+<p><i>The Punjab pension is a "Provisional match"; the notice says it is not an approval and not a guarantee of benefit</i></p>
+<p><img src='screenshots/tc4-2-why-documents.png' alt='"Why this result": every condition met, but "A reviewer still has to verify your documents"; the documents to bring are listed'></p>
+<p><i>"Why this result": every condition met, but "A reviewer still has to verify your documents"; the documents to bring are listed</i></p>
+<p><img src='screenshots/tc4-3-document-gap.png' alt='The Document Guide shows the gap: the BPL card is marked missing'></p>
+<p><i>The Document Guide shows the gap: the BPL card is marked missing</i></p>
+<p><img src='screenshots/tc4-4-draft-saved.png' alt='The draft is saved and clearly marked "not submitted to any government portal"'></p>
+<p><i>The draft is saved and clearly marked "not submitted to any government portal"</i></p>
+<h2>Difference from the expected result</h2>
+<p>None. The system never presents a result as a benefit: the only positive outcome is "Provisional match", the words "approval" and "guarantee" appear only to deny them ("Preliminary screening only — not an approval and not a guarantee of benefit"), and an automated check scans the spoken summary for promise wording. Every outcome here depends on documents a human reviewer would still have to verify.</p></section><section class='tc' id='tc5'><h1>TC5 · Returning citizen (extra: beyond the brief's four cases)</h1>
+<table>
+<tr><th><b>Result</b></th><th>✅ PASS (8/8 checks)</th></tr>
+<tr><td><b>Run</b></td><td><code>RUN_54472765af36</code> · 2026-10-27T09:49:07+00:00</td></tr>
+</table>
+<p>The brief lists four cases; this fifth one covers the saved-passport journey (Passport code + PIN, resume, "what changed"). Passport saved with consent behind a Passport code + PIN (code hashed, weak PIN refused); a new session resumes from the saved profile (wrong code and wrong PIN get the same answer); after the age is corrected, "what changed" shows each outcome before → after with the reason (the age fact changed).</p>
+<h2>Evidence</h2>
+<table>
+<tr><th>#</th><th>Check</th><th>Result</th></tr>
+<tr><td>1</td><td>Passport code is PSP-XXXX-XXXX from a 32-symbol alphabet (40 random bits)</td><td>✅ pass</td></tr>
+<tr><td>2</td><td>Code stored only as sha256(pepper + code); PIN argon2-hashed</td><td>✅ pass</td></tr>
+<tr><td>3</td><td>Weak PIN refused; saving without consent refused</td><td>✅ pass</td></tr>
+<tr><td>4</td><td>End session keeps the consented passport's facts</td><td>✅ pass</td></tr>
+<tr><td>5</td><td>Wrong code and wrong PIN get the same answer</td><td>✅ pass</td></tr>
+<tr><td>6</td><td>New session resumes from the saved profile</td><td>✅ pass</td></tr>
+<tr><td>7</td><td>Every screening is a passport version with rule versions, fact ids and outcomes</td><td>✅ pass</td></tr>
+<tr><td>8</td><td>What changed: AP INDIRAMMA OAP PROVISIONAL → MISMATCH because the age fact changed</td><td>✅ pass</td></tr>
+</table>
+<p>"What changed" after the age was corrected to 52:</p>
+<table>
+<tr><th>Scheme</th><th>Before</th><th>After</th><th>Because</th></tr>
+<tr><td>NSAP - Indira Gandhi National Old Age Pension Scheme</td><td>PROVISIONAL</td><td>MISMATCH</td><td>the age changed (67 → 52)</td></tr>
+<tr><td>Sanctioning Spectacles to Senior Citizens</td><td>NEEDS_HUMAN_REVIEW</td><td>MISMATCH</td><td>the age changed (67 → 52)</td></tr>
+<tr><td>INDIRAMMA Old Age Pension (Rural)</td><td>PROVISIONAL</td><td>MISMATCH</td><td>the age changed (67 → 52)</td></tr>
+</table>
+<p>Raw record: <a href='data/TC5.json'><code>data/TC5.json</code></a> · runner page: <img src='screenshots/tc5-0-runner.png' alt='runner'></p>
+<h2>Difference from the expected result</h2>
+<p>None. The PIN is never recorded in the evidence (the input shows "(4 digits, not recorded)"), and a wrong code and a wrong PIN deliberately get the same answer.</p></section></body></html>

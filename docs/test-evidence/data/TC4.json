@@ -1,0 +1,159 @@
+{
+  "run_id": "RUN_f870179f61ec",
+  "tc_id": "TC4",
+  "title": "Provisional eligibility",
+  "expected": "Criteria pass but proof is missing → PROVISIONAL (never MATCH), document gap listed, draft saved idempotently; unknown facts give INSUFFICIENT_INFORMATION.",
+  "passed": true,
+  "ran_at": "2026-10-27T09:49:06+00:00",
+  "input": {
+    "utterance": "I am 70 years old and live in Punjab. We have a BPL card. I do not get any pension.",
+    "documents": {
+      "bpl_card": "missing",
+      "age_proof": "unknown",
+      "residence_proof": "available"
+    }
+  },
+  "actual": {
+    "punjab_result": {
+      "rule_id": "R_IGNOAPS_PUNJAB",
+      "scheme": "Indira Gandhi National Old Age Pension Scheme (Punjab)",
+      "outcome": "PROVISIONAL",
+      "criteria": [
+        {
+          "criterion_id": "c1",
+          "fact": "state",
+          "operator": "==",
+          "expected": "Punjab",
+          "observed": "Punjab",
+          "outcome": "PASS",
+          "fact_id": "F-af7fd1-002",
+          "quote": "The applicant should be a resident of Punjab."
+        },
+        {
+          "criterion_id": "c2",
+          "fact": "age",
+          "operator": ">=",
+          "expected": 60,
+          "observed": 70,
+          "outcome": "PASS",
+          "fact_id": "F-af7fd1-001",
+          "quote": "The applicant should be 60 years of age or older."
+        },
+        {
+          "criterion_id": "c3",
+          "fact": "bpl",
+          "operator": "is_true",
+          "expected": null,
+          "observed": true,
+          "outcome": "PASS",
+          "fact_id": "F-af7fd1-003",
+          "quote": "The applicant should be from a Below Poverty Line (BPL) family."
+        },
+        {
+          "criterion_id": "c4",
+          "fact": "receives_other_pension",
+          "operator": "is_false",
+          "expected": null,
+          "observed": false,
+          "outcome": "PASS",
+          "fact_id": "F-af7fd1-004",
+          "quote": "The applicant should not be receiving pension benefits under any social security scheme."
+        }
+      ],
+      "source_url": "https://sswcd.punjab.gov.in/en/indira-gandhi-national-old-age-pension-schemes-ignoaps-0",
+      "rule_version": 1,
+      "document_gaps": [
+        "age_proof",
+        "bpl_card",
+        "bank_passbook"
+      ],
+      "decision_reason": [
+        {
+          "code": "CRITERIA_PASSED",
+          "text": "All structured criteria pass on confirmed facts."
+        },
+        {
+          "code": "EVIDENCE_NOT_VERIFIED",
+          "docs": [
+            "residence_proof",
+            "age_proof",
+            "bpl_card",
+            "bank_passbook"
+          ],
+          "text": "Required documents are not verified by a reviewer: residence_proof, age_proof, bpl_card, bank_passbook"
+        },
+        {
+          "code": "SOURCE_NOT_VERIFIED",
+          "text": "Rule has not been verified against the official source."
+        }
+      ]
+    },
+    "draft_id": "DRF_0508af246c32",
+    "summary": "Here is what I found. These are preliminary results, not an approval. 2 schemes may suit you provisionally, 5 need more information. Indira Gandhi National Old Age Pension Scheme (Punjab): Provisional match. NSAP - Indira Gandhi National Old Age Pension Scheme: Provisional match. Missing documents: BPL / ration card.",
+    "insufficient": [
+      "R_IGNWPS",
+      "R_PMAY_URBAN",
+      "R_PM_KISAN",
+      "R_PMSBY",
+      "R_PMUY_2"
+    ]
+  },
+  "checks": [
+    {
+      "name": "Punjab IGNOAPS is PROVISIONAL (not MATCH)",
+      "passed": true,
+      "detail": [
+        "CRITERIA_PASSED",
+        "EVIDENCE_NOT_VERIFIED",
+        "SOURCE_NOT_VERIFIED"
+      ]
+    },
+    {
+      "name": "No result is MATCH while proof is unverified",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "Document gap lists the missing BPL card",
+      "passed": true,
+      "detail": [
+        "age_proof",
+        "bpl_card",
+        "bank_passbook"
+      ]
+    },
+    {
+      "name": "Unknown facts produce INSUFFICIENT_INFORMATION (e.g. PM-KISAN land ownership)",
+      "passed": true,
+      "detail": [
+        "R_IGNWPS",
+        "R_PMAY_URBAN",
+        "R_PM_KISAN",
+        "R_PMSBY",
+        "R_PMUY_2"
+      ]
+    },
+    {
+      "name": "Draft saved with status DRAFT_SAVED",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "Repeat save returns the same draft (no duplicate)",
+      "passed": true,
+      "detail": {
+        "first": "DRF_0508af246c32",
+        "second": "DRF_0508af246c32",
+        "version": 2
+      }
+    },
+    {
+      "name": "Summary makes no approval/benefit promise",
+      "passed": true,
+      "detail": "Here is what I found. These are preliminary results, not an approval. 2 schemes may suit you provisionally, 5 need more information. Indira Gandhi National Old Age Pension Scheme (Punjab): Provisional match. NSAP - Indira Gandhi National Old Age Pension Scheme: Provisional match. Missing documents: BPL / ration card."
+    }
+  ],
+  "session_ids": [
+    "SES_839ed363906eef2cfaa7a83ae6af7fd1"
+  ]
+}

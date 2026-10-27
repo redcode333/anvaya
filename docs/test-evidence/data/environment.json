@@ -1,0 +1,91 @@
+{
+  "date": "27 October 2026",
+  "commit": "ff3627f",
+  "schemes": "3,534",
+  "rules": 17,
+  "bundle": "rules-2026.10.1",
+  "ready": {
+    "ready": true,
+    "db": {
+      "backend": "sqlite",
+      "status": "ok"
+    },
+    "schemes": 3534,
+    "rules": 17,
+    "bundle_version": "rules-2026.10.1",
+    "integrations": {
+      "verbx": {
+        "status": "missing",
+        "missing": [
+          "VERBX_BASE_URL",
+          "VERBX_API_KEY"
+        ]
+      },
+      "llm": {
+        "status": "missing",
+        "missing": [
+          "LLM_PROVIDERS"
+        ]
+      },
+      "langfuse": {
+        "status": "missing",
+        "missing": [
+          "LANGFUSE_PUBLIC_KEY",
+          "LANGFUSE_SECRET_KEY",
+          "LANGFUSE_BASE_URL"
+        ]
+      },
+      "supabase_auth": {
+        "status": "missing",
+        "missing": [
+          "SUPABASE_URL",
+          "SUPABASE_SECRET_KEY"
+        ]
+      },
+      "metrics": {
+        "status": "missing",
+        "missing": [
+          "ANVAYA_METRICS_TOKEN"
+        ]
+      },
+      "turnstile": {
+        "status": "missing",
+        "missing": [
+          "VITE_TURNSTILE_SITE_KEY"
+        ]
+      },
+      "digilocker": {
+        "status": "disabled",
+        "missing": []
+      }
+    },
+    "warnings": [
+      "ANVAYA_PASSPORT_PEPPER is not set: Passport codes are hashed with a public development pepper",
+      "VITE_TURNSTILE_SITE_KEY is not set: sign-in runs without the Turnstile CAPTCHA (local dev only)",
+      "retention has never succeeded: expired data is not being deleted yet"
+    ],
+    "jobs_last_success": {},
+    "tts_cache": {
+      "entries": 0,
+      "prerendered": 0
+    },
+    "voice": {
+      "verbx_configured": false,
+      "stt": false,
+      "tts": false,
+      "translation": false,
+      "languages": [
+        "en",
+        "hi",
+        "te"
+      ]
+    },
+    "llm_extraction": {
+      "enabled": false,
+      "allow_real_data": false,
+      "prompt_version": "extract-v1.1",
+      "turn_budget_s": 7.0,
+      "providers": []
+    }
+  }
+}

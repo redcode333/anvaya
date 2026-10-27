@@ -1,0 +1,217 @@
+{
+  "run_id": "RUN_88d324a85d48",
+  "tc_id": "TC3",
+  "title": "Age misheard",
+  "expected": "Misheard age (26) is held for confirmation, read back in digits and blocks screening even after confirm-all; correction to 62 creates a new fact, re-evaluates and changes results.",
+  "passed": true,
+  "ran_at": "2026-10-27T09:49:06+00:00",
+  "input": {
+    "utterance": "मेरी उम्र 26 साल है। मैं बिहार में रहता हूँ। बीपीएल कार्ड है, कोई पेंशन नहीं मिलती। सालाना आय 40000 रुपये।",
+    "channel": "voice (simulated transcript)",
+    "language": "hi",
+    "correction": {
+      "age": 62
+    }
+  },
+  "actual": {
+    "reply": "मैंने समझा: सालाना पारिवारिक आय (₹): ₹40,000, उम्र: 26 वर्ष, राज्य: Bihar, लिंग: male. क्या यह सही है?",
+    "blocked": {
+      "code": "PROFILE_NEEDS_CONFIRMATION",
+      "facts": [
+        {
+          "fact_id": "F-e6bf5e-001",
+          "attribute": "annual_income",
+          "value": 40000
+        },
+        {
+          "fact_id": "F-e6bf5e-002",
+          "attribute": "age",
+          "value": 26
+        },
+        {
+          "fact_id": "F-e6bf5e-003",
+          "attribute": "state",
+          "value": "Bihar"
+        }
+      ]
+    },
+    "confirm_all": {
+      "confirmed": [
+        "F-e6bf5e-004"
+      ],
+      "needs_individual_confirmation": [
+        "F-e6bf5e-001",
+        "F-e6bf5e-002",
+        "F-e6bf5e-003"
+      ]
+    },
+    "age_readback": "उम्र: 26 वर्ष",
+    "age_history": [
+      {
+        "fact_id": "F-e6bf5e-002",
+        "attribute": "age",
+        "value": 26,
+        "raw_text": "26 साल",
+        "source": "voice",
+        "confidence": 0.765,
+        "confirmed": false,
+        "inferred": false,
+        "note": null,
+        "captured_at": "2026-10-27T09:49:06+00:00",
+        "confirmed_at": null,
+        "high_impact": true,
+        "confusable": false,
+        "verified": false,
+        "alternatives": null,
+        "disputed": false,
+        "confirm_individually": true,
+        "superseded_by": "F-e6bf5e-007"
+      },
+      {
+        "fact_id": "F-e6bf5e-007",
+        "attribute": "age",
+        "value": 62,
+        "raw_text": "citizen correction",
+        "source": "citizen_correction",
+        "confidence": 1.0,
+        "confirmed": true,
+        "inferred": false,
+        "note": null,
+        "captured_at": "2026-10-27T09:49:06+00:00",
+        "confirmed_at": "2026-10-27T09:49:06+00:00",
+        "high_impact": true,
+        "confusable": false,
+        "verified": false,
+        "alternatives": null,
+        "disputed": false,
+        "confirm_individually": true,
+        "superseded_by": null
+      }
+    ],
+    "changed": {
+      "R_IGNOAPS_BIHAR": {
+        "with_misheard_age": "MISMATCH",
+        "after_correction": "PROVISIONAL"
+      },
+      "R_NSAP_IGNOAPS": {
+        "with_misheard_age": "MISMATCH",
+        "after_correction": "PROVISIONAL"
+      },
+      "R_IGNWPS": {
+        "with_misheard_age": "MISMATCH",
+        "after_correction": "INSUFFICIENT_INFORMATION"
+      },
+      "R_APY": {
+        "with_misheard_age": "INSUFFICIENT_INFORMATION",
+        "after_correction": "MISMATCH"
+      },
+      "R_PMJJBY": {
+        "with_misheard_age": "INSUFFICIENT_INFORMATION",
+        "after_correction": "MISMATCH"
+      }
+    }
+  },
+  "checks": [
+    {
+      "name": "Transcript age 26 extracted and held unconfirmed",
+      "passed": true,
+      "detail": {
+        "fact_id": "F-e6bf5e-002",
+        "raw_text": "26 साल"
+      }
+    },
+    {
+      "name": "Screening blocked before confirmation",
+      "passed": true,
+      "detail": {
+        "code": "PROFILE_NEEDS_CONFIRMATION",
+        "facts": [
+          {
+            "fact_id": "F-e6bf5e-001",
+            "attribute": "annual_income",
+            "value": 40000
+          },
+          {
+            "fact_id": "F-e6bf5e-002",
+            "attribute": "age",
+            "value": 26
+          },
+          {
+            "fact_id": "F-e6bf5e-003",
+            "attribute": "state",
+            "value": "Bihar"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Confirm-all leaves high-impact facts pending and screening blocked",
+      "passed": true,
+      "detail": {
+        "confirmed": [
+          "F-e6bf5e-004"
+        ],
+        "needs_individual_confirmation": [
+          "F-e6bf5e-001",
+          "F-e6bf5e-002",
+          "F-e6bf5e-003"
+        ]
+      }
+    },
+    {
+      "name": "Age read back with digits for individual confirmation",
+      "passed": true,
+      "detail": "उम्र: 26 वर्ष"
+    },
+    {
+      "name": "Correction creates new confirmed fact superseding the old one",
+      "passed": true,
+      "detail": [
+        {
+          "fact_id": "F-e6bf5e-002",
+          "value": 26,
+          "superseded_by": "F-e6bf5e-007"
+        },
+        {
+          "fact_id": "F-e6bf5e-007",
+          "value": 62,
+          "superseded_by": null
+        }
+      ]
+    },
+    {
+      "name": "Re-evaluation uses the corrected fact ID",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "Results changed: Bihar IGNOAPS MISMATCH → PROVISIONAL",
+      "passed": true,
+      "detail": {
+        "R_IGNOAPS_BIHAR": {
+          "with_misheard_age": "MISMATCH",
+          "after_correction": "PROVISIONAL"
+        },
+        "R_NSAP_IGNOAPS": {
+          "with_misheard_age": "MISMATCH",
+          "after_correction": "PROVISIONAL"
+        },
+        "R_IGNWPS": {
+          "with_misheard_age": "MISMATCH",
+          "after_correction": "INSUFFICIENT_INFORMATION"
+        },
+        "R_APY": {
+          "with_misheard_age": "INSUFFICIENT_INFORMATION",
+          "after_correction": "MISMATCH"
+        },
+        "R_PMJJBY": {
+          "with_misheard_age": "INSUFFICIENT_INFORMATION",
+          "after_correction": "MISMATCH"
+        }
+      }
+    }
+  ],
+  "session_ids": [
+    "SES_8faa5a2f27ef5a3fcf52b07243e6bf5e"
+  ]
+}

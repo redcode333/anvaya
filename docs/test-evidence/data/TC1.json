@@ -1,0 +1,334 @@
+{
+  "run_id": "RUN_b880ebfef025",
+  "tc_id": "TC1",
+  "title": "Eligible household",
+  "expected": "Candidate scheme list with relevant rules quoted, source citations and a reproducible criterion trace.",
+  "passed": true,
+  "ran_at": "2026-10-27T09:49:06+00:00",
+  "input": {
+    "utterance": "I am 67 years old, a farmer in a village in Guntur, Andhra Pradesh. Family of 4, yearly income 60,000 rupees. We have a BPL card, I do not get any pension, I own 2 acres of land and have a bank account.",
+    "language": "en"
+  },
+  "actual": {
+    "eval_id": "EVAL_47d3e36fcbc3",
+    "candidates": [
+      {
+        "rule_id": "R_AP_INDIRAMMA_OAP_RURAL",
+        "scheme": "INDIRAMMA Old Age Pension (Rural)",
+        "outcome": "PROVISIONAL",
+        "criteria": [
+          {
+            "criterion_id": "c1",
+            "fact": "state",
+            "operator": "==",
+            "expected": "Andhra Pradesh",
+            "observed": "Andhra Pradesh",
+            "outcome": "PASS",
+            "fact_id": "F-40f262-005",
+            "quote": "The applicant should be a local resident of the district."
+          },
+          {
+            "criterion_id": "c2",
+            "fact": "bpl",
+            "operator": "is_true",
+            "expected": null,
+            "observed": true,
+            "outcome": "PASS",
+            "fact_id": "F-40f262-006",
+            "quote": "The applicant should be from a Below Poverty Line (BPL) family."
+          },
+          {
+            "criterion_id": "c3",
+            "fact": "area",
+            "operator": "==",
+            "expected": "rural",
+            "observed": "rural",
+            "outcome": "PASS",
+            "fact_id": "F-40f262-007",
+            "quote": "The applicant should be from a rural area."
+          },
+          {
+            "criterion_id": "c4",
+            "fact": "receives_other_pension",
+            "operator": "is_false",
+            "expected": null,
+            "observed": false,
+            "outcome": "PASS",
+            "fact_id": "F-40f262-009",
+            "quote": "The applicant should not be covered under any other Pension Scheme."
+          },
+          {
+            "criterion_id": "c5",
+            "fact": "age",
+            "operator": ">=",
+            "expected": 65,
+            "observed": 67,
+            "outcome": "PASS",
+            "fact_id": "F-40f262-002",
+            "quote": "The applicant should be 65 years of age or above in age."
+          }
+        ],
+        "source_url": "https://handlooms.ap.gov.in/documents/old_age_pensions_(Rural)_GO.pdf",
+        "rule_version": 1,
+        "document_gaps": [
+          "bpl_card",
+          "age_proof",
+          "residence_proof",
+          "no_pension_affidavit"
+        ],
+        "decision_reason": [
+          {
+            "code": "CRITERIA_PASSED",
+            "text": "All structured criteria pass on confirmed facts."
+          },
+          {
+            "code": "EVIDENCE_NOT_VERIFIED",
+            "docs": [
+              "bpl_card",
+              "age_proof",
+              "residence_proof",
+              "no_pension_affidavit"
+            ],
+            "text": "Required documents are not verified by a reviewer: bpl_card, age_proof, residence_proof, no_pension_affidavit"
+          },
+          {
+            "code": "MANUAL_CHECKS_PENDING",
+            "text": "Some conditions can only be checked by an officer."
+          },
+          {
+            "code": "SOURCE_NOT_VERIFIED",
+            "text": "Rule has not been verified against the official source."
+          }
+        ]
+      },
+      {
+        "rule_id": "R_NSAP_IGNOAPS",
+        "scheme": "NSAP - Indira Gandhi National Old Age Pension Scheme",
+        "outcome": "PROVISIONAL",
+        "criteria": [
+          {
+            "criterion_id": "c1",
+            "fact": "bpl",
+            "operator": "is_true",
+            "expected": null,
+            "observed": true,
+            "outcome": "PASS",
+            "fact_id": "F-40f262-006",
+            "quote": "The applicant should belong to a Below Poverty Line (BPL) household."
+          },
+          {
+            "criterion_id": "c2",
+            "fact": "age",
+            "operator": ">=",
+            "expected": 60,
+            "observed": 67,
+            "outcome": "PASS",
+            "fact_id": "F-40f262-002",
+            "quote": "The applicant should be 60 years of age or above."
+          }
+        ],
+        "source_url": "https://nsap.dord.gov.in/Guidelines/social_audit_guidelines.pdf",
+        "rule_version": 1,
+        "document_gaps": [
+          "age_proof",
+          "bpl_card",
+          "residence_proof",
+          "bank_passbook",
+          "photo",
+          "no_pension_affidavit"
+        ],
+        "decision_reason": [
+          {
+            "code": "CRITERIA_PASSED",
+            "text": "All structured criteria pass on confirmed facts."
+          },
+          {
+            "code": "EVIDENCE_NOT_VERIFIED",
+            "docs": [
+              "age_proof",
+              "bpl_card",
+              "residence_proof",
+              "bank_passbook",
+              "photo",
+              "no_pension_affidavit"
+            ],
+            "text": "Required documents are not verified by a reviewer: age_proof, bpl_card, residence_proof, bank_passbook, photo, no_pension_affidavit"
+          },
+          {
+            "code": "MANUAL_CHECKS_PENDING",
+            "text": "Some conditions can only be checked by an officer."
+          },
+          {
+            "code": "SOURCE_NOT_VERIFIED",
+            "text": "Rule has not been verified against the official source."
+          }
+        ]
+      },
+      {
+        "rule_id": "R_PM_KISAN",
+        "scheme": "Pradhan Mantri Kisan Samman Nidhi (PM-KISAN)",
+        "outcome": "PROVISIONAL",
+        "criteria": [
+          {
+            "criterion_id": "c1",
+            "fact": "owns_cultivable_land",
+            "operator": "is_true",
+            "expected": null,
+            "observed": true,
+            "outcome": "PASS",
+            "fact_id": "F-40f262-010",
+            "quote": "All landholding farmers' families, which have cultivable land holding in their names are eligible to get benefit under the scheme."
+          }
+        ],
+        "source_url": "https://pmkisan.gov.in/Documents/RevisedPM-KISANOperationalGuidelines(English).pdf",
+        "rule_version": 1,
+        "document_gaps": [
+          "aadhaar",
+          "land_records",
+          "bank_passbook"
+        ],
+        "decision_reason": [
+          {
+            "code": "CRITERIA_PASSED",
+            "text": "All structured criteria pass on confirmed facts."
+          },
+          {
+            "code": "EVIDENCE_NOT_VERIFIED",
+            "docs": [
+              "aadhaar",
+              "land_records",
+              "bank_passbook"
+            ],
+            "text": "Required documents are not verified by a reviewer: aadhaar, land_records, bank_passbook"
+          },
+          {
+            "code": "MANUAL_CHECKS_PENDING",
+            "text": "Some conditions can only be checked by an officer."
+          },
+          {
+            "code": "SOURCE_NOT_VERIFIED",
+            "text": "Rule has not been verified against the official source."
+          }
+        ]
+      },
+      {
+        "rule_id": "R_PMSBY",
+        "scheme": "Pradhan Mantri Suraksha Bima Yojana",
+        "outcome": "PROVISIONAL",
+        "criteria": [
+          {
+            "criterion_id": "c1",
+            "fact": "age",
+            "operator": "between",
+            "expected": [
+              18,
+              70
+            ],
+            "observed": 67,
+            "outcome": "PASS",
+            "fact_id": "F-40f262-002",
+            "quote": "aged between 18 years (completed) and 70 years (age nearer birthday)"
+          },
+          {
+            "criterion_id": "c2",
+            "fact": "has_bank_account",
+            "operator": "is_true",
+            "expected": null,
+            "observed": true,
+            "outcome": "PASS",
+            "fact_id": "F-40f262-011",
+            "quote": "Individual bank account holders of participating banks"
+          }
+        ],
+        "source_url": "https://jansuraksha.gov.in/Files/PMSBY/English/Rules.pdf",
+        "rule_version": 1,
+        "document_gaps": [
+          "bank_passbook"
+        ],
+        "decision_reason": [
+          {
+            "code": "CRITERIA_PASSED",
+            "text": "All structured criteria pass on confirmed facts."
+          },
+          {
+            "code": "EVIDENCE_NOT_VERIFIED",
+            "docs": [
+              "bank_passbook"
+            ],
+            "text": "Required documents are not verified by a reviewer: bank_passbook"
+          },
+          {
+            "code": "SOURCE_NOT_VERIFIED",
+            "text": "Rule has not been verified against the official source."
+          }
+        ]
+      }
+    ],
+    "all_outcomes": {
+      "R_AP_INDIRAMMA_OAP_RURAL": "PROVISIONAL",
+      "R_NSAP_IGNOAPS": "PROVISIONAL",
+      "R_PM_KISAN": "PROVISIONAL",
+      "R_PMSBY": "PROVISIONAL",
+      "R_AP_INDIRAMMA_WIDOW_RURAL": "INSUFFICIENT_INFORMATION",
+      "R_IGNWPS": "INSUFFICIENT_INFORMATION",
+      "R_PMUY_2": "INSUFFICIENT_INFORMATION",
+      "R_AP_SPECTACLES_SENIOR": "NEEDS_HUMAN_REVIEW",
+      "R_APY": "MISMATCH",
+      "R_AP_INDIRAMMA_OAP_URBAN": "MISMATCH",
+      "R_PMAY_URBAN": "MISMATCH",
+      "R_PMJJBY": "MISMATCH"
+    }
+  },
+  "checks": [
+    {
+      "name": "Facts extracted with stable IDs",
+      "passed": true,
+      "detail": [
+        "F-40f262-001",
+        "F-40f262-002",
+        "F-40f262-003",
+        "F-40f262-004",
+        "F-40f262-005",
+        "F-40f262-006",
+        "F-40f262-007",
+        "F-40f262-008",
+        "F-40f262-009",
+        "F-40f262-010",
+        "F-40f262-011"
+      ]
+    },
+    {
+      "name": "At least 3 candidate schemes",
+      "passed": true,
+      "detail": [
+        "INDIRAMMA Old Age Pension (Rural)",
+        "NSAP - Indira Gandhi National Old Age Pension Scheme",
+        "Pradhan Mantri Kisan Samman Nidhi (PM-KISAN)",
+        "Pradhan Mantri Suraksha Bima Yojana"
+      ]
+    },
+    {
+      "name": "AP INDIRAMMA Old Age Pension (Rural) is a candidate",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "Every candidate quotes rule text and cites a source",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "Out-of-state schemes excluded (no Bihar/Telangana rules)",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "Deterministic: same facts + rule version ⇒ same outcomes",
+      "passed": true,
+      "detail": null
+    }
+  ],
+  "session_ids": [
+    "SES_1cb255ebcc57dde65cadcc701d40f262"
+  ]
+}

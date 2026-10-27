@@ -1,0 +1,217 @@
+{
+  "run_id": "RUN_54472765af36",
+  "tc_id": "TC5",
+  "title": "Returning citizen",
+  "expected": "Passport saved with consent behind a Passport code + PIN (code hashed, weak PIN refused); a new session resumes from the saved profile (wrong code and wrong PIN get the same answer); after the age is corrected, \"what changed\" shows each outcome before → after with the reason (the age fact changed).",
+  "passed": true,
+  "ran_at": "2026-10-27T09:49:07+00:00",
+  "input": {
+    "utterance": "I am 67 years old, a farmer in a village in Guntur, Andhra Pradesh. Family of 4, yearly income 60,000 rupees. We have a BPL card, I do not get any pension, I own 2 acres of land and have a bank account.",
+    "pin": "(4 digits, not recorded)",
+    "new_age": 52
+  },
+  "actual": {
+    "evaluations": [
+      "EVAL_f1696b73d0e5",
+      "EVAL_3c0e224c070a",
+      "EVAL_a2736d01d887"
+    ],
+    "what_changed": {
+      "since": "2026-10-27T09:49:07.282122+00:00",
+      "before": {
+        "version_id": "PSV_222ac809ec3c",
+        "created_at": "2026-10-27T09:49:07.282122+00:00"
+      },
+      "after": {
+        "version_id": "PSV_0761ac3904ba",
+        "created_at": "2026-10-27T09:49:07.288067+00:00"
+      },
+      "changes": [
+        {
+          "scheme_id": "63ae7e58dc9a0dc54aab0449",
+          "scheme_name": "NSAP - Indira Gandhi National Old Age Pension Scheme",
+          "rule_id": "R_NSAP_IGNOAPS",
+          "before": "PROVISIONAL",
+          "after": "MISMATCH",
+          "reasons": [
+            {
+              "kind": "fact_changed",
+              "attribute": "age",
+              "before": 67,
+              "after": 52,
+              "fact_before": "F-c359c8-002",
+              "fact_after": "F-c359c8-012"
+            }
+          ]
+        },
+        {
+          "scheme_id": "667aa919113e1b5b0a84cd5e",
+          "scheme_name": "Sanctioning Spectacles to Senior Citizens",
+          "rule_id": "R_AP_SPECTACLES_SENIOR",
+          "before": "NEEDS_HUMAN_REVIEW",
+          "after": "MISMATCH",
+          "reasons": [
+            {
+              "kind": "fact_changed",
+              "attribute": "age",
+              "before": 67,
+              "after": 52,
+              "fact_before": "F-c359c8-002",
+              "fact_after": "F-c359c8-012"
+            }
+          ]
+        },
+        {
+          "scheme_id": "679c93f9ecdc87934b7de3d6",
+          "scheme_name": "INDIRAMMA Old Age Pension (Rural)",
+          "rule_id": "R_AP_INDIRAMMA_OAP_RURAL",
+          "before": "PROVISIONAL",
+          "after": "MISMATCH",
+          "reasons": [
+            {
+              "kind": "fact_changed",
+              "attribute": "age",
+              "before": 67,
+              "after": 52,
+              "fact_before": "F-c359c8-002",
+              "fact_after": "F-c359c8-012"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "checks": [
+    {
+      "name": "Passport code is PSP-XXXX-XXXX from a 32-symbol alphabet (40 random bits)",
+      "passed": true,
+      "detail": "PSP-VXKK-JBR8"
+    },
+    {
+      "name": "Code stored only as sha256(pepper + code); PIN argon2-hashed",
+      "passed": true,
+      "detail": {
+        "code_hash_prefix": "4476bfd557d6"
+      }
+    },
+    {
+      "name": "Weak PIN refused; saving without consent refused",
+      "passed": true,
+      "detail": {
+        "weak_pin": {
+          "code": "WEAK_PIN",
+          "status": 422,
+          "message": "This PIN is too easy to guess. Choose another."
+        },
+        "no_consent": {
+          "code": "CONSENT_REQUIRED",
+          "status": 422,
+          "message": "Agree to the current saving terms before anything is kept."
+        }
+      }
+    },
+    {
+      "name": "End session keeps the consented passport's facts",
+      "passed": true,
+      "detail": {
+        "facts_kept": 11
+      }
+    },
+    {
+      "name": "Wrong code and wrong PIN get the same answer",
+      "passed": true,
+      "detail": {
+        "wrong_pin": {
+          "code": "PASSPORT_CODE_OR_PIN_WRONG",
+          "status": 401,
+          "message": "The Passport code or PIN is not correct."
+        },
+        "wrong_code": {
+          "code": "PASSPORT_CODE_OR_PIN_WRONG",
+          "status": 401,
+          "message": "The Passport code or PIN is not correct."
+        }
+      }
+    },
+    {
+      "name": "New session resumes from the saved profile",
+      "passed": true,
+      "detail": {
+        "session_id": "SES_0ee65d34b2d6f58e6dad1dbca1c359c8",
+        "restored": [
+          "F-c359c8-001",
+          "F-c359c8-002",
+          "F-c359c8-003",
+          "F-c359c8-004",
+          "F-c359c8-005",
+          "F-c359c8-006",
+          "F-c359c8-007",
+          "F-c359c8-008",
+          "F-c359c8-009",
+          "F-c359c8-010",
+          "F-c359c8-011"
+        ]
+      }
+    },
+    {
+      "name": "Every screening is a passport version with rule versions, fact ids and outcomes",
+      "passed": true,
+      "detail": [
+        {
+          "version_id": "PSV_0761ac3904ba",
+          "created_at": "2026-10-27T09:49:07.288067+00:00",
+          "counts": {
+            "PROVISIONAL": 2,
+            "INSUFFICIENT_INFORMATION": 3,
+            "MISMATCH": 7
+          }
+        },
+        {
+          "version_id": "PSV_222ac809ec3c",
+          "created_at": "2026-10-27T09:49:07.282122+00:00",
+          "counts": {
+            "PROVISIONAL": 4,
+            "INSUFFICIENT_INFORMATION": 3,
+            "NEEDS_HUMAN_REVIEW": 1,
+            "MISMATCH": 4
+          }
+        },
+        {
+          "version_id": "PSV_4f7c0a57242d",
+          "created_at": "2026-10-27T09:49:07.027908+00:00",
+          "counts": {
+            "PROVISIONAL": 4,
+            "INSUFFICIENT_INFORMATION": 3,
+            "NEEDS_HUMAN_REVIEW": 1,
+            "MISMATCH": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "What changed: AP INDIRAMMA OAP PROVISIONAL → MISMATCH because the age fact changed",
+      "passed": true,
+      "detail": {
+        "scheme_id": "679c93f9ecdc87934b7de3d6",
+        "scheme_name": "INDIRAMMA Old Age Pension (Rural)",
+        "rule_id": "R_AP_INDIRAMMA_OAP_RURAL",
+        "before": "PROVISIONAL",
+        "after": "MISMATCH",
+        "reasons": [
+          {
+            "kind": "fact_changed",
+            "attribute": "age",
+            "before": 67,
+            "after": 52,
+            "fact_before": "F-c359c8-002",
+            "fact_after": "F-c359c8-012"
+          }
+        ]
+      }
+    }
+  ],
+  "session_ids": [
+    "SES_dd68a8fdb9409a686241feba4bac3ac2",
+    "SES_0ee65d34b2d6f58e6dad1dbca1c359c8"
+  ]
+}
