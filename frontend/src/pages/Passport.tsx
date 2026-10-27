@@ -51,7 +51,6 @@ function SchemeCard({ r, lang, onDraft, onAnswer }: { r: SchemeResult; lang: Lan
           )}
           <div className="row tiny">
             <span className="chip">{r.jurisdiction.level === "Central" ? "Central" : r.jurisdiction.state}</span>
-            <span className="mono">{r.rule_id} v{r.rule_version}</span>
           </div>
           <div className="crit" title={`${pass}/${r.criteria.length}`}>
             <span className="crit-bar" aria-hidden="true"><i style={{ width: `${r.criteria.length ? Math.round((pass / r.criteria.length) * 100) : 0}%` }} /></span>
@@ -88,7 +87,7 @@ function SchemeCard({ r, lang, onDraft, onAnswer }: { r: SchemeResult; lang: Lan
                       {c.quote && <blockquote>“{c.quote}”</blockquote>}
                       {c.note && <div className="tiny">{c.note}</div>}</td>
                     <td className="mono">{c.expected_text}</td>
-                    <td>{c.fact_id ? <>{showValue(c.fact, c.observed, lang)} <div className="tiny mono">{c.fact_id}</div></> : "—"}</td>
+                    <td>{c.fact_id ? showValue(c.fact, c.observed, lang) : "—"}</td>
                     <td className={`c-${c.outcome}`}><strong>{c.outcome}</strong></td>
                   </tr>
                 ))}
@@ -121,7 +120,7 @@ function SchemeCard({ r, lang, onDraft, onAnswer }: { r: SchemeResult; lang: Lan
             <dt>Imported</dt><dd>{r.source.imported_at}</dd>
             <dt>Rule reviewed</dt><dd>{r.source.rule_reviewed_at} (team review against dataset text)</dd>
             <dt>Official source verified</dt><dd>{r.source.source_verified_at ?? "Not yet verified by a data steward"}</dd>
-            <dt>Input facts</dt><dd className="mono">{r.input_fact_ids.join(", ") || "—"}</dd>
+            <dt>Rule</dt><dd className="mono">{r.rule_id} v{r.rule_version}</dd>
           </dl>
           {!candidate && r.outcome !== "MISMATCH" && r.outcome !== "NEEDS_HUMAN_REVIEW" && (
             <button className="btn primary" onClick={() => onDraft(r)}>{t("prepareDraft", lang)}</button>

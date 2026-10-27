@@ -1351,6 +1351,17 @@ Found by replaying a real spoken conversation (`backend/tests/test_voice_convers
   a fuzzy match is always read back for a "yes" (it is never taken as heard). Latin names must stand alone ("goal" is not Goa). Hindi names for every state were added.
 * **No more repeating itself.** The first miss says "I could not pick out any details"; from the second miss in a row the bot gives tips instead ("say one detail at a time,
   like “Bihar” or “I am 60 years old”, or type it"). The counter (`misses`, kept with the turn) starts again once something is understood.
+* **"Why do you need to know?" is not a yes.** A question word (*why, what, how, क्यों, क्या, ఎందుకు*) or a "?" makes a reply neither yes nor no, so it can never confirm a
+  fact the bot just read back (the Hindi "है" used to count as a yes). A bare yes / no is only a turn made entirely of yes / no words and filler.
+* **Why, skip, and "no more questions".** *Why?* gets the reason for the question that was asked (`WHY_ASK` in `i18n.py`, one line per attribute, English / Hindi /
+  Telugu) and a reminder that "skip" works. *Skip* / *I don't know* means that question is not asked again (`skipped`, kept with the turn). *I don't want to give any more
+  information* / *stop asking* stops all questions for the rest of the conversation (`quiet`): anything the citizen volunteers is still taken, and the schemes can be checked.
+  *What facilities do I get?* is acknowledged (together with any details in the same sentence) instead of being refused.
+* **No internal IDs or provider names in front of a citizen.** The chat no longer shows fact IDs (`F-88eb95-001`) or "heard (verbx)": a voice message just has a small
+  microphone mark, and glossary hints are a plain note under the reply. The profile card, the draft page and the scheme cards no longer print fact IDs or rule IDs
+  (the rule id sits inside *Why* for those who want it), the start screen says "Voice is on: speak or type" instead of naming the speech service, and the card header says
+  "Needs your confirmation" instead of `PROFILE_NEEDS_CONFIRMATION`. Using *Confirm* on the card while the bot is asking "Is that right?" aloud stops the speech and
+  adds "Confirmed ✓ …" to the chat, so the same question is not left hanging.
 * **Still not solved by any code here:** what the speech recogniser hears. "latency is slaying" for a Hindi sentence is a VerbX transcription error. The language
   tabs choose what the recogniser listens for; the tips above are what the bot does when the transcript is unusable. The new sentences are not in the prerendered
   audio cache, so they are spoken live.

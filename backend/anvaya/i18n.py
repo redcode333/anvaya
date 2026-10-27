@@ -175,6 +175,24 @@ ATTRIBUTE_LABELS = {
     "date_of_birth": {"en": "Date of birth", "hi": "जन्मतिथि", "te": "పుట్టిన తేదీ"},
 }
 
+# Why each question is asked (answer to "why do you need to know?"); the reason only, never a promise about a result.
+WHY_ASK = {
+    "state": {"en": 'Schemes differ from state to state, so I need your state to look at the right list.', "hi": 'योजनाएँ राज्य के हिसाब से अलग होती हैं, इसलिए सही सूची देखने के लिए राज्य जानना ज़रूरी है।', "te": 'పథకాలు రాష్ట్రాన్ని బట్టి మారుతాయి, అందుకే సరైన జాబితా చూడటానికి మీ రాష్ట్రం కావాలి.'},
+    "age": {"en": 'Many schemes depend on age, for example pensions.', "hi": 'कई योजनाएँ उम्र पर निर्भर करती हैं, जैसे पेंशन।', "te": 'చాలా పథకాలు వయస్సుపై ఆధారపడతాయి, ఉదాహరణకు పెన్షన్లు.'},
+    "annual_income": {"en": 'Several schemes have a household income limit.', "hi": 'कई योजनाओं में परिवार की आय की सीमा होती है।', "te": 'చాలా పథకాలకు కుటుంబ ఆదాయ పరిమితి ఉంటుంది.'},
+    "household_size": {"en": 'Some schemes look at how many people share the household.', "hi": 'कुछ योजनाएँ देखती हैं कि घर में कितने लोग हैं।', "te": 'కొన్ని పథకాలు ఇంట్లో ఎంతమంది ఉన్నారో చూస్తాయి.'},
+    "bpl": {"en": 'Some schemes are only for households with a BPL card.', "hi": 'कुछ योजनाएँ केवल बीपीएल कार्ड वाले परिवारों के लिए हैं।', "te": 'కొన్ని పథకాలు బీపీఎల్ కార్డు ఉన్న కుటుంబాలకే ఉంటాయి.'},
+    "area": {"en": 'A few schemes are only for rural or only for urban households.', "hi": 'कुछ योजनाएँ केवल गाँव या केवल शहर के परिवारों के लिए हैं।', "te": 'కొన్ని పథకాలు గ్రామీణ లేదా పట్టణ కుటుంబాలకే ఉంటాయి.'},
+    "gender": {"en": 'Some schemes are meant for women or for men.', "hi": 'कुछ योजनाएँ महिलाओं या पुरुषों के लिए होती हैं।', "te": 'కొన్ని పథకాలు మహిళలకు లేదా పురుషులకు ఉద్దేశించినవి.'},
+    "marital_status": {"en": 'Widow and similar schemes depend on marital status.', "hi": 'विधवा जैसी योजनाएँ वैवाहिक स्थिति पर निर्भर करती हैं।', "te": 'వితంతు వంటి పథకాలు వైవాహిక స్థితిపై ఆధారపడతాయి.'},
+    "occupation": {"en": 'Some schemes are for farmers, workers or other occupations.', "hi": 'कुछ योजनाएँ किसानों, मज़दूरों या अन्य पेशों के लिए हैं।', "te": 'కొన్ని పథకాలు రైతులు, కార్మికులు లేదా ఇతర వృత్తుల వారికి ఉంటాయి.'},
+    "receives_other_pension": {"en": 'Two pensions are usually not paid together, so I need to know.', "hi": 'आमतौर पर दो पेंशन एक साथ नहीं मिलतीं, इसलिए यह जानना ज़रूरी है।', "te": 'సాధారణంగా రెండు పెన్షన్లు ఒకేసారి రావు, అందుకే తెలుసుకోవాలి.'},
+    "owns_cultivable_land": {"en": 'Farming schemes depend on the land you hold.', "hi": 'खेती की योजनाएँ आपकी ज़मीन पर निर्भर करती हैं।', "te": 'వ్యవసాయ పథకాలు మీ భూమిపై ఆధారపడతాయి.'},
+    "has_bank_account": {"en": 'Most benefits are paid into a bank account.', "hi": 'ज़्यादातर लाभ बैंक खाते में आते हैं।', "te": 'చాలా లాభాలు బ్యాంక్ ఖాతాలోకి వస్తాయి.'},
+    "owns_pucca_house": {"en": 'Housing schemes look at the kind of house you have.', "hi": 'आवास योजनाएँ घर के प्रकार को देखती हैं।', "te": 'గృహ పథకాలు మీ ఇంటి రకాన్ని చూస్తాయి.'},
+    "_default": {"en": 'It helps me match you to the right schemes.', "hi": 'इससे मुझे सही योजनाओं से मिलान करने में मदद मिलती है।', "te": 'సరైన పథకాలతో సరిపోల్చడానికి ఇది నాకు సహాయపడుతుంది.'},
+}
+
 MESSAGES = {
     "greeting": {
         "en": "Namaste! Tell me about your household — your state, age, income and work. You can speak or type.",
@@ -192,6 +210,27 @@ MESSAGES = {
         "en": "I could not pick out any details. Could you say it another way?",
         "hi": "मुझे कोई जानकारी समझ नहीं आई। क्या आप दूसरे तरीके से बता सकते हैं?",
         "te": "నాకు ఏ వివరాలూ అర్థం కాలేదు. వేరే విధంగా చెప్పగలరా?",
+    },
+    "why_tail": {
+        "en": "You can say “skip” if you'd rather not answer.",
+        "hi": "अगर नहीं बताना चाहते तो “छोड़ो” कह दीजिए।",
+        "te": "చెప్పకూడదనుకుంటే “వదిలేయండి” అనండి.",
+    },
+    "skip_ok": {"en": "Okay, I'll skip that.", "hi": "ठीक है, इसे छोड़ देते हैं।", "te": "సరే, దీన్ని వదిలేద్దాం."},
+    "guard_decline": {
+        "en": "That's fine. You don't have to share anything you don't want to. I can check schemes with what you've told me; some may need more details.",
+        "hi": "कोई बात नहीं। जो आप नहीं बताना चाहते, वह बताना ज़रूरी नहीं है। जो जानकारी दी है उसी से मैं योजनाएँ देख सकता हूँ; कुछ के लिए और जानकारी चाहिए होगी।",
+        "te": "పర్వాలేదు. మీకు ఇష్టం లేనివి చెప్పాల్సిన అవసరం లేదు. ఇప్పటివరకు చెప్పిన వివరాలతో నేను పథకాలు చూడగలను; కొన్నిటికి మరిన్ని వివరాలు అవసరం కావచ్చు.",
+    },
+    "quiet_hint": {
+        "en": "Tell me more any time, or check schemes now.",
+        "hi": "जब चाहें और बताइए, या अभी योजनाएँ देखिए।",
+        "te": "ఎప్పుడైనా మరింత చెప్పండి, లేదా ఇప్పుడే పథకాలు చూడండి.",
+    },
+    "guard_schemes": {
+        "en": "I'll check which schemes may suit you as soon as these details are confirmed.",
+        "hi": "जैसे ही ये जानकारी पक्की हो जाएगी, मैं देखूँगा कि कौन-सी योजनाएँ आपके लिए उपयुक्त हो सकती हैं।",
+        "te": "ఈ వివరాలు నిర్ధారించబడగానే మీకు సరిపోయే పథకాలను చూస్తాను.",
     },
     "guard_login": {
         "en": "You don't need to log in or have an account to check schemes. Just tell me about your household. If you want to save your passport for later, you can sign in at the end.",

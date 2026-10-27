@@ -10,6 +10,10 @@ are stored as a placeholder, not as typed.
   smalltalk  hello, "how are you", thanks, "what can you do" (answered, then the pending question is asked again)
   login      "where do I log in?" (answered: no account is needed to check schemes)
   ack        a bare yes / uh-huh / no with nothing waiting for it ("Okay.", then the pending question)
+  why        "why do you need to know?" (the reason for that question, then the question again)
+  skip       "skip" / "I don't know" (that question is not asked again)
+  decline    "I don't want to give any more information" (no more questions; the schemes can be checked now)
+  schemes    "what facilities do I get?" (answered: that is what the details are for)
   offtopic   a question that is not about schemes or the household (answered with what this assistant is for)
 """
 from __future__ import annotations
@@ -49,10 +53,19 @@ _LOGIN = (r"\b(?:log\s*in|login|log\s*on|sign\s*in|sign\s*up|register|create\s+(
           r"|लॉग\s*इन|लॉगइन|साइन\s*इन|रजिस्टर|खाता\s+बना|అకౌంట్|లాగిన్|సైన్\s*ఇన్")
 _HELP = (r"\b(help|what can you do|who are you|what are you|how does this work|how do i use|kya kar sakte|aap kaun)\b"
          r"|मदद|आप कौन|సహాయం")
+_WHY = r"\bwhy\b|what(?:'s| is) the (?:need|reason|point)|क्यों|क्यूँ|क्यूं|किसलिए|फ.?र्क|ఎందుకు"
+_DECLINE_ALL = (r"(?:don'?t|do not|won'?t|not going to) want to (?:give|share|say|tell|provide)(?: you)? (?:any )?(?:more|other|further|anything)"
+                r"|no more (?:questions|information|details)|stop asking|enough questions|that'?s all i (?:want|will) (?:to )?(?:say|share|give)"
+                r"|कोई\s+और\s+जानकार[ऀ-ॿ]*\s+नहीं\s+(?:देना|दूँगा|दूंगा|दूँगी|दूंगी)|और\s+जानकारी\s+नहीं|और\s+कुछ\s+नहीं\s+बताना|सवाल\s+(?:मत|बंद)|बस\s+करो"
+                r"|ఇంకేమీ\s+చెప్పను|ఇక\s+చెప్పను")
+_SKIP = (r"\bskip\b|\bpass\b|next question|\b(?:don'?t|do not) know\b|no idea|rather not|prefer not|नहीं\s+बताना|बताना\s+नहीं|रहने\s+दो|छोड़ो|छोड़\s+दो|आगे\s+बढ़ो"
+         r"|मालूम\s+नहीं|వదిలేయండి|తెలియదు|చెప్పను")
+_SCHEMES_Q = (r"\b(?:what|which)\b.{0,50}\b(?:schemes?|facilit\w+|benefits?|services?|help)\b|\b(?:schemes?|benefits?|facilit\w+)\b.{0,30}\b(?:available|can i get|do i get)\b"
+              r"|(?:क्या|कौन\s*सी|कौन-सी).{0,30}(?:योजना|सुविधा|लाभ|मदद)|(?:योजना|सुविधा)\w*.{0,20}(?:क्या|कौन)|ఏ\s*పథకాలు|ఏ\s*సదుపాయ")
 _QUESTION = r"(\?|^\s*(what|why|how|when|where|who|which|can you|could you|tell me about|explain|write|give me|show me)\b)"
 
 _rx = {k: re.compile(v, re.I | re.U) for k, v in {
-    "strong": rf"(?<!\w)(?:{_STRONG})(?!\w)", "soft": rf"(?<!\w)(?:{_SOFT})(?!\w)", "inj": _INJECTION, "login": _LOGIN,
+    "strong": rf"(?<!\w)(?:{_STRONG})(?!\w)", "soft": rf"(?<!\w)(?:{_SOFT})(?!\w)", "inj": _INJECTION, "login": _LOGIN, "why": _WHY, "decline": _DECLINE_ALL, "skip": _SKIP, "schemes": _SCHEMES_Q,
     "words": _SENSITIVE_WORDS, "greet": _GREETING, "thanks": _THANKS, "help": _HELP, "q": _QUESTION}.items()}
 
 _LOOKALIKE = str.maketrans({"*": "u", "@": "a", "$": "s", "0": "o", "3": "e", "!": "i"})
@@ -92,12 +105,24 @@ def no_details(utterance: str) -> str:
         return "smalltalk"
     if _rx["login"].search(t):
         return "login"
+    if _rx["decline"].search(t):
+        return "decline"  # "I don't want to give any more information": stop asking, offer the schemes now
+    if _rx["skip"].search(t):
+        return "skip"
+    if _rx["why"].search(t):
+        return "why"  # "why do you need to know?": explain what the question is for
+    if _rx["schemes"].search(t):
+        return "schemes"  # "what facilities do I get?": say that is exactly what this is for
     from . import extraction
-    if len(t.split()) <= 3 and extraction.polarity(utterance) is not None:
+    if extraction.is_plain_answer(utterance):
         return "ack"  # a bare "yes" / "uh-huh" / "no" with nothing waiting for it: acknowledge and carry on
     if _rx["q"].search(t) and len(t.split()) >= 3:
         return "offtopic"
     return "nothing_heard"
+
+
+def is_schemes_question(utterance: str) -> bool:
+    return bool(_rx["schemes"].search(_norm(utterance)))
 
 
 def placeholder(kind: str) -> str:

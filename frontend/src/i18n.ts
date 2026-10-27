@@ -91,6 +91,10 @@ const S = {
   kioskOperator: { en: "Kiosk operator", hi: "कियोस्क ऑपरेटर", te: "కియోస్క్ ఆపరేటర్" },
   kioskSignOut: { en: "Operator sign out", hi: "ऑपरेटर साइन आउट", te: "ఆపరేటర్ సైన్ అవుట్" },
   kioskSignOutHint: { en: "Ends all sessions on this kiosk", hi: "इस कियोस्क के सभी सत्र समाप्त करता है", te: "ఈ కియోస్క్‌లోని అన్ని సెషన్‌లను ముగిస్తుంది" },
+  voiceOn: { en: "Voice is on: speak or type. Audio is not stored.", hi: "आवाज़ चालू है: बोलिए या लिखिए। ऑडियो सहेजा नहीं जाता।", te: "వాయిస్ ఆన్‌లో ఉంది: మాట్లాడండి లేదా టైప్ చేయండి. ఆడియో సేవ్ చేయబడదు." },
+  voiceOff: { en: "Voice is not available on this device. You can type instead.", hi: "इस डिवाइस पर आवाज़ उपलब्ध नहीं है। आप लिखकर बता सकते हैं।", te: "ఈ పరికరంలో వాయిస్ అందుబాటులో లేదు. మీరు టైప్ చేయవచ్చు." },
+  voiceInput: { en: "Voice", hi: "आवाज़", te: "వాయిస్" },
+  allConfirmedMsg: { en: "Confirmed ✓ All the details you checked.", hi: "पुष्टि हो गई ✓ आपने जो जानकारी जाँची वह सब।", te: "నిర్ధారించబడింది ✓ మీరు చూసిన వివరాలన్నీ." },
   stopListening: { en: "Stop", hi: "रोकें", te: "ఆపండి" },
   updatedAt: { en: "Updated", hi: "अपडेट", te: "నవీకరణ" },
   reviewerNote: { en: "Reviewer note", hi: "समीक्षक का नोट", te: "సమీక్షకుని గమనిక" },
@@ -458,3 +462,14 @@ export const OUTCOME_LABEL: Record<string, Record<Lang, string>> = {
   INSUFFICIENT_INFORMATION: { en: "Need more information", hi: "और जानकारी चाहिए", te: "మరింత సమాచారం కావాలి" },
   NEEDS_HUMAN_REVIEW: { en: "Needs human review", hi: "मानव समीक्षा आवश्यक", te: "మానవ సమీక్ష అవసరం" },
 };
+
+const SESSION_STATES: Record<string, Record<Lang, string>> = {
+  SESSION_ACTIVE: { en: "In progress", hi: "जारी है", te: "కొనసాగుతోంది" },
+  PROFILE_NEEDS_CONFIRMATION: { en: "Needs your confirmation", hi: "आपकी पुष्टि चाहिए", te: "మీ నిర్ధారణ కావాలి" },
+  PENDING_REVIEW: { en: "With a reviewer", hi: "समीक्षक के पास", te: "సమీక్షకుని వద్ద" },
+  CORRECTION_REQUESTED: { en: "Correction requested", hi: "सुधार माँगा गया", te: "సవరణ కోరారు" },
+  REVIEWED: { en: "Reviewed", hi: "समीक्षा हो गई", te: "సమీక్షించారు" },
+};
+/** A session's workflow state as plain words (never the internal code). */
+export const sessionState = (s: string | undefined, lang: Lang) =>
+  !s ? "" : SESSION_STATES[s]?.[lang] ?? s.toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());

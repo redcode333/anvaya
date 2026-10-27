@@ -542,6 +542,10 @@ _NO = {"नहीं", "नही", "नहि", "ना", "न", "गलत", "
        "లేదు", "లేవు", "కాదు", "తప్పు", "లేరు", "none"}
 
 
+_QUESTION_WORDS = {"क्यों", "क्यूँ", "क्यूं", "क्या", "कैसे", "कौन", "कब", "कहाँ", "कहां", "किसलिए", "why", "what", "how", "who", "when", "where",
+                   "ఎందుకు", "ఏమిటి", "ఎలా", "ఎవరు", "ఎప్పుడు", "ఎక్కడ"}
+_FILLER = {"i", "do", "so", "please", "that", "that's", "thats", "s", "is", "it", "its", "the", "all", "good", "fine", "thank", "thanks", "you",
+           "sir", "ji", "bhai", "यह", "ये", "वह", "तो", "और", "भी", "बस", "अच्छा", "एकदम", "కదా", "అండి"}
 _AFFIRM_SOUNDS = re.compile(r"\b(?:uh[\s-]?huh|mm+[\s-]?hm+|mhm+|hmm+\s+(?:yes|yeah|ok(?:ay)?)|yup|aha)\b")
 _NEG_SOUNDS = re.compile(r"\b(?:uh[\s-]?uh|nuh[\s-]?uh|mm+[\s-]?mm+|nah)\b")
 
@@ -550,6 +554,8 @@ def polarity(text: str) -> bool | None:
     """True for a yes, False for a no, None when the words say neither (or both). "नहीं है" is a no and "जी नहीं" is a no:
     है / जी only count towards yes when no "no" word is present. Spoken sounds count too: "uh-huh" is yes, "uh-uh" no."""
     low = (text or "").lower()
+    if "?" in low or {t for t in _TOKEN.findall(low)} & _QUESTION_WORDS:
+        return None  # "क्यों जानना है" ("why do you need to know?") contains है but is not a yes
     if _NEG_SOUNDS.search(low):
         return False
     if _AFFIRM_SOUNDS.search(low) and not _NEG_SOUNDS.search(low) and not {t for t in _TOKEN.findall(low)} & _NO:
@@ -563,6 +569,17 @@ def polarity(text: str) -> bool | None:
     if strong or toks & _WEAK_YES:
         return True
     return None
+
+
+def is_plain_answer(text: str) -> bool:
+    """True when every word is a yes / no word or filler ("yes", "हाँ जी", "no that's right", "uh-huh"): only then is a turn a bare yes or no."""
+    low = (text or "").lower()
+    if _AFFIRM_SOUNDS.search(low) or _NEG_SOUNDS.search(low):
+        low = _NEG_SOUNDS.sub(" ", _AFFIRM_SOUNDS.sub(" ", low))
+        extra = {t for t in _TOKEN.findall(low)} - _FILLER
+        return not extra and polarity(text) is not None
+    toks = {t for t in _TOKEN.findall(low)}
+    return bool(toks) and toks <= (_STRONG_YES | _WEAK_YES | _NO | _FILLER) and polarity(text) is not None
 
 
 BOOL_ATTRS = ("bpl", "receives_other_pension", "owns_cultivable_land", "has_bank_account", "owns_pucca_house")

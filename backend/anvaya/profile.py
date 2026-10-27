@@ -420,9 +420,11 @@ def set_workflow_state(session_id: str, state: str) -> None:
 
 # ---------------------------------------------------------------- conversation
 
-def next_question(session_id: str, lang: str, needed: set[str] | None = None, facts: dict | None = None) -> dict | None:
+def next_question(session_id: str, lang: str, needed: set[str] | None = None, facts: dict | None = None, skip: set[str] | None = None) -> dict | None:
     facts = current_facts(session_id) if facts is None else facts
     for attr in QUESTION_ORDER:
+        if skip and attr in skip:
+            continue  # the citizen said "skip" to this one
         if attr in facts:
             continue  # never re-ask an attribute we already hold (confirmed or pending confirmation)
         if needed is not None and attr not in needed and attr not in extraction.HIGH_IMPACT:
@@ -479,7 +481,8 @@ def _turn_state(row) -> dict:
         data = json.loads(row["extracted_json"]) if row else {}
     except (TypeError, ValueError):
         return {}
-    return {"asked": data.get("asked"), "awaiting": data.get("awaiting") or [], "misses": int(data.get("misses") or 0)}
+    return {"asked": data.get("asked"), "awaiting": data.get("awaiting") or [], "misses": int(data.get("misses") or 0),
+            "skipped": data.get("skipped") or [], "quiet": bool(data.get("quiet"))}
 
 
 def handle_turn(session_id: str, utterance: str, channel: str = "text", language: str | None = None,
@@ -495,6 +498,8 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
     # the facts it read back and is waiting to hear "yes" for.
     prior = _turn_state(last_turn.fetchone())
     asked = prior.get("asked")
+    skipped = set(prior.get("skipped", []))  # questions the citizen said to skip
+    quiet = bool(prior.get("quiet"))  # the citizen asked for no more questions
     awaiting = [fid for fid in prior.get("awaiting", [])
                 if facts.get(fid) and not facts.get(fid)["confirmed"] and not facts.get(fid)["superseded_by"]]
     awaiting_attrs = {facts.get(fid)["attribute"] for fid in awaiting}
@@ -570,11 +575,22 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
 
     if to_read:
         parts.append(_read(to_read))
+        if blocked is None and guardrails.is_schemes_question(utterance):
+            parts.append(i18n.t(i18n.MESSAGES, "guard_schemes", lang))  # "what facilities do I get?" asked together with the details
     elif not applied and not said_yes and not said_no:
         kind = blocked or (guardrails.no_details(utterance) if not result["other_people"] else "nothing_heard")
         guard = guard or (kind if kind not in ("nothing_heard", "ack") else None)
         if kind == "ack":
             parts.append(i18n.t(i18n.MESSAGES, "okay", lang))
+        elif kind == "why":
+            parts.append(f"{i18n.t(i18n.WHY_ASK, asked or '_default', lang)} {i18n.t(i18n.MESSAGES, 'why_tail', lang)}")
+        elif kind == "skip":
+            if asked:
+                skipped.add(asked)
+            parts.append(i18n.t(i18n.MESSAGES, "skip_ok", lang))
+        elif kind == "decline":
+            quiet = True
+            parts.append(i18n.t(i18n.MESSAGES, "guard_decline", lang))
         elif kind == "nothing_heard":
             misses = prior.get("misses", 0) + 1
             parts.append(i18n.t(i18n.MESSAGES, "nothing_heard_tips" if misses >= 2 else "nothing_heard", lang))
@@ -594,7 +610,7 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
                                 words=cand["heard_as"], alt=" / ".join(cand["confusable_with"])))
     for o in result["other_people"]:
         parts.append(i18n.t(i18n.MESSAGES, "relative_age_ignored", lang, relation=o["relation"], age=o["value"]))
-    q = next_question(session_id, lang, needed, facts.current())
+    q = None if quiet else next_question(session_id, lang, needed, facts.current(), skip=skipped)
     next_asked, next_awaiting = None, []
     if said_no:
         # "No" to the read-back: ask for the right value instead of moving on.
@@ -612,7 +628,7 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
         else:
             if said_yes:
                 parts.insert(0, i18n.t(i18n.MESSAGES, "okay", lang))
-            parts.append(q["text"] if q else i18n.t(i18n.MESSAGES, "ready", lang))
+            parts.append(q["text"] if q else i18n.t(i18n.MESSAGES, "quiet_hint" if quiet else "ready", lang))
             next_asked = q["attribute"] if q else None
         disputed = next((f for f in applied if f["disputed"]), None)
         if disputed:
@@ -622,6 +638,9 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
             parts.append(i18n.t(i18n.MESSAGES, "please_confirm", lang))
         if q:
             parts.append(q["text"])
+        elif quiet:
+            if wf != "PROFILE_NEEDS_CONFIRMATION":  # while details wait for a "yes", "check schemes now" would contradict "please confirm"
+                parts.append(i18n.t(i18n.MESSAGES, "quiet_hint", lang))
         elif wf != "PROFILE_NEEDS_CONFIRMATION":
             parts.append(i18n.t(i18n.MESSAGES, "ready", lang))
         next_asked = q["attribute"] if q else None
@@ -631,7 +650,8 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
     db.execute(
         "INSERT INTO turns(turn_id, session_id, language, utterance, channel, extracted_json, reply, created_at) VALUES (?,?,?,?,?,?,?,?)",
         (new_id("TRN"), session_id, lang, guardrails.placeholder(blocked) if blocked else utterance, channel,
-         dumps({**result, "llm": llm_summary, "asked": next_asked, "awaiting": next_awaiting, "misses": misses}), reply,
+         dumps({**result, "llm": llm_summary, "asked": next_asked, "awaiting": next_awaiting, "misses": misses,
+                "skipped": sorted(skipped), "quiet": quiet}), reply,
          now().isoformat()),  # microseconds: the next turn finds this one as the latest even within the same second
     )
     metrics.TURNS.labels(channel, lang).inc()

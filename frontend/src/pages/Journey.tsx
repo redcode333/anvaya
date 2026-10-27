@@ -8,15 +8,15 @@ import { supabase } from "../auth";
 import { ErrorNote, KioskOperatorBar, StaffLogin, ValueInput } from "../components";
 import { MicIcon } from "../landing/DemoCard";
 import { useCaptcha } from "../Turnstile";
-import { ATTR, attrLabel, showValue, t, type Lang } from "../i18n";
+import { ATTR, attrLabel, sessionState, showValue, t, type Lang } from "../i18n";
 import { callSupported, startCall, type Call, type CallState } from "../call";
-import { speak, stopSpeaking, verbxFailedOver, voiceProvider, type Provider } from "../speech";
+import { speak, stopSpeaking, voiceProvider, type Provider } from "../speech";
 import { useApp } from "../state";
 import { getOutbox, refreshBundle } from "../offline/store";
 import OfflinePrescreen from "./OfflinePrescreen";
 import demoPhrases from "../../../backend/anvaya/data/demo_phrases.json";
 
-type Msg = { who: "bot" | "me"; text: string; meta?: string; guard?: string };
+type Msg = { who: "bot" | "me"; text: string; note?: string; guard?: string; voice?: boolean };
 type Profile = { session: { session_id: string; language: Lang; workflow_state: string }; facts: Fact[]; needs_confirmation: string[] };
 
 // Kiosk demo phrases: shared with the backend, which lets only these (and demo/test sessions) reach free-tier LLMs.
@@ -96,12 +96,12 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
   const send = async (utterance: string, channel: "text" | "voice" = "text"): Promise<void> => {
     if (!sessionId || !utterance.trim()) return;
     setBusy(true); setErr(null);
-    setMsgs((m) => [...m, { who: "me", text: utterance, meta: channel === "voice" ? `${t("heard", lang)} (${provider})` : undefined }]);
+    setMsgs((m) => [...m, { who: "me", text: utterance, voice: channel === "voice" }]);
     setText("");
     try {
       const r = await api<any>(`/sessions/${sessionId}/turns`, { body: { utterance, channel, language: lang } });
-      const gl = r.glossary?.length ? ` · glossary: ${r.glossary.map((g: any) => `“${g.term}” → ${g.meaning}`).join("; ")}` : "";
-      setMsgs((m) => [...m, { who: "bot", guard: r.guardrail ?? undefined, text: r.reply, meta: r.extracted.length ? `${r.extracted.map((f: Fact) => f.fact_id).join(", ")}${gl}` : gl || undefined }]);
+      const gl = r.glossary?.length ? r.glossary.map((g: any) => `“${g.term}” — ${g.meaning}`).join(" · ") : undefined;
+      setMsgs((m) => [...m, { who: "bot", guard: r.guardrail ?? undefined, text: r.reply, note: gl }]);
       if (mode === "kiosk" || channel === "voice") say(sessionId, r.reply_segments ?? r.reply);
       await loadProfile(sessionId);
     } catch (e) { setErr(e); }
@@ -133,8 +133,13 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
   useEffect(() => { if (!sessionId) callRef.current?.stop(); }, [sessionId]);
   useEffect(() => () => { callRef.current?.stop(); stopSpeaking(); }, []);
 
+  // Using the card instead of answering the bot's "Is that right?" out loud: stop the spoken question and say it was taken.
+  const acknowledge = (text: string) => { stopSpeaking(); setMsgs((m) => [...m, { who: "bot", text }]); };
   const confirmFact = async (f: Fact) => {
-    await api(`/sessions/${sessionId}/profile/facts/${f.fact_id}`, { method: "PATCH", body: { confirmed: true } }).catch(setErr);
+    try {
+      await api(`/sessions/${sessionId}/profile/facts/${f.fact_id}`, { method: "PATCH", body: { confirmed: true } });
+      acknowledge(`${t("confirmed", lang)} ✓ ${attrLabel(f.attribute, lang)}: ${showValue(f.attribute, f.value, lang)}`);
+    } catch (e) { setErr(e); }
     loadProfile(sessionId!);
   };
   const chooseValue = async (f: Fact, value: any) => {
@@ -150,7 +155,10 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
       loadProfile(sessionId!);
     } catch (e) { setErr(e); }
   };
-  const confirmAll = async () => { await api(`/sessions/${sessionId}/profile/confirm-all`, { body: {} }).catch(setErr); loadProfile(sessionId!); };
+  const confirmAll = async () => {
+    try { await api(`/sessions/${sessionId}/profile/confirm-all`, { body: {} }); acknowledge(t("allConfirmedMsg", lang)); } catch (e) { setErr(e); }
+    loadProfile(sessionId!);
+  };
 
   const endSession = async () => {
     await endCitizenSession("user");
@@ -198,8 +206,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
             {(["wChip1", "wChip2", "wChip3"] as const).map((k) => <li key={k}>{t(k, lang)}</li>)}
           </ul>
           <RetentionNote />
-          <p className="tiny">Voice: {provider === "verbx" ? "VerbX" : provider === "browser" ? `browser speech (VerbX ${verbxFailedOver() ? "unavailable" : "not configured"})` : "not available — text only"}.
-            Audio is not stored by Anvaya.</p>
+          <p className="tiny">{provider === "none" ? t("voiceOff", lang) : t("voiceOn", lang)}</p>
         </section>
         <ol className="welcome-steps" aria-label="How it works">
           {([1, 2, 3] as const).map((n) => (
@@ -233,7 +240,8 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
         <div className="chat" ref={chatRef} aria-live="polite">
           {msgs.length === 0 && <div className="bubble bot">{{ en: "Continue telling me about your household.", hi: "अपने परिवार के बारे में बताते रहिए।", te: "మీ కుటుంబం గురించి చెప్పడం కొనసాగించండి." }[lang]}</div>}
           {msgs.map((m, i) => (
-            <div key={i} className={`bubble ${m.who}${m.guard && m.guard !== "smalltalk" ? " guard" : ""}`}>{m.text}{m.meta && <div className="tiny mono">{m.meta}</div>}</div>
+            <div key={i} className={`bubble ${m.who}${m.guard && ["abuse", "injection", "sensitive", "offtopic"].includes(m.guard) ? " guard" : ""}`}>
+              {m.voice && <span className="bubble-voice" title={t("voiceInput", lang)}><MicIcon size={13} /></span>}{m.text}{m.note && <div className="bubble-note">ℹ {m.note}</div>}</div>
           ))}
           {busy && <div className="bubble bot typing" role="status" aria-label="Anvaya is replying"><i /><i /><i /></div>}
         </div>
@@ -265,7 +273,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
       <section className="card stack">
         <div className="row spread">
           <h2>{t("profile", lang)}</h2>
-          <span className="tiny mono">{profile?.session.workflow_state}</span>
+          <span className="chip">{sessionState(profile?.session.workflow_state, lang)}</span>
         </div>
         {individual.length > 0 && <div className="notice">{t("needsConfirm", lang)}: {individual.length} · {t("confirmEach", lang)}</div>}
         <div className="facts">
@@ -277,10 +285,10 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
             return (
               <div key={f.fact_id} className={`fact ${isPending ? "pending" : ""}`}>
                 <div>
-                  <div className="k">{attrLabel(f.attribute, lang)} {f.high_impact && <span className="chip" title="High-impact: must be confirmed">!</span>} {f.verified && <span className="chip on">{t("verifiedDigiLocker", lang)}</span>} <span className="mono tiny">{f.fact_id}</span></div>
+                  <div className="k">{attrLabel(f.attribute, lang)} {f.high_impact && <span className="chip" title="High-impact: must be confirmed">!</span>} {f.verified && <span className="chip on">{t("verifiedDigiLocker", lang)}</span>}</div>
                   {isEditing ? <ValueInput attr={f.attribute} value={editing!.value} onChange={(v) => setEditing({ ...editing!, value: v })} lang={lang} />
                     : <div className="v">{showValue(f.attribute, f.value, lang)}</div>}
-                  {readBack && !isEditing && !f.disputed && <div className="small" role="status"><strong>{t("isThisRight", lang)}</strong> <span className="mono">{f.readback}</span></div>}
+                  {readBack && !isEditing && !f.disputed && <div className="small" role="status"><strong>{t("isThisRight", lang)}</strong> <span>{f.readback}</span></div>}
                   {f.disputed && !isEditing && <div className="small" role="status"><strong>{t("whichIsRight", lang)}</strong></div>}
                   <div className="tiny">
                     {f.raw_text && <>“{f.raw_text}” · </>}{f.source}{f.inferred && " · inferred"}{f.note && ` · ${f.note}`}

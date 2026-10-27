@@ -96,3 +96,73 @@ def test_the_tips_come_back_to_the_short_message_once_something_is_understood(cl
     assert "still not catching" in say(client, sid, "blah blah")["reply"]
     assert say(client, sid, "I live in Bihar")["extracted"]
     assert "could not pick out" in say(client, sid, "latency is slaying")["reply"]  # the counter started again
+
+
+# ---------------------------------------------------------------- a second conversation: "why?", "skip", "no more questions"
+
+def test_why_is_not_a_yes_and_never_confirms_what_was_read_back(client, sid):
+    r = say(client, sid, "I am 50 years old")
+    age = next(f for f in r["extracted"] if f["attribute"] == "age")
+    assert not age["confirmed"] and "Is that right" in r["reply"]
+    for why in ("क्यों जानना है", "Why do you need to know?", "मैं कहीं भी रहता हूँ उससे क्या फ़र्क पड़ रहा है"):
+        r = say(client, sid, why)
+        assert not facts(client, sid)["age"]["confirmed"], why
+        assert not r["reply"].startswith("Okay."), why
+
+
+def test_why_gets_the_reason_for_the_question_that_was_asked(client, sid):
+    say(client, sid, "I live in Bihar and I am 50 years old")
+    r = say(client, sid, "Yes")  # confirms; the bot now asks the next question (income)
+    assert "income" in r["reply"].lower()
+    r = say(client, sid, "क्यों जानना है", lang="en")
+    assert r["guardrail"] == "why" and "income limit" in r["reply"] and "skip" in r["reply"] and "income" in r["reply"].lower()
+
+
+def test_skip_is_remembered_and_the_question_is_not_asked_again(client, sid):
+    r = say(client, sid, "My name is Amina")
+    assert "Which state" in r["reply"]
+    r = say(client, sid, "skip")
+    assert "skip that" in r["reply"] and "Which state" not in r["reply"]
+    assert "old are you" in r["reply"] or "age" in r["reply"].lower()
+    for _ in range(2):
+        assert "Which state" not in say(client, sid, "blah blah")["reply"]
+
+
+def test_no_more_questions_is_respected_for_the_rest_of_the_conversation(client, sid):
+    say(client, sid, "I live in Bihar")
+    r = say(client, sid, "yes")
+    r = say(client, sid, "I don't want to give any more information")
+    assert r["guardrail"] == "decline" and "You don't have to share" in r["reply"]
+    assert "?" not in r["reply"] and r["next_question"] is None or "?" not in r["reply"]
+    later = say(client, sid, "ह")
+    assert "?" not in later["reply"].replace("could not pick out any details. Could you say it another way?", "")
+    assert "check schemes now" in say(client, sid, "uh-huh")["reply"]
+    # Anything the citizen volunteers is still taken.
+    assert say(client, sid, "I am 60 years old")["extracted"]
+
+
+def test_the_facilities_question_is_acknowledged_together_with_the_details(client, sid):
+    r = say(client, sid, "Hello, my name is Abhinav and I live in Jharkhand. I am 50 years old. What are the facilities provided to me by the government?")
+    attrs = {f["attribute"] for f in r["extracted"]}
+    assert {"state", "age"} <= attrs and "I'll check which schemes may suit you" in r["reply"]
+    assert "Jharkhand" in r["reply"]
+    lone = say(client, sid, "What facilities can I get from the government?")
+    assert lone["guardrail"] == "schemes" and "can't answer that" not in lone["reply"]
+
+
+@pytest.mark.parametrize("lang,text,kind", [
+    ("hi", "क्यों जानना है", "why"), ("hi", "मैं कोई और जानकारियां नहीं देना चाहता", "decline"), ("hi", "पूछना बंद करो", "nothing_heard"),
+    ("en", "skip this one", "skip"), ("en", "I don't know", "skip"), ("en", "stop asking me questions", "decline"),
+    ("en", "what schemes are available for me", "schemes"),
+])
+def test_kinds_of_replies(lang, text, kind):
+    assert guardrails.no_details(text) == kind
+
+
+def test_replies_in_hindi_and_telugu_for_why_and_decline(client):
+    for lang, needle in (("hi", "ज़रूरी"), ("te", "అవసరం")):
+        sid = client.post("/api/v1/sessions", json={"mode": "personal", "language": lang}).json["session_id"]
+        r = say(client, sid, "why" if lang == "te" else "क्यों जानना है", lang=lang)
+        assert r["guardrail"] == "why" and r["reply"]
+        d = say(client, sid, "मैं कोई और जानकारियां नहीं देना चाहता", lang=lang)
+        assert d["guardrail"] == "decline" and needle in d["reply"]

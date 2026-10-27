@@ -72,7 +72,7 @@ export default function DraftPage() {
           <div className="draft-fields">
             {d.fields.map((f) => (
               <div key={f.key} className={`draft-row ${tone(f.provenance)}`}>
-                <div className="dr-k">{f.label}{f.fact_id && <div className="tiny mono">{f.fact_id}</div>}</div>
+                <div className="dr-k">{f.label}</div>
                 <div className="dr-v">{!locked && (editable.includes(f.key) || f.provenance === "missing")
                   ? <ValueInput attr={f.key} value={edits[f.key] ?? f.value} lang={lang} onChange={(v) => setEdits({ ...edits, [f.key]: v })} />
                   : showValue(f.key, f.value, lang)}</div>
