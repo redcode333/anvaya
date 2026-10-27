@@ -496,6 +496,14 @@ body.kiosk .bubble { font-size: 1.15rem; }
 .rev-doc.ok { border-color: var(--match); background: var(--match-bg); }
 .rev-doc-name { font-weight: 600; }
 @media (max-width: 900px) { .review-grid { grid-template-columns: 1fr; } .review-decision { position: static; } .case-row { grid-template-columns: 1fr auto; } .cr-badges, .cr-meta { grid-column: 1; text-align: left; } .cr-arrow { grid-row: 1; grid-column: 2; } }
+/* Security check (Cloudflare Turnstile): the widget is invisible unless it needs the visitor, so its state is always written out */
+.captcha { display: grid; gap: .35rem; justify-items: start; }
+.cap-status { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin: 0; padding: .3rem .7rem; border-radius: 999px; font-size: .82rem; background: var(--surface-2); color: var(--ink-2); }
+.cap-dot { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-weight: 800; font-size: .7rem; background: var(--ink-3); color: #fff; }
+.cap-checking .cap-dot, .cap-challenge .cap-dot { background: var(--accent); animation: bubble-in .9s ease-in-out infinite alternate; }
+.cap-passed { background: var(--match-bg); color: var(--match); } .cap-passed .cap-dot { background: var(--match); }
+.cap-failed { background: var(--miss-bg); color: var(--miss); } .cap-failed .cap-dot { background: var(--miss); }
+.cap-off { background: var(--info-bg); color: var(--info); }
 /* Guided voice card (fill the draft, check documents) */
 .voice-guide { display: grid; gap: .7rem; padding: 1.2rem 1.3rem; border-radius: 18px; border: 1px solid #E8833A; background: radial-gradient(100% 120% at 100% 0%, #FCEBDD 0%, transparent 60%), var(--surface); box-shadow: var(--shadow); }
 .voice-guide h2 { margin: 0; }

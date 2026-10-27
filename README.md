@@ -1373,6 +1373,19 @@ beside it three numbered steps (*Tell us about your family*, *Check what we unde
 is English, Hindi and Telugu (`wStep*`, `wChip*` in `frontend/src/i18n.ts`). The Turnstile check, error notes, the retention notice and the voice line are
 unchanged, and the Start button stays disabled until the check passes.
 
+### The brief's demo checklist and safety rules, and where each is met
+| Rule from the brief | How the project meets it | Where to see it |
+|---|---|---|
+| Run every official test case and show input, result and evidence | TC1–TC5 run through the real pipeline; each shows its input, the expected result, the actual result and per-check evidence (34 checks, all passing) | `/test-runs` (admin), `POST /api/v1/test-runs/TC1…TC5`, `backend/anvaya/testrunner.py` |
+| Human approval before anything that cannot easily be undone | Nothing is ever submitted to a government portal: a draft is "prepared", sharing it with a reviewer needs an explicit consent tick, a reviewer's decision is "not an approval", and a deleted account/data needs an explicit confirmation | Draft page, reviewer pages, *My Passports → Delete my account and data* |
+| Mock or synthetic data for personal or sensitive information | Free-tier LLMs only ever see the built-in demo phrases and test sessions (`LLM_ALLOW_REAL_DATA=false`); Aadhaar and bank numbers are never collected; DigiLocker and phone OTP are shown as "Coming soon" mocks that fire no request | `demo_phrases.json`, `backend/anvaya/llm/`, the sign-in page |
+| Do not bypass OTP or CAPTCHA; show a safe manual step or a mock instead | Cloudflare Turnstile guards anonymous sign-in, email OTP and staff sign-in, and Supabase verifies the token server-side. The *Start* button stays disabled until the check passes. Phone OTP is switched off (mock). Staff also need an authenticator code (TOTP) | the citizen start screen, the staff sign-in |
+
+**The CAPTCHA is now visible.** Turnstile is set to `interaction-only`, so Cloudflare draws nothing unless it decides a visitor must act, and a visitor who passes silently saw no trace of it. Under the
+widget there is now always a status line: *Security check in progress…* → *Security check passed* (green), or *Please complete the security check above* when Cloudflare shows its "Verify you are human"
+box, or *The security check could not finish* with a **Try again** button (red; *Start* stays disabled), or, when the build has no site key, *Security check (Cloudflare Turnstile) is not enabled in this build.*
+Verified against Cloudflare's published test keys: `1x00000000000000000000AA` (always passes), `2x00000000000000000000AB` (always fails), `3x00000000000000000000FF` (always forces a challenge). English, Hindi, Telugu.
+
 ### Voice help on the draft and the documents
 * **Fill the draft by speaking.** The Draft page has *Fill by speaking*. A card asks for each field that is still open (name, district, gender, anything marked "To fill in"), one
   question at a time: it **reads the question aloud**, you tap the microphone (or type), it shows what it understood ("I understood: Applicant name: Lakshmi Devi"), and you tap
