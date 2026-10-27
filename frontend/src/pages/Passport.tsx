@@ -17,10 +17,20 @@ export function Steps({ active }: { active: string }) {
     ["/citizen/documents", t("documents", lang)],
   ];
   return (
-    <nav className="steps" aria-label="Steps" style={{ marginBottom: "1rem" }}>
-      {items.map(([to, label], i) => (
-        <Link key={to} to={to} className={`chip ${active === to ? "on" : ""}`}>{i + 1}. {label}</Link>
-      ))}
+    <nav className="stepper" aria-label="Steps">
+      <ol>
+        {items.map(([to, label], i) => {
+          const at = items.findIndex(([x]) => x === active);
+          const state = i < at ? "done" : i === at ? "now" : "todo";
+          return (
+            <li key={to} data-state={state}>
+              <Link to={to} aria-current={state === "now" ? "step" : undefined}>
+                <span className="step-dot" aria-hidden="true">{state === "done" ? "✓" : i + 1}</span><span className="step-label">{label}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ol>
     </nav>
   );
 }
@@ -28,8 +38,11 @@ export function Steps({ active }: { active: string }) {
 function SchemeCard({ r, lang, onDraft, onAnswer }: { r: SchemeResult; lang: Lang; onDraft: (r: SchemeResult) => void; onAnswer: (attr: string, v: any) => void }) {
   const [open, setOpen] = useState(false);
   const [answers, setAnswers] = useState<Record<string, any>>({});
+  const tone = r.outcome === "MATCH" || r.outcome === "PROVISIONAL" ? "ok" : r.outcome === "MISMATCH" ? "no" : "info";
+  const pass = r.criteria.filter((c) => c.outcome === "PASS").length;
+  const candidate = tone === "ok";
   return (
-    <article className="scheme">
+    <article className={`scheme t-${tone}`}>
       <div className="scheme-head">
         <div style={{ minWidth: 0 }}>
           <h3>{r.scheme_name_localized ?? r.scheme_name}</h3>
@@ -37,21 +50,27 @@ function SchemeCard({ r, lang, onDraft, onAnswer }: { r: SchemeResult; lang: Lan
             <div className="tiny">{r.scheme_name} · <span className="chip" title="Translated automatically by VerbX; the official scheme name is shown first in English">{t("machineTranslated", lang)}</span></div>
           )}
           <div className="row tiny">
-            <span>{r.jurisdiction.level === "Central" ? "Central" : r.jurisdiction.state}</span>·
-            <span className="mono">{r.rule_id} v{r.rule_version}</span>·
-            <span>{r.criteria.filter((c) => c.outcome === "PASS").length}/{r.criteria.length} criteria pass</span>
+            <span className="chip">{r.jurisdiction.level === "Central" ? "Central" : r.jurisdiction.state}</span>
+            <span className="mono">{r.rule_id} v{r.rule_version}</span>
+          </div>
+          <div className="crit" title={`${pass}/${r.criteria.length}`}>
+            <span className="crit-bar" aria-hidden="true"><i style={{ width: `${r.criteria.length ? Math.round((pass / r.criteria.length) * 100) : 0}%` }} /></span>
+            <span className="tiny">{t("criteriaMet", lang).replace("{a}", String(pass)).replace("{b}", String(r.criteria.length))}</span>
           </div>
           {r.document_gaps.length > 0 && r.outcome !== "MISMATCH" && (
             <div className="row" style={{ marginTop: ".4rem" }}>
               {r.evidence.filter((e) => r.document_gaps.includes(e.doc_key)).map((e) => (
-                <span key={e.doc_key} className="chip off" title={e.purpose}>📄 {e.label}: {e.status_label}</span>
+                <span key={e.doc_key} className="chip doc" title={e.purpose}>📄 {e.label}: {e.status_label}</span>
               ))}
             </div>
           )}
         </div>
-        <div className="stack" style={{ textAlign: "right" }}>
+        <div className="scheme-side">
           <OutcomeBadge outcome={r.outcome} lang={lang} />
-          <button className="btn small" onClick={() => setOpen(!open)} aria-expanded={open}>{t("why", lang)} {open ? "▲" : "▼"}</button>
+          <div className="scheme-btns">
+            {candidate && <button className="btn small primary" onClick={() => onDraft(r)}>{t("prepareDraft", lang)}</button>}
+            <button className="btn small" onClick={() => setOpen(!open)} aria-expanded={open}>{t("why", lang)} {open ? "▲" : "▼"}</button>
+          </div>
         </div>
       </div>
       {open && (
@@ -104,7 +123,7 @@ function SchemeCard({ r, lang, onDraft, onAnswer }: { r: SchemeResult; lang: Lan
             <dt>Official source verified</dt><dd>{r.source.source_verified_at ?? "Not yet verified by a data steward"}</dd>
             <dt>Input facts</dt><dd className="mono">{r.input_fact_ids.join(", ") || "—"}</dd>
           </dl>
-          {r.outcome !== "MISMATCH" && r.outcome !== "NEEDS_HUMAN_REVIEW" && (
+          {!candidate && r.outcome !== "MISMATCH" && r.outcome !== "NEEDS_HUMAN_REVIEW" && (
             <button className="btn primary" onClick={() => onDraft(r)}>{t("prepareDraft", lang)}</button>
           )}
         </div>
@@ -118,6 +137,7 @@ export default function Passport() {
   const nav = useNavigate();
   const [ev, setEv] = useState<Evaluation | null>(null);
   const [err, setErr] = useState<any>(null);
+  const [moreSummary, setMoreSummary] = useState(false);
   const [voiceMsg, setVoiceMsg] = useState("");
 
   const run = useCallback(async () => {
@@ -166,7 +186,7 @@ export default function Passport() {
       ) : <ErrorNote error={err} />}
       {ev && (
         <div className="stack">
-          <div className="card stack">
+          <div className="card stack passport-hero">
             <div className="row spread">
               <h1>{t("passport", lang)}</h1>
               <div className="row">
@@ -176,13 +196,22 @@ export default function Passport() {
               </div>
             </div>
             <p className="notice small">{t("notApproval", lang)}</p>
-            <p className="small">{ev.voice_summary}
+            <div className="stat-row">
+              {([["candidates", "statSuit", "ok"], ["info", "statInfo", "info"], ["no", "statNo", "no"]] as const).map(([k, label, tone]) => (
+                <div key={k} className={`stat t-${tone}`}><b>{groups.find(([g]) => g === k)?.[1].length ?? 0}</b><span>{t(label, lang)}</span></div>
+              ))}
+            </div>
+            <p className={`small summary${moreSummary ? "" : " clamp"}`}>{ev.voice_summary}
               {ev.voice_summary_machine_translated && <> <span className="chip" title="Scheme names in this summary were translated automatically by VerbX">{t("machineTranslated", lang)}</span></>}</p>
+            {(ev.voice_summary?.length ?? 0) > 230 && (
+              <button type="button" className="btn small ghost summary-toggle" onClick={() => setMoreSummary(!moreSummary)}>{moreSummary ? t("readLess", lang) : t("readMore", lang)}</button>
+            )}
             {voiceMsg && <p className="tiny">{voiceMsg}</p>}
-            <div className="tiny">
+            <details className="tiny tech">
+              <summary>{t("technical", lang)}</summary>
               Jurisdiction: {ev.jurisdiction?.state ?? "—"} + central schemes · bundle {ev.bundle_version} · evaluation <span className="mono">{ev.eval_id}</span>
               {ev.jurisdiction?.note && ` · ${ev.jurisdiction.note}`}
-            </div>
+            </details>
             {ev.changes_since_last && ev.changes_since_last.length > 0 && (
               <div className="notice info small">
                 <strong>{t("changed", lang)}:</strong>
@@ -194,7 +223,7 @@ export default function Passport() {
           </div>
           {groups.map(([k, list]) => list.length > 0 && (
             <section key={k} className="stack">
-              <h2>{headings[k][lang]} <span className="chip">{list.length}</span></h2>
+              <h2 className={`group-h t-${k === "candidates" ? "ok" : k === "no" ? "no" : "info"}`}>{headings[k][lang]} <span className="chip">{list.length}</span></h2>
               {list.map((r) => <SchemeCard key={r.rule_id} r={r} lang={lang} onDraft={draft} onAnswer={answer} />)}
             </section>
           ))}

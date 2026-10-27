@@ -1346,6 +1346,15 @@ beside it three numbered steps (*Tell us about your family*, *Check what we unde
 is English, Hindi and Telugu (`wStep*`, `wChip*` in `frontend/src/i18n.ts`). The Turnstile check, error notes, the retention notice and the voice line are
 unchanged, and the Start button stays disabled until the check passes.
 
+### Scheme Passport page layout
+`/citizen/schemes` (and the other two journey pages) share a connected **stepper** (*Your details → Scheme Passport → Document Guide*: a tick for finished
+steps, an orange ring on the current one). The Passport page opens with a summary card: three **result tiles** (*May suit you*, *Need more information*,
+*Do not match*, each with its count), the notice, the spoken summary clamped to two lines (*Show more*), and the technical screening details folded away.
+Each scheme is a card with a coloured edge (green likely, amber needs information, grey no match), a **criteria progress bar** ("5 of 5 criteria met", in
+English / Hindi / Telugu), neutral amber chips for documents still to check (not alarm-red), and its actions in one fixed place: the outcome badge, **Prepare
+draft** (visible on the card for likely schemes, no longer hidden inside *Why*) and *Why*. On a phone the actions drop below the card text and the buttons
+at the top go full width. No behaviour changed: the rule trace, questions, source details and draft creation are the same.
+
 ### Read-aloud controls, copy, and the scheme passport download
 * **Stop whenever you like.** Every read-aloud button (scheme summary, Passport code, application steps, case status) turns into **⏹ Stop** while audio plays,
   and while anything plays a floating **Stop** pill shows on any page (so a chat reply read out at a kiosk can be cut off too). Audio also stops when you
