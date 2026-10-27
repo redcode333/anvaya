@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { ErrorNote, StatusBadge } from "../components";
 import { t } from "../i18n";
+import { ListenButton } from "../ListenControls";
 import { speak, stopSpeaking, voiceProvider } from "../speech";
 import { useApp } from "../state";
 
@@ -13,20 +14,17 @@ export default function CaseStatus() {
   const [code, setCode] = useState(routeCode ?? "");
   const [res, setRes] = useState<any>(null);
   const [err, setErr] = useState<unknown>(null);
-  const [speaking, setSpeaking] = useState(false);
   const [audioNote, setAudioNote] = useState(false);
   const typed = useRef(false);  // a lookup the citizen asked for (a tap) may start reading aloud; a page load may not
 
   const read = async (summary: string) => {
-    setAudioNote(false); setSpeaking(true);
+    setAudioNote(false);
     const used = await speak(await voiceProvider(), null, summary, lang);
-    setSpeaking(false);
     setAudioNote(used === "unavailable");
   };
-  const stop = () => { stopSpeaking(); setSpeaking(false); };
 
   const lookup = async (c: string, autoRead: boolean) => {
-    stopSpeaking(); setSpeaking(false);
+    stopSpeaking();
     setErr(null); setRes(null); setAudioNote(false);
     try {
       const r = await api<any>("/cases/status", { body: { code: c, language: lang } });
@@ -60,8 +58,7 @@ export default function CaseStatus() {
           {res.correction_note && <div className="notice">{t("reviewerNote", lang)}: {res.correction_note}</div>}
           <p className="tiny">{t("updatedAt", lang)} {res.updated_at}</p>
           <div className="row">
-            <button className="btn" onClick={() => (speaking ? stop() : read(res.spoken_summary))} aria-pressed={speaking}>
-              {speaking ? `⏹ ${t("stopListening", lang)}` : `🔊 ${t("listen", lang)}`}</button>
+            <ListenButton label={t("listen", lang)} onPlay={() => read(res.spoken_summary)} />
           </div>
           {audioNote && <p className="tiny muted" role="status">🔇 {t("audioUnavailable", lang)}</p>}
           <p className="notice small">{res.notice}</p>

@@ -3,6 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, newKey, type Draft, type Evaluation, type SchemeResult } from "../api";
 import { SavePanel } from "../AccountUI";
 import { ErrorNote, OutcomeBadge, ValueInput } from "../components";
+import { ListenButton } from "../ListenControls";
+import { downloadPassportPdf } from "../passportPdf";
 import { attrLabel, showValue, t, type Lang } from "../i18n";
 import { speak, voiceProvider } from "../speech";
 import { useApp } from "../state";
@@ -136,6 +138,7 @@ export default function Passport() {
   const answer = async (attribute: string, value: any) => {
     try { await api(`/sessions/${sessionId}/profile/facts`, { body: { attribute, value } }); run(); } catch (e) { setErr(e); }
   };
+  const downloadPdf = async () => { setErr(null); try { await downloadPassportPdf(sessionId, lang); } catch (e) { setErr(e); } };
   const listenSummary = async () => {
     if (!ev?.voice_summary) return;
     setVoiceMsg("");
@@ -167,7 +170,8 @@ export default function Passport() {
             <div className="row spread">
               <h1>{t("passport", lang)}</h1>
               <div className="row">
-                <button className="btn" onClick={listenSummary}>🔊 {t("listen", lang)}</button>
+                <ListenButton label={t("listen", lang)} onPlay={listenSummary} />
+                <button className="btn" onClick={downloadPdf}>⬇ {t("downloadPassport", lang)}</button>
                 <Link className="btn" to="/citizen/documents">{t("documents", lang)} →</Link>
               </div>
             </div>

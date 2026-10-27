@@ -1346,6 +1346,18 @@ beside it three numbered steps (*Tell us about your family*, *Check what we unde
 is English, Hindi and Telugu (`wStep*`, `wChip*` in `frontend/src/i18n.ts`). The Turnstile check, error notes, the retention notice and the voice line are
 unchanged, and the Start button stays disabled until the check passes.
 
+### Read-aloud controls, copy, and the scheme passport download
+* **Stop whenever you like.** Every read-aloud button (scheme summary, Passport code, application steps, case status) turns into **⏹ Stop** while audio plays,
+  and while anything plays a floating **Stop** pill shows on any page (so a chat reply read out at a kiosk can be cut off too). Audio also stops when you
+  move to another page. The state lives in `frontend/src/speech.ts` (`isSpeaking` / `subscribeSpeaking`); the controls are in `ListenControls.tsx`.
+* **Copy the Passport code at once.** The code box has a *Copy code* button (it says "Copied ✓"), beside *Read it again*.
+* **Download the scheme passport.** The Passport page has *Download passport (PDF)*, and the box that shows a just-saved Passport code has *Download
+  passport with code (PDF)*. `GET /api/v1/sessions/<id>/passport.pdf?language=en|hi|te` renders the latest screening in the same look as the draft PDF:
+  the confirmed details, then every scheme grouped as on the page (may suit you / need more information / do not match) with its criteria count, outcome
+  and, for the likely ones, the documents to bring with their status. The optional `X-Passport-Code` header (a valid `PSP-XXXX-XXXX` only) prints the
+  code on it; the PIN is never sent to the server in this call and never printed. Each download is audited without values (`passport.pdf_downloaded`).
+  It needs a screening first (404 `NO_EVALUATION` otherwise) and follows the same session rules as the other session routes.
+
 ### Case status and a fresh start
 * **Case status** (`/case`, `POST /cases/status`) answers in the language the site is showing, not the one the case was started in: the request carries
   `language` (`en`/`hi`/`te`; anything else falls back to the case's language). The status, the notice, the labels and the scheme name (machine-translated,

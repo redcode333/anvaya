@@ -4,6 +4,8 @@ import { consentBody, pinProblem, saveWithConsent, sendEmailCode, startGoogle, v
 import { absoluteLimitMs, createIdleTimer, type IdleTimer } from "./idle";
 import { supabase } from "./auth";
 import { ErrorNote } from "./components";
+import { CopyButton, ListenButton } from "./ListenControls";
+import { downloadPassportPdf } from "./passportPdf";
 import { consentNotice, retentionText, t } from "./i18n";
 import { speak, voiceProvider } from "./speech";
 import { useApp } from "./state";
@@ -38,13 +40,20 @@ export function RetentionNote() {
 /** The Passport code, large, with a read-aloud button (kiosks read it out at once). */
 export function CodeBig({ code, spoken, autoSpeak }: { code: string; spoken: string; autoSpeak?: boolean }) {
   const { lang, sessionId } = useApp();
+  const [err, setErr] = useState<unknown>(null);
   const say = async () => speak(await voiceProvider(), sessionId, spoken, lang);
   useEffect(() => { if (autoSpeak) say(); }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
+  const download = async () => { setErr(null); try { await downloadPassportPdf(sessionId!, lang, code); } catch (e) { setErr(e); } };
   return (
     <div className="notice ok stack" role="status" aria-live="assertive">
       <div className="small"><strong>{t("yourPassportCode", lang)}</strong></div>
       <div className="code-big mono" aria-label={spoken}>{code}</div>
-      <button className="btn" onClick={say}>🔊 {t("readAgain", lang)}</button>
+      <div className="row">
+        <CopyButton text={code} label={t("copyCode", lang)} />
+        <ListenButton label={t("readAgain", lang)} onPlay={say} />
+        {sessionId && <button className="btn primary" onClick={download}>⬇ {t("downloadPassportCode", lang)}</button>}
+      </div>
+      <ErrorNote error={err} />
     </div>
   );
 }

@@ -1,19 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, apiBlob, type Helper } from "./api";
+import { copyText } from "./clipboard";
 import { ErrorNote } from "./components";
+import { ListenButton } from "./ListenControls";
 import { t } from "./i18n";
 import { speak, voiceProvider } from "./speech";
 import { useApp } from "./state";
 
-/** Copy a field value; falls back to a hidden textarea where the Clipboard API is unavailable. */
-export async function copyText(text: string): Promise<boolean> {
-  try { await navigator.clipboard.writeText(text); return true; } catch { /* fall through */ }
-  try {
-    const ta = Object.assign(document.createElement("textarea"), { value: text });
-    document.body.appendChild(ta); ta.select();
-    const ok = document.execCommand("copy"); ta.remove(); return ok;
-  } catch { return false; }
-}
+export { copyText };
 
 /** The numbered steps as spoken sentences (headings are skipped). */
 export const stepsToRead = (steps: Helper["steps"]) => steps.filter((s) => !s.heading).map((s, i) => `${i + 1}. ${s.text}`);
@@ -93,7 +87,7 @@ export function FormHelper({ draftId, caseCode }: { draftId: string; caseCode?: 
       )}
       {h.steps.length > 0 && (
         <div className="row">
-          <button className="btn" onClick={readAloud}>🔊 {t("readAloudSteps", lang)}</button>
+          <ListenButton label={t("readAloudSteps", lang)} onPlay={readAloud} />
           {audioNote && <span className="tiny muted" role="status">🔇 {t("audioUnavailable", lang)}</span>}
         </div>
       )}

@@ -545,6 +545,19 @@ def draft_pdf(draft_id):
         "Cache-Control": "no-store"})
 
 
+@bp.get("/sessions/<sid>/passport.pdf")
+def passport_pdf(sid):
+    """The scheme passport (latest screening) as a PDF. `X-Passport-Code` (optional) prints a just-saved Passport code on it;
+    the PIN is never part of it."""
+    s = profile.get_session(sid)
+    lang = request.args.get("language") or s["language"]
+    data = formhelper.render_passport_pdf(formhelper.passport_data(sid, lang, request.headers.get("X-Passport-Code")))
+    audit("passport.pdf_downloaded", session_id=sid, details={"language": lang, "with_code": bool(request.headers.get("X-Passport-Code"))})
+    get_db().commit()
+    return Response(data, mimetype="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="anvaya-scheme-passport-{lang}.pdf"', "Cache-Control": "no-store"})
+
+
 @bp.get("/schemes/<scheme_id>/portal-qr.svg")
 def portal_qr(scheme_id):
     return Response(formhelper.portal_qr_svg(scheme_id), mimetype="image/svg+xml",

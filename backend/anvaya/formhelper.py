@@ -65,6 +65,30 @@ TEXT = {
     "page": {"en": "Page", "hi": "पृष्ठ", "te": "పేజీ"},
     "draft_id": {"en": "Draft ID", "hi": "ड्राफ़्ट आईडी", "te": "డ్రాఫ్ట్ ఐడీ"},
     "version": {"en": "Version", "hi": "संस्करण", "te": "వెర్షన్"},
+    "passport_title": {"en": "Scheme passport", "hi": "योजना पासपोर्ट", "te": "పథకాల పాస్‌పోర్ట్"},
+    "passport_heading": {"en": "Your scheme passport", "hi": "आपका योजना पासपोर्ट", "te": "మీ పథకాల పాస్‌పోర్ట్"},
+    "passport_badge": {"en": "PRELIMINARY SCREENING", "hi": "प्रारंभिक जाँच", "te": "ప్రాథమిక పరిశీలన"},
+    "passport_watermark": {"en": "Preliminary screening by Anvaya AI — not an approval",
+                           "hi": "Anvaya AI की प्रारंभिक जाँच — स्वीकृति नहीं",
+                           "te": "Anvaya AI ప్రాథమిక పరిశీలన — ఆమోదం కాదు"},
+    "not_approval": {"en": "Preliminary screening only — not an approval and not a guarantee of benefit.",
+                     "hi": "यह केवल प्रारंभिक जाँच है — स्वीकृति या लाभ की गारंटी नहीं।",
+                     "te": "ఇది ప్రాథమిక పరిశీలన మాత్రమే — ఆమోదం లేదా లాభ హామీ కాదు."},
+    "your_details": {"en": "Your confirmed details", "hi": "आपकी पुष्टि की गई जानकारी", "te": "మీ నిర్ధారిత వివరాలు"},
+    "group_candidates": {"en": "May suit you (provisional)", "hi": "आपके लिए उपयुक्त हो सकती हैं (अस्थायी)", "te": "మీకు సరిపోవచ్చు (తాత్కాలికం)"},
+    "group_info": {"en": "Need more information or review", "hi": "और जानकारी या समीक्षा चाहिए", "te": "మరింత సమాచారం లేదా సమీక్ష అవసరం"},
+    "group_no": {"en": "Do not match your confirmed details", "hi": "आपकी पुष्टि की गई जानकारी से मेल नहीं", "te": "మీ నిర్ధారిత వివరాలతో సరిపోలలేదు"},
+    "criteria_met": {"en": "{a} of {b} criteria met", "hi": "{b} में से {a} मानदंड पूरे", "te": "{b}లో {a} ప్రమాణాలు నెరవేరాయి"},
+    "bring_docs": {"en": "Documents to bring", "hi": "साथ ले जाने वाले दस्तावेज़", "te": "తీసుకెళ్లాల్సిన పత్రాలు"},
+    "rules": {"en": "Rules", "hi": "नियम", "te": "నియమాలు"},
+    "evaluation": {"en": "Screening ID", "hi": "जाँच आईडी", "te": "పరిశీలన ఐడీ"},
+    "jurisdiction": {"en": "Covers", "hi": "क्षेत्र", "te": "పరిధి"},
+    "central_only": {"en": "central schemes", "hi": "केंद्रीय योजनाएँ", "te": "కేంద్ర పథకాలు"},
+    "your_code": {"en": "Your Passport code", "hi": "आपका पासपोर्ट कोड", "te": "మీ పాస్‌పోర్ట్ కోడ్"},
+    "code_note": {"en": "Keep this code and remember your PIN: together they reopen your saved passport. The PIN is never printed here.",
+                  "hi": "यह कोड सँभालकर रखें और अपना पिन याद रखें: दोनों से आपका सहेजा पासपोर्ट खुलता है। पिन यहाँ कभी नहीं छपता।",
+                  "te": "ఈ కోడ్‌ను భద్రంగా ఉంచండి, మీ పిన్ గుర్తుంచుకోండి: రెండూ కలిసి మీ సేవ్ చేసిన పాస్‌పోర్ట్‌ను తెరుస్తాయి. పిన్ ఇక్కడ ఎప్పుడూ ముద్రించబడదు."},
+    "no_schemes": {"en": "No schemes were screened yet.", "hi": "अभी किसी योजना की जाँच नहीं हुई।", "te": "ఇంకా ఏ పథకాన్నీ పరిశీలించలేదు."},
     "masked": {"en": "(number hidden — give it at the office)", "hi": "(नंबर छिपाया गया — कार्यालय में दें)",
                "te": "(నంబర్ దాచబడింది — కార్యాలయంలో ఇవ్వండి)"},
 }
@@ -272,14 +296,11 @@ GREEN, BLUE = (31, 122, 58), (21, 94, 156)
 TAG_COLOR = {"confirmed": GREEN, "citizen_entered": GREEN, "inferred": BLUE, "missing": AMBER}
 
 
-def render_pdf(h: dict) -> bytes:
-    """The draft as a PDF in h["language"] with Noto fonts (HarfBuzz shaping for Devanagari / Telugu): a branded header
-    band, a title block with the draft details, a ruled table with the source of every value, a "bring to the office"
-    panel, the document checklist, numbered steps and the official link with its QR code."""
-    import segno
+def _document(lang: str, watermark: str, watermark_local: str, title: str, subject: str, badge: str | None = None):
+    """A styled A4 document (brand band, watermark, footer, Noto fonts with HarfBuzz shaping for Devanagari / Telugu) and
+    its drawing helpers: (pdf, room, para, heading). Shared by the draft PDF and the scheme passport PDF."""
     from fpdf import FPDF
 
-    lang = h["language"]
     script = {"hi": "deva", "te": "telu"}.get(lang)
 
     class DraftPDF(FPDF):
@@ -288,7 +309,7 @@ def render_pdf(h: dict) -> bytes:
             self.set_font("noto", "B", 19)
             self.set_text_color(238, 238, 238)
             with self.rotation(32, x=self.w / 2, y=self.h / 2):
-                text = h["watermark"]
+                text = watermark
                 self.text(self.w / 2 - self.get_string_width(text) / 2, self.h / 2, text)
             # Brand band.
             self.set_fill_color(*BRAND)
@@ -300,9 +321,9 @@ def render_pdf(h: dict) -> bytes:
             self.set_xy(self.l_margin, 4.2)
             self.cell(40, 7, "Anvaya AI")
             self.set_font("noto", "", 8.5)
-            badge = t("draft_badge", lang)
+            text = badge or t("draft_badge", lang)
             self.set_xy(self.w - self.r_margin - 80, 5)
-            self.cell(80, 5, badge, align="R")
+            self.cell(80, 5, text, align="R")
             self.set_text_color(*INK)
             self.set_y(22)
 
@@ -313,7 +334,7 @@ def render_pdf(h: dict) -> bytes:
             self.ln(1.5)
             self.set_font("noto", "", 7.5)
             self.set_text_color(*MUTED)
-            for line in _wrap(self, f"{t('footer', lang)} · {h['watermark_local']}", self.epw - 22):
+            for line in _wrap(self, f"{t('footer', lang)} · {watermark_local}", self.epw - 22):
                 self.set_x(self.l_margin)
                 self.cell(self.epw - 22, 3.6, line, new_x="LMARGIN", new_y="NEXT")
             self.set_xy(self.w - self.r_margin - 20, -15.5)
@@ -327,10 +348,10 @@ def render_pdf(h: dict) -> bytes:
     pdf = DraftPDF(format="A4")
     pdf.set_margins(16, 22, 16)
     pdf.set_auto_page_break(True, margin=22)
-    pdf.set_title(f"{h['scheme_name']} — draft")
+    pdf.set_title(title)
     pdf.set_author("Anvaya AI")
     pdf.set_creator("Anvaya AI")
-    pdf.set_subject(t("title", lang))
+    pdf.set_subject(subject)
     pdf.add_font("noto", "", str(FONT_DIR / "NotoSans-Regular.ttf"))
     pdf.add_font("noto", "B", str(FONT_DIR / "NotoSans-Bold.ttf"))
     if script == "deva":
@@ -376,6 +397,17 @@ def render_pdf(h: dict) -> bytes:
         pdf.set_draw_color(0, 0, 0)
         pdf.set_text_color(*INK)
         pdf.ln(3.5)
+    return pdf, room, para, heading
+
+
+def render_pdf(h: dict) -> bytes:
+    """The draft as a PDF in h["language"]: a branded header band, a title block with the draft details, a ruled table with
+    the source of every value, a "bring to the office" panel, the document checklist, numbered steps and the official
+    link with its QR code."""
+    import segno
+
+    lang = h["language"]
+    pdf, room, para, heading = _document(lang, h["watermark"], h["watermark_local"], f"{h['scheme_name']} — draft", t("title", lang))
 
     # ---- title block
     para(t("title", lang).upper() if lang == "en" else t("title", lang), 9, "B", gap=0.5, color=MUTED)
@@ -520,6 +552,169 @@ def render_pdf(h: dict) -> bytes:
         pdf.set_y(y + 35)
 
     return bytes(pdf.output())  # the last footer (rendered here) maps the glyphs it adds
+
+
+def render_passport_pdf(p: dict) -> bytes:
+    """The scheme passport as a PDF in p["language"]: the screening result for every scheme (grouped as on the Passport
+    page), the documents to bring for each likely scheme, the citizen's confirmed details and, when the citizen just
+    saved one, the Passport code (never the PIN)."""
+    lang = p["language"]
+    pdf, room, para, heading = _document(lang, t("passport_watermark", "en"), t("passport_watermark", lang),
+                                         f"{t('passport_title', lang)} — Anvaya AI", t("passport_title", lang), t("passport_badge", lang))
+    para(t("passport_title", lang).upper() if lang == "en" else t("passport_title", lang), 9, "B", gap=0.5, color=MUTED)
+    para(t("passport_heading", lang), 19, "B", gap=2.5, color=BRAND)
+    pill = t("not_approval", lang)
+    pdf.set_font("noto", "B", 9)
+    pw = min(pdf.epw, pdf.get_string_width(pill) + 10)
+    y = pdf.get_y()
+    pdf.set_fill_color(*AMBER_SOFT)
+    pdf.set_draw_color(*AMBER)
+    pdf.rect(pdf.l_margin, y, pw, 7.4, style="DF", round_corners=True, corner_radius=3.7)
+    pdf.set_text_color(*AMBER)
+    pdf.set_xy(pdf.l_margin + 5, y + 0.9)
+    pdf.cell(pw - 10, 5.6, pill)
+    pdf.set_text_color(*INK)
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_y(y + 11)
+
+    cells = [(t("prepared", lang), iso()[:10]), (t("evaluation", lang), p["eval_id"] or "—"),
+             (t("jurisdiction", lang), p["jurisdiction"]), (t("rules", lang), p["bundle_version"] or "—")]
+    y = pdf.get_y()
+    pdf.set_fill_color(*BRAND_SOFT)
+    pdf.rect(pdf.l_margin, y, pdf.epw, 13, style="F")
+    widths = [pdf.epw * 0.17, pdf.epw * 0.30, pdf.epw * 0.31, pdf.epw * 0.22]
+    x = pdf.l_margin
+    for (k, v), w in zip(cells, widths):
+        pdf.set_xy(x + 4, y + 1.6)
+        pdf.set_font("noto", "", 7.5)
+        pdf.set_text_color(*MUTED)
+        pdf.cell(w - 4, 4, k)
+        pdf.set_xy(x + 4, y + 6)
+        pdf.set_font("noto", "B", 8.5)
+        pdf.set_text_color(*INK)
+        pdf.cell(w - 4, 5, v)
+        x += w
+    pdf.set_y(y + 15)
+
+    if p.get("code"):
+        room(32)
+        y = pdf.get_y() + 2
+        pdf.set_fill_color(226, 243, 230)
+        pdf.set_draw_color(*GREEN)
+        pdf.rect(pdf.l_margin, y, pdf.epw, 26, style="DF", round_corners=True, corner_radius=2.5)
+        pdf.set_draw_color(0, 0, 0)
+        pdf.set_xy(pdf.l_margin + 5, y + 3)
+        pdf.set_font("noto", "B", 9)
+        pdf.set_text_color(*GREEN)
+        pdf.cell(60, 5, t("your_code", lang))
+        pdf.set_xy(pdf.l_margin + 5, y + 9)
+        pdf.set_font("noto", "B", 20)
+        pdf.set_text_color(*INK)
+        pdf.cell(pdf.epw - 10, 9, p["code"])
+        pdf.set_y(y + 19)
+        para(t("code_note", lang), 8, gap=0, indent=5, color=MUTED)
+        pdf.set_y(y + 28)
+
+    if p["facts"]:
+        heading(t("your_details", lang))
+        widths = [pdf.epw * 0.42, pdf.epw * 0.58]
+        for i, (k, v) in enumerate(p["facts"]):
+            _row(pdf, [k, v], widths, zebra=i % 2 == 1)
+        pdf.set_draw_color(*RULE)
+        pdf.line(pdf.l_margin, pdf.get_y(), pdf.l_margin + sum(widths), pdf.get_y())
+        pdf.set_draw_color(0, 0, 0)
+
+    if not any(g["items"] for g in p["groups"]):
+        para(t("no_schemes", lang), 10)
+    tone_color = {"candidates": GREEN, "info": AMBER, "no": (150, 156, 154)}
+    for g in p["groups"]:
+        if not g["items"]:
+            continue
+        heading(f"{g['heading']} ({len(g['items'])})")
+        for it in g["items"]:
+            color = tone_color[g["key"]]
+            pdf.set_font("noto", "B", 10.5)
+            name_lines = _wrap(pdf, it["name"], pdf.epw - 10)
+            pdf.set_font("noto", "", 8.5)
+            meta = " · ".join(x for x in (it["level"], t("criteria_met", lang).format(a=it["pass"], b=it["total"]), it["outcome_label"]) if x)
+            meta_lines = _wrap(pdf, meta, pdf.epw - 10)
+            doc_lines = []
+            if it["docs"]:
+                doc_lines = _wrap(pdf, f"{t('bring_docs', lang)}: " + "; ".join(f"{d['label']} ({d['status_label']})" for d in it["docs"]), pdf.epw - 10)
+            box_h = 4 + len(name_lines) * 5.2 + len(meta_lines) * 4.2 + (len(doc_lines) * 4.1 + 1.5 if doc_lines else 0) + 1.5
+            room(box_h + 2)
+            y = pdf.get_y()
+            pdf.set_fill_color(250, 251, 250)
+            pdf.set_draw_color(*RULE)
+            pdf.rect(pdf.l_margin, y, pdf.epw, box_h, style="DF")
+            pdf.set_fill_color(*color)
+            pdf.rect(pdf.l_margin, y, 1.6, box_h, style="F")
+            pdf.set_draw_color(0, 0, 0)
+            cy = y + 2.2
+            pdf.set_font("noto", "B", 10.5)
+            pdf.set_text_color(*INK)
+            for line in name_lines:
+                pdf.set_xy(pdf.l_margin + 5, cy)
+                pdf.cell(pdf.epw - 10, 5.2, line)
+                cy += 5.2
+            pdf.set_font("noto", "", 8.5)
+            pdf.set_text_color(*color if g["key"] != "no" else MUTED)
+            for line in meta_lines:
+                pdf.set_xy(pdf.l_margin + 5, cy)
+                pdf.cell(pdf.epw - 10, 4.2, line)
+                cy += 4.2
+            pdf.set_text_color(*MUTED)
+            cy += 1.5
+            for line in doc_lines:
+                pdf.set_xy(pdf.l_margin + 5, cy)
+                pdf.cell(pdf.epw - 10, 4.1, line)
+                cy += 4.1
+            pdf.set_text_color(*INK)
+            pdf.set_y(y + box_h + 2.2)
+
+    return bytes(pdf.output())
+
+
+def passport_data(session_id: str, lang: str, code: str | None = None) -> dict:
+    """Everything the scheme passport PDF shows, from the session's latest screening, in `lang`."""
+    from . import catalogue, rules_engine
+
+    if lang not in LANGS:
+        raise ApiError("UNSUPPORTED_LANGUAGE", "Supported languages: en, hi, te.", 422)
+    ev = catalogue.latest_evaluation(session_id)
+    if not ev:
+        raise ApiError("NO_EVALUATION", "No screening has been run yet.", 404)
+    ev["results"] = [catalogue.localize_result(r, lang) for r in ev["results"]]
+    names = translation.localize_scheme_names(ev, lang)
+    marks = catalogue.doc_marks(session_id)
+    keys = {"MATCH": "candidates", "PROVISIONAL": "candidates", "INSUFFICIENT_INFORMATION": "info",
+            "NEEDS_HUMAN_REVIEW": "info", "MISMATCH": "no"}
+    groups = [{"key": k, "heading": t(f"group_{k}", lang), "items": []} for k in ("candidates", "info", "no")]
+    by_key = {g["key"]: g for g in groups}
+    for r in ev["results"]:
+        k = keys.get(r["outcome"])
+        if not k:
+            continue
+        jur = r.get("jurisdiction")
+        level = jur if isinstance(jur, str) else ((jur or {}).get("state") or (jur or {}).get("level") or "")
+        docs = []
+        if k != "no":
+            for e in r["evidence"]:
+                status = marks.get(e["doc_key"], e["status"])
+                docs.append({"label": e["label"], "status_label": i18n.t(i18n.DOC_STATUS, status, lang)})
+        by_key[k]["items"].append({
+            "name": mask_dataset_text(r.get("scheme_name_localized") or r["scheme_name"] or ""), "level": str(level) if level else "",
+            "pass": sum(1 for c in r["criteria"] if c["outcome"] == rules_engine.PASS), "total": len(r["criteria"]),
+            "outcome_label": r["outcome_label"], "docs": docs})
+    current = profile.current_facts(session_id)
+    order = {a: i for i, a in enumerate(FORM_ORDER)}
+    facts = [(i18n.t(i18n.ATTRIBUTE_LABELS, a, lang), mask_citizen_value(profile.display_value(a, f["value"], lang), lang))
+             for a, f in sorted(current.items(), key=lambda kv: order.get(kv[0], 99)) if f.get("confirmed")]
+    st = current.get("state")
+    state = profile.display_value("state", st["value"], lang) if st and st.get("confirmed") else None
+    code = code.strip().upper() if code and re.fullmatch(r"PSP-[A-Z0-9]{4}-[A-Z0-9]{4}", code.strip().upper()) else None
+    return {"language": lang, "eval_id": ev["eval_id"], "bundle_version": ev["bundle_version"], "groups": groups, "facts": facts, "code": code,
+            "jurisdiction": f"{state} + {t('central_only', lang)}" if state else t("central_only", lang)}
 
 
 def _wrap(pdf, text: str, width: float) -> list[str]:

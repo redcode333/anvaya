@@ -279,3 +279,47 @@ def test_draft_status_wording_never_says_submitted_or_applied():
         assert "ready" in label.lower() or lang != "en"
         assert "submitted" not in label.lower() and "applied" not in label.lower()
     assert i18n.CASE_STATUS["DRAFT_SAVED"]["en"] == "Draft ready — submit at the office/portal"
+
+
+# ---------------------------------------------------------------- scheme passport PDF
+
+def passport_pdf(client, sid, lang="en", code=None):
+    h = owner(sid, {"X-Passport-Code": code} if code else None)
+    return client.get(f"/api/v1/sessions/{sid}/passport.pdf?language={lang}", headers=h)
+
+
+def test_scheme_passport_pdf_lists_every_group_the_documents_and_the_confirmed_details(client):
+    sid, _ = make_draft(client, {})
+    r = passport_pdf(client, sid)
+    assert r.status_code == 200 and r.mimetype == "application/pdf" and r.data[:5] == b"%PDF-"
+    assert "attachment" in r.headers["Content-Disposition"] and "no-store" in r.headers["Cache-Control"]
+    text = squash(pdf_text(r.data))
+    ev = client.get(f"/api/v1/sessions/{sid}/eligibility/latest", headers=owner(sid)).json
+    assert squash("Your scheme passport") in text and squash("not an approval") in text
+    assert squash("Preliminary screening by Anvaya AI — not an approval") in text
+    assert squash("Your confirmed details") in text and squash("Guntur") in text
+    for res in ev["results"]:
+        assert squash(res["scheme_name"]) in text and squash(res["outcome_label"]) in text
+    assert squash("Documents to bring") in text
+
+
+def test_scheme_passport_pdf_prints_a_valid_code_but_never_a_pin_and_ignores_junk(client):
+    sid, _ = make_draft(client, {})
+    assert squash("PSP-E19B-ZWJD") in squash(pdf_text(passport_pdf(client, sid, code="psp-e19b-zwjd").data))
+    assert "PSP-" not in pdf_text(passport_pdf(client, sid, code="<script>1234").data)
+    assert "Your Passport code" not in pdf_text(passport_pdf(client, sid).data)
+
+
+@pytest.mark.parametrize("lang, heading", [("hi", "आपका योजना पासपोर्ट"), ("te", "మీ పథకాల పాస్‌పోర్ట్")])
+def test_scheme_passport_pdf_in_hindi_and_telugu(client, fake_translation, lang, heading):
+    sid, _ = make_draft(client, {})
+    assert squash(heading) in squash(pdf_text(passport_pdf(client, sid, lang).data))
+
+
+def test_scheme_passport_pdf_needs_a_screening_and_follows_the_same_session_rules_as_the_other_routes(client):
+    sid = client.post("/api/v1/sessions", json={"mode": "personal", "language": "en"}).json["session_id"]
+    assert passport_pdf(client, sid).status_code == 404
+    sid2, _ = make_draft(client, {})
+    # The way the app calls it: /sessions/current/... with the session in X-Session-Id.
+    assert client.get("/api/v1/sessions/current/passport.pdf", headers=owner(sid2)).status_code == 200
+    assert client.get("/api/v1/sessions/current/passport.pdf").status_code ==         client.get("/api/v1/sessions/current/eligibility/latest").status_code != 200

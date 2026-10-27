@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { KioskIdleGuard } from "./AccountUI";
+import { StopAudioPill } from "./ListenControls";
+import { stopSpeaking } from "./speech";
 import { LANGS, t } from "./i18n";
 import { getBundle, getOutbox } from "./offline/store";
 import AdminSchemes from "./pages/AdminSchemes";
@@ -90,6 +92,8 @@ export default function App() {
   // saved session is only picked up on purpose (Resume with Passport code, My Passports), never by browsing back.
   const inJourney = loc.pathname === "/citizen" || /^\/citizen\/(schemes|documents|draft)(\/|$)/.test(loc.pathname);
   const startFresh = () => { if (mode !== "kiosk" && sessionId && !inJourney) endCitizenSession("user"); };
+  // Audio never carries over to another page.
+  useEffect(() => { stopSpeaking(); }, [loc.pathname]);
   const inStaffArea = /^\/(staff|reviewer|admin|test-runs|profile)/.test(loc.pathname);
   return (
     <>
@@ -152,6 +156,7 @@ export default function App() {
         </div>
       </main>
       <KioskIdleGuard />
+      <StopAudioPill />
     </>
   );
 }

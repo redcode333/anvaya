@@ -100,6 +100,13 @@ export const TTS_WAIT_MS = 8000;
 export type SpeakResult = "verbx" | "browser" | "browser (no native voice for this language — may sound accented)"
   | "unavailable" | "cancelled" | "none";
 
+// Whether anything is being read aloud right now, so any page can show a Stop control (see ListenControls.tsx).
+let speakingNow = false;
+const speakingSubs = new Set<() => void>();
+const setSpeaking = (v: boolean) => { if (speakingNow !== v) { speakingNow = v; speakingSubs.forEach((f) => f()); } };
+export const isSpeaking = () => speakingNow;
+export function subscribeSpeaking(f: () => void) { speakingSubs.add(f); return () => { speakingSubs.delete(f); }; }
+
 let playId = 0;
 let playing: HTMLAudioElement | null = null;
 let aborts: AbortController[] = [];
@@ -111,6 +118,7 @@ export function stopSpeaking() {
   playing?.pause();
   playing = null;
   if (typeof window !== "undefined" && "speechSynthesis" in window) speechSynthesis.cancel();
+  setSpeaking(false);
 }
 
 function fetchClip(sessionId: string, text: string, lang: Lang): Promise<string> {
@@ -140,21 +148,26 @@ export async function speak(provider: Provider, sessionId: string | null, text: 
   const id = playId;
   if (!parts.length) return "none";
   if (provider === "verbx" && sessionId) {
-    const clips = parts.map((p) => fetchClip(sessionId, p, lang));
-    clips.forEach((c) => c.catch(() => undefined));  // a rejected later clip must not surface as unhandled
-    for (const clip of clips) {
-      let src: string;
-      try { src = await clip; } catch { return id === playId ? "unavailable" : "cancelled"; }
-      if (id !== playId) return "cancelled";
-      if (!(await play(src, id))) return id === playId ? "unavailable" : "cancelled";
-    }
-    return "verbx";
+    setSpeaking(true);
+    try {
+      const clips = parts.map((p) => fetchClip(sessionId, p, lang));
+      clips.forEach((c) => c.catch(() => undefined));  // a rejected later clip must not surface as unhandled
+      for (const clip of clips) {
+        let src: string;
+        try { src = await clip; } catch { return id === playId ? "unavailable" : "cancelled"; }
+        if (id !== playId) return "cancelled";
+        if (!(await play(src, id))) return id === playId ? "unavailable" : "cancelled";
+      }
+      return "verbx";
+    } finally { if (id === playId) setSpeaking(false); }
   }
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     const u = new SpeechSynthesisUtterance(parts.join(" "));
     u.lang = speechCode(lang);
     const voice = speechSynthesis.getVoices().find((v) => v.lang === u.lang);
     if (voice) u.voice = voice;
+    setSpeaking(true);
+    u.onend = u.onerror = () => { if (id === playId) setSpeaking(false); };
     speechSynthesis.speak(u);
     return voice ? "browser" : "browser (no native voice for this language — may sound accented)";
   }
