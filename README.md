@@ -1355,6 +1355,14 @@ English / Hindi / Telugu), neutral amber chips for documents still to check (not
 draft** (visible on the card for likely schemes, no longer hidden inside *Why*) and *Why*. On a phone the actions drop below the card text and the buttons
 at the top go full width. No behaviour changed: the rule trace, questions, source details and draft creation are the same.
 
+### Document Guide page layout
+`/citizen/documents` starts with a summary card: "2 of 11 documents ready", a stacked **progress bar** (green ready, amber to check, red missing or expired) and
+a legend with the three counts. Each document is a card with a coloured edge by status, an icon tile, what it is for, and **"Needed for"** chips (the first
+three schemes, then "+N more"; the chips wrap, so long scheme names never push a phone screen wider). The status control (*I have it / Missing / Expired /
+Not sure*) fills with its own colour when chosen. The upload form (consent, file picker, size and type note) sits under a folded *Upload a photo or PDF*
+line that opens by itself once a file is uploaded, so the page is no longer a wall of upload text. *Check schemes again* is a full-width button at the end.
+With no screening yet, an empty state links to the Scheme Passport. Behaviour is unchanged: marking, upload rules, masking and consent work as before.
+
 ### Read-aloud controls, copy, and the scheme passport download
 * **Stop whenever you like.** Every read-aloud button (scheme summary, Passport code, application steps, case status) turns into **⏹ Stop** while audio plays,
   and while anything plays a floating **Stop** pill shows on any page (so a chat reply read out at a kiosk can be cut off too). Audio also stops when you

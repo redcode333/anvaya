@@ -7,6 +7,10 @@ import { useApp } from "../state";
 import { fileProblem, uploadDocument, viewLink } from "../uploads";
 import { Steps } from "./Passport";
 
+const READY = ["available", "uploaded", "verified"];
+const MISSING = ["missing", "expired", "reupload_requested"];
+const tone = (status: string) => (READY.includes(status) ? "ok" : MISSING.includes(status) ? "miss" : "check");
+
 type Upload = { upload_id: string; status: string; content_type: string; size_bytes: number; uploaded_at: string } | null;
 type Doc = { doc_key: string; label: string; purpose: string; status: string; status_label: string; upload?: Upload; needed_for: { scheme_id: string; scheme_name: string }[] };
 type Policy = { allowed: boolean; reason: string | null };
@@ -79,37 +83,73 @@ export default function Documents() {
     catch (e) { setErr(e); }
   };
   if (!sessionId) return <div className="card">No active session.</div>;
+  const total = docs?.length ?? 0;
+  const ready = docs?.filter((d) => READY.includes(d.status)).length ?? 0;
+  const missing = docs?.filter((d) => MISSING.includes(d.status)).length ?? 0;
+  const check = total - ready - missing;
   return (
     <div>
       <Steps active="/citizen/documents" />
-      <div className="card stack">
+      <div className="docs-hero card stack">
         <div className="row spread"><h1>{t("documents", lang)}</h1><Link className="btn" to="/citizen/schemes">← {t("passport", lang)}</Link></div>
         <p className="notice small">{t("docNote", lang)}</p>
         <ErrorNote error={err} />
-        {docs?.length === 0 && <p className="muted">Check schemes first — documents are listed for candidate schemes.</p>}
-        {docs?.map((d) => (
-          <div key={d.doc_key} className="card flat">
-            <div className="row spread" style={{ alignItems: "flex-start" }}>
-              <div style={{ minWidth: 0, flex: "1 1 260px" }}>
-                <h3>📄 {d.label}</h3>
-                <p className="small muted">{d.purpose}</p>
-                <p className="tiny">{t("neededFor", lang)}: {d.needed_for.map((n) => n.scheme_name).join(" · ")}</p>
+        {total > 0 && (
+          <div className="docs-progress">
+            <div className="row spread">
+              <strong>{t("docsReadyOf", lang).replace("{a}", String(ready)).replace("{b}", String(total))}</strong>
+              <span className="tiny">{t("docsTapHint", lang)}</span>
+            </div>
+            <div className="docs-bar" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={ready}>
+              <i className="ok" style={{ width: `${(ready / total) * 100}%` }} /><i className="check" style={{ width: `${(check / total) * 100}%` }} /><i className="miss" style={{ width: `${(missing / total) * 100}%` }} />
+            </div>
+            <div className="docs-legend">
+              <span className="ok">● {t("docsReady", lang)} {ready}</span><span className="check">● {t("docsCheck", lang)} {check}</span><span className="miss">● {t("docsMissing", lang)} {missing}</span>
+            </div>
+          </div>
+        )}
+      </div>
+      {docs?.length === 0 && (
+        <div className="card stack" style={{ marginTop: "1rem" }}>
+          <p className="muted">{t("docsEmpty", lang)}</p>
+          <Link className="btn primary" to="/citizen/schemes" style={{ justifySelf: "start" }}>{t("passport", lang)} →</Link>
+        </div>
+      )}
+      <div className="docs-list">
+        {docs?.map((d) => {
+          const names = d.needed_for.map((n) => n.scheme_name);
+          return (
+            <article key={d.doc_key} className={`doc t-${tone(d.status)}`}>
+              <div className="doc-top">
+                <span className="doc-ic" aria-hidden="true">📄</span>
+                <div className="doc-main">
+                  <h3>{d.label}</h3>
+                  <p className="small muted">{d.purpose}</p>
+                  <div className="doc-for" aria-label={t("neededFor", lang)}>
+                    <span className="tiny">{t("neededFor", lang)}:</span>
+                    {names.slice(0, 3).map((n) => <span key={n} className="chip">{n}</span>)}
+                    {names.length > 3 && <span className="chip">+{names.length - 3} {t("neededMore", lang)}</span>}
+                  </div>
+                </div>
               </div>
               {!d.upload && (
-                <div className="seg" role="group" aria-label={d.label}>
+                <div className="seg doc-seg" role="group" aria-label={d.label}>
                   {STATUSES.map((s) => (
-                    <button key={s.s} aria-pressed={d.status === s.s} onClick={() => mark(d.doc_key, s.s)}>{s.l[lang]}</button>
+                    <button key={s.s} data-s={s.s} aria-pressed={d.status === s.s} onClick={() => mark(d.doc_key, s.s)}>{s.l[lang]}</button>
                   ))}
                 </div>
               )}
-            </div>
-            {d.status === "verified" && !d.upload && <span className="chip on">✓ {d.status_label}</span>}
-            {d.status === "reupload_requested" && <span className="chip off">{d.status_label}</span>}
-            <UploadBox doc={d} policy={policy} onDone={load} />
-          </div>
-        ))}
-        {docs && docs.length > 0 && <Link className="btn primary" to="/citizen/schemes">{t("checkSchemes", lang)} ↻</Link>}
+              {d.status === "verified" && !d.upload && <span className="chip on">✓ {d.status_label}</span>}
+              {d.status === "reupload_requested" && <span className="chip off">{d.status_label}</span>}
+              <details className="doc-upload" open={!!d.upload}>
+                <summary>⬆ {t("uploadDoc", lang)}</summary>
+                <UploadBox doc={d} policy={policy} onDone={load} />
+              </details>
+            </article>
+          );
+        })}
       </div>
+      {docs && docs.length > 0 && <Link className="btn primary docs-cta" to="/citizen/schemes">{t("checkSchemes", lang)} ↻</Link>}
     </div>
   );
 }
