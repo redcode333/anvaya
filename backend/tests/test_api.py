@@ -420,3 +420,14 @@ def test_typed_numbers_and_digits_are_not_turned_into_choices(client):
     assert age["confusable"] and not age["alternatives"]  # still confirmed one by one, but no extra choices for typing
     _, spoken_digits = voice_turn(client, "मेरी उम्र 60 साल है")
     assert not next(f for f in spoken_digits["extracted"] if f["attribute"] == "age")["alternatives"]
+
+
+def test_case_status_explains_a_passport_code_and_a_malformed_code_in_the_site_language(client):
+    for lang, needle in (("en", "Passport code"), ("hi", "पासपोर्ट कोड"), ("te", "పాస్‌పోర్ట్ కోడ్")):
+        r = client.post("/api/v1/cases/status", json={"code": "psp-e19b-zwjd", "language": lang})
+        assert r.status_code == 422 and r.json["error"]["code"] == "PASSPORT_CODE_NOT_CASE_CODE"
+        assert needle in r.json["error"]["message"] and "ANV-" in r.json["error"]["message"]
+    short = client.post("/api/v1/cases/status", json={"code": "ANV-12", "language": "en"})
+    assert short.status_code == 422 and short.json["error"]["code"] == "INVALID_CODE_FORMAT"
+    miss = client.post("/api/v1/cases/status", json={"code": "ANV-ZZZZ-ZZZZ", "language": "hi"})
+    assert miss.status_code == 404 and miss.json["error"]["code"] == "CODE_NOT_FOUND" and "ANV-XXXX-XXXX" in miss.json["error"]["message"]

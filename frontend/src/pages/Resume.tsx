@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { formatCode } from "../account";
 import { RetentionNote } from "../AccountUI";
@@ -11,7 +11,8 @@ import { useApp } from "../state";
 export default function Resume() {
   const { lang, mode, setSessionId } = useApp();
   const nav = useNavigate();
-  const [code, setCode] = useState(""), [pin, setPin] = useState("");
+  const prefill = (useLocation().state as { code?: string } | null)?.code;  // handed over from Case status when a Passport code was typed there
+  const [code, setCode] = useState(prefill ? formatCode(prefill) : ""), [pin, setPin] = useState("");
   const [err, setErr] = useState<unknown>(null);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setErr(null);
@@ -26,7 +27,7 @@ export default function Resume() {
       <h1>{t("resume", lang)}</h1>
       <label className="field">{t("passportCode", lang)}
         <input type="text" className={mode === "kiosk" ? "code-big mono" : "mono"} value={code} placeholder="PSP-XXXX-XXXX"
-          autoComplete="off" autoCapitalize="characters" onChange={(e) => setCode(formatCode(e.target.value))} />
+          autoComplete="off" autoCapitalize="characters" autoFocus={!!prefill} onChange={(e) => setCode(formatCode(e.target.value))} />
       </label>
       <label className="field">{t("pin", lang)}
         <input type="password" className="pin" inputMode="numeric" maxLength={4} value={pin} autoComplete="off"

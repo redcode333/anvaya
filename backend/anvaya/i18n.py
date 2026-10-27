@@ -259,6 +259,21 @@ MESSAGES = {
         "te": "లేని పత్రాలు: {docs}.",
     },
     "summary_scheme": {"en": "{name}: {outcome}.", "hi": "{name}: {outcome}।", "te": "{name}: {outcome}."},
+    "code_is_passport": {
+        "en": "That is a Passport code (PSP-…). With your PIN it reopens your saved profile on the “Resume with Passport code” page. Case status needs a case code (ANV-…), which you get when a draft is sent to a reviewer.",
+        "hi": "यह पासपोर्ट कोड (PSP-…) है। पिन के साथ यह “पासपोर्ट कोड से फिर शुरू करें” पेज पर आपकी सहेजी प्रोफ़ाइल खोलता है। केस की स्थिति के लिए केस कोड (ANV-…) चाहिए, जो ड्राफ़्ट समीक्षक को भेजने पर मिलता है।",
+        "te": "ఇది పాస్‌పోర్ట్ కోడ్ (PSP-…). పిన్‌తో కలిపి ఇది “పాస్‌పోర్ట్ కోడ్‌తో కొనసాగండి” పేజీలో మీ సేవ్ చేసిన ప్రొఫైల్‌ను తెరుస్తుంది. కేసు స్థితికి కేసు కోడ్ (ANV-…) కావాలి; డ్రాఫ్ట్‌ను సమీక్షకునికి పంపినప్పుడు అది వస్తుంది.",
+    },
+    "code_bad_format": {
+        "en": "Enter a case code like ANV-XXXX-XXXX.",
+        "hi": "ANV-XXXX-XXXX जैसा केस कोड लिखिए।",
+        "te": "ANV-XXXX-XXXX లాంటి కేసు కోడ్ నమోదు చేయండి.",
+    },
+    "code_not_found": {
+        "en": "No case matches this code. Check it for typing mistakes; case codes look like ANV-XXXX-XXXX.",
+        "hi": "इस कोड से कोई केस नहीं मिला। टाइप की गलती जाँचें; केस कोड ANV-XXXX-XXXX जैसे होते हैं।",
+        "te": "ఈ కోడ్‌కు ఏ కేసూ సరిపోలలేదు. టైపింగ్ తప్పులు చూడండి; కేసు కోడ్‌లు ANV-XXXX-XXXX లాగా ఉంటాయి.",
+    },
     "status_notice": {
         "en": "Status of a draft review. No government submission has been made.",
         "hi": "यह ड्राफ़्ट समीक्षा की स्थिति है। सरकार को कोई आवेदन जमा नहीं किया गया है।",

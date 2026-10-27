@@ -1359,7 +1359,15 @@ unchanged, and the Start button stays disabled until the check passes.
   It needs a screening first (404 `NO_EVALUATION` otherwise) and follows the same session rules as the other session routes.
 
 ### Case status and a fresh start
-* **Case status** (`/case`, `POST /cases/status`) answers in the language the site is showing, not the one the case was started in: the request carries
+* **Two different codes.** A **case code** (`ANV-XXXX-XXXX`) is given when a draft is sent to a reviewer and is used on *Case status*. A **Passport code**
+  (`PSP-XXXX-XXXX`) saves a profile and is reopened with its PIN on *Resume with Passport code*. Typing the second where the first belongs used to end in
+  a bare `CODE_NOT_FOUND`. Now the page formats the code as you type (uppercase, dashes), recognises a `PSP-` code at once, explains the difference, and
+  offers *Open it with my PIN →*, which opens Resume with the code already filled in. The page also shows both code types side by side, and a result
+  shows a three-step tracker (*Sent for review → With a reviewer → Reviewer's answer*, amber when a correction was requested). Errors show the server's
+  plain message in the site language, not the error code and request id.
+* **Server.** `POST /cases/status` answers a `PSP-` code with 422 `PASSPORT_CODE_NOT_CASE_CODE` (without looking anything up, so it never reveals whether such
+  a passport exists), a malformed code with 422 `INVALID_CODE_FORMAT`, and an unknown one with 404 `CODE_NOT_FOUND`; all three messages are English / Hindi / Telugu.
+* **Language and audio.** `/case` (`POST /cases/status`) answers in the language the site is showing, not the one the case was started in: the request carries
   `language` (`en`/`hi`/`te`; anything else falls back to the case's language). The status, the notice, the labels and the scheme name (machine-translated,
   cached) follow it, and the page asks again when the language is switched. After a lookup the summary is **read aloud automatically**, and the button
   becomes *Stop* while it plays; opening the page from a link or switching language never starts audio by itself (browsers block it, and it would surprise

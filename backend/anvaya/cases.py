@@ -259,11 +259,19 @@ def public_status(code: str, language: str | None = None) -> dict:
     """Citizen resume: status only. A code alone never returns profile facts. Text comes back in the language the
     citizen is viewing the site in (en/hi/te), else the language the case was started in."""
     rate_limit("public_status")
+    msg_lang = language if language in ("en", "hi", "te") else "en"
+    raw = "".join(ch for ch in (code or "").upper() if ch.isalnum())
+    if raw.startswith("PSP"):
+        # A Passport code (saved profile) typed where a case code belongs: say so, without looking anything up or
+        # revealing whether such a passport exists.
+        raise ApiError("PASSPORT_CODE_NOT_CASE_CODE", i18n.t(i18n.MESSAGES, "code_is_passport", msg_lang), 422, {"kind": "passport_code"})
+    if len(raw[3:] if raw.startswith("ANV") else raw) != 8:
+        raise ApiError("INVALID_CODE_FORMAT", i18n.t(i18n.MESSAGES, "code_bad_format", msg_lang), 422)
     row, st = _find_case_by_code(code)
     if st == "NOT_FOUND":
         audit("case.lookup_miss")
         get_db().commit()
-        raise ApiError("CODE_NOT_FOUND", "No case matches this code.", 404)
+        raise ApiError("CODE_NOT_FOUND", i18n.t(i18n.MESSAGES, "code_not_found", msg_lang), 404)
     if st == "EXPIRED":
         raise ApiError("CODE_EXPIRED", "This code has expired. Ask the kiosk operator or reviewer for help.", 410)
     lang = language if language in ("en", "hi", "te") else row["language"]
