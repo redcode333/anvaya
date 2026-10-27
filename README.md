@@ -1363,6 +1363,14 @@ Not sure*) fills with its own colour when chosen. The upload form (consent, file
 line that opens by itself once a file is uploaded, so the page is no longer a wall of upload text. *Check schemes again* is a full-width button at the end.
 With no screening yet, an empty state links to the Scheme Passport. Behaviour is unchanged: marking, upload rules, masking and consent work as before.
 
+### Kiosk screens
+* **Set up this kiosk** (`/kiosk`, before an operator signs in): a green panel says what a kiosk is (an operator signs in once; citizens get short private sessions
+  erased when they finish or go idle; works without internet for a quick check; operator sign-out ends every session) next to the operator sign-in form.
+* **Operator bar:** a card with a green (online) or red (offline) dot, the operator's name, and *Operator sign out*, with a note that it ends all sessions on the kiosk.
+* **Citizen start screen at a kiosk:** one centred column sized for touch: a large mic orb, a big headline, a very large *Start* button (80 px tall) with *Resume
+  with Passport code*, the reassurance chips, then the three steps side by side (stacked on a narrow screen). Chat bubbles are larger at a kiosk too.
+  All text is English / Hindi / Telugu. Behaviour is unchanged: operator-only sessions, idle timeout, offline pre-screening and the outbox work as before.
+
 ### Draft page layout
 `/citizen/draft/<id>` opens with a hero card (*Application draft* eyebrow, the scheme name, the case status badge, the "not submitted" notice and a row of small chips:
 draft id, version, origin, screening outcome, rule). Below it, on a wide screen, the details sit on the left and **Send to reviewer** on the right (it stays in

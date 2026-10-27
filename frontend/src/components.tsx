@@ -3,7 +3,7 @@ import type { ApiError } from "./api";
 import { changeStaffPassword, nextMfaStep, staffSignIn, verifyMfa, type AuthLike, type MfaStep } from "./account";
 import { supabase } from "./auth";
 import { useCaptcha } from "./Turnstile";
-import { attrLabel, BOOL_ATTRS, ENUMS, NUM_ATTRS, OUTCOME_LABEL, STATES, type Lang } from "./i18n";
+import { attrLabel, BOOL_ATTRS, ENUMS, NUM_ATTRS, OUTCOME_LABEL, STATES, t, type Lang } from "./i18n";
 import { useApp } from "./state";
 
 export function ErrorNote({ error }: { error: unknown }) {
@@ -156,11 +156,15 @@ export function StaffBar({ children }: { children?: ReactNode }) {
 /** Kiosk: who is operating this device; signing out ends every citizen session on it. */
 export function KioskOperatorBar() {
   const { staff, signOut } = useApp();
+  const { lang, online } = useApp();
   if (!staff) return null;
   return (
-    <div className="row spread small muted">
-      <span>Kiosk operator: <strong>{staff.display_name}</strong></span>
-      <button className="btn small" onClick={() => signOut()}>Operator sign out (ends all sessions on this kiosk)</button>
+    <div className="kiosk-bar">
+      <span className={`kiosk-dot ${online ? "on" : "off"}`} aria-hidden="true" />
+      <span className="kiosk-who"><span className="tiny">{t("kioskOperator", lang)}</span><strong>{staff.display_name}</strong></span>
+      <span className="kiosk-spacer" />
+      <span className="tiny kiosk-hint">{t("kioskSignOutHint", lang)}</span>
+      <button className="btn small" onClick={() => signOut()}>{t("kioskSignOut", lang)}</button>
     </div>
   );
 }

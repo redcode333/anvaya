@@ -160,8 +160,20 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
   useEffect(() => { if (!sessionId) { setMsgs([]); setProfile(null); setText(""); } }, [sessionId]);
 
   if (mode === "kiosk" && !(staff && ["operator", "admin"].includes(staff.role)))
-    return <StaffLogin roles={["operator", "admin"]} title="Kiosk operator sign-in"
-      hint="A kiosk operator starts each temporary citizen session." />;
+    return (
+      <div className="kiosk-gate">
+        <section className="kiosk-gate-intro">
+          <span className="kiosk-gate-icon" aria-hidden="true">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="3" width="16" height="12" rx="2" /><path d="M12 15v4M8 21h8" /></svg>
+          </span>
+          <h1>{t("kioskSetupT", lang)}</h1>
+          <p>{t("kioskSetupD", lang)}</p>
+          <ul>{(["kioskPoint1", "kioskPoint2", "kioskPoint3"] as const).map((k) => <li key={k}>{t(k, lang)}</li>)}</ul>
+        </section>
+        <StaffLogin roles={["operator", "admin"]} title="Kiosk operator sign-in"
+          hint="A kiosk operator starts each temporary citizen session." />
+      </div>
+    );
 
   if (mode === "kiosk" && !online) return <><KioskOperatorBar /><OfflinePrescreen /></>;
 
@@ -169,7 +181,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
     return (
       <div className="stack">
       {mode === "kiosk" && <KioskOperatorBar />}
-      <div className="welcome">
+      <div className={`welcome${mode === "kiosk" ? " kiosk-welcome" : ""}`}>
         <section className="welcome-main">
           <span className="welcome-orb" aria-hidden="true"><span className="orb-ring" /><span className="orb-ring r2" /><MicIcon size={30} /></span>
           <h1>{t("tagline", lang)}</h1>
