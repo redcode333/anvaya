@@ -193,6 +193,31 @@ MESSAGES = {
         "hi": "मुझे कोई जानकारी समझ नहीं आई। क्या आप दूसरे तरीके से बता सकते हैं?",
         "te": "నాకు ఏ వివరాలూ అర్థం కాలేదు. వేరే విధంగా చెప్పగలరా?",
     },
+    "guard_abuse": {
+        "en": "I can't help with that kind of language. I'm here to find government schemes for your family — please tell me about your household.",
+        "hi": "इस तरह की भाषा में मैं मदद नहीं कर सकता। मैं आपके परिवार के लिए सरकारी योजनाएँ खोजने के लिए हूँ — कृपया अपने परिवार के बारे में बताइए।",
+        "te": "ఇలాంటి భాషలో నేను సహాయం చేయలేను. మీ కుటుంబానికి ప్రభుత్వ పథకాలు కనుగొనడానికి నేను ఇక్కడ ఉన్నాను — దయచేసి మీ కుటుంబం గురించి చెప్పండి.",
+    },
+    "guard_injection": {
+        "en": "I can't change how I work or share my instructions, and eligibility comes only from the official rules. Tell me about your household and I'll check the schemes.",
+        "hi": "मैं अपना काम करने का तरीका नहीं बदल सकता और न अपने निर्देश साझा कर सकता हूँ; योजनाओं का मिलान केवल आधिकारिक नियमों से होता है। अपने परिवार के बारे में बताइए, मैं योजनाएँ जाँचूँगा।",
+        "te": "నేను నా పని విధానాన్ని మార్చలేను, నా సూచనలను పంచుకోలేను; అర్హత అధికారిక నియమాల నుండే వస్తుంది. మీ కుటుంబం గురించి చెప్పండి, నేను పథకాలను పరిశీలిస్తాను.",
+    },
+    "guard_sensitive": {
+        "en": "Please don't type Aadhaar, card or PAN numbers, OTPs or passwords here. I don't need them, and I did not save that message.",
+        "hi": "कृपया यहाँ आधार, कार्ड या पैन नंबर, ओटीपी या पासवर्ड न लिखें। मुझे इनकी ज़रूरत नहीं है, और मैंने वह संदेश सहेजा नहीं है।",
+        "te": "దయచేసి ఇక్కడ ఆధార్, కార్డ్ లేదా పాన్ నంబర్లు, ఓటీపీ, పాస్‌వర్డ్‌లు టైప్ చేయవద్దు. నాకు అవి అవసరం లేదు, ఆ సందేశాన్ని నేను సేవ్ చేయలేదు.",
+    },
+    "guard_smalltalk": {
+        "en": "Hello! I help families find government schemes they may qualify for. Tell me your state, age, income and work, and I'll do the rest.",
+        "hi": "नमस्ते! मैं परिवारों को उनके लिए उपयुक्त सरकारी योजनाएँ खोजने में मदद करता हूँ। अपना राज्य, उम्र, आय और काम बताइए, बाकी मैं देख लूँगा।",
+        "te": "నమస్తే! కుటుంబాలు అర్హత పొందగల ప్రభుత్వ పథకాలను కనుగొనడంలో నేను సహాయం చేస్తాను. మీ రాష్ట్రం, వయస్సు, ఆదాయం, పని చెప్పండి, మిగతాది నేను చూస్తాను.",
+    },
+    "guard_offtopic": {
+        "en": "I can only help with finding government schemes, so I can't answer that. If you tell me about your household, I can check which schemes may fit.",
+        "hi": "मैं केवल सरकारी योजनाएँ खोजने में मदद कर सकता हूँ, इसलिए इसका उत्तर नहीं दे सकता। अपने परिवार के बारे में बताइए, मैं देखूँगा कि कौन-सी योजनाएँ लागू हो सकती हैं।",
+        "te": "నేను ప్రభుత్వ పథకాలను కనుగొనడంలో మాత్రమే సహాయం చేయగలను, కాబట్టి దానికి సమాధానం ఇవ్వలేను. మీ కుటుంబం గురించి చెబితే ఏ పథకాలు సరిపోతాయో చూస్తాను.",
+    },
     "please_confirm": {
         "en": "Please check these on the profile card and confirm or correct them before I look for schemes.",
         "hi": "योजनाएँ खोजने से पहले कृपया प्रोफ़ाइल कार्ड पर इन्हें जाँचें और पुष्टि करें या सुधारें।",

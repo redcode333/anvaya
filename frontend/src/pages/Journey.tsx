@@ -15,7 +15,7 @@ import { getOutbox, refreshBundle } from "../offline/store";
 import OfflinePrescreen from "./OfflinePrescreen";
 import demoPhrases from "../../../backend/anvaya/data/demo_phrases.json";
 
-type Msg = { who: "bot" | "me"; text: string; meta?: string };
+type Msg = { who: "bot" | "me"; text: string; meta?: string; guard?: string };
 type Profile = { session: { session_id: string; language: Lang; workflow_state: string }; facts: Fact[]; needs_confirmation: string[] };
 
 // Kiosk demo phrases: shared with the backend, which lets only these (and demo/test sessions) reach free-tier LLMs.
@@ -44,7 +44,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
   useEffect(() => { voiceProvider().then(setProvider); }, []);
   // Kiosk keeps its offline rule bundle fresh whenever it is online, so a later outage still has rules.
   useEffect(() => { if (mode === "kiosk" && online) refreshBundle(); }, [mode, online]);
-  useEffect(() => { chatRef.current?.scrollTo(0, chatRef.current.scrollHeight); }, [msgs]);
+  useEffect(() => { chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" }); }, [msgs, busy]);
 
   const loadProfile = useCallback(async (sid: string) => {
     try { setProfile(await api<Profile>(`/sessions/${sid}`)); }
@@ -91,7 +91,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
     try {
       const r = await api<any>(`/sessions/${sessionId}/turns`, { body: { utterance, channel, language: lang } });
       const gl = r.glossary?.length ? ` · glossary: ${r.glossary.map((g: any) => `“${g.term}” → ${g.meaning}`).join("; ")}` : "";
-      setMsgs((m) => [...m, { who: "bot", text: r.reply, meta: r.extracted.length ? `${r.extracted.map((f: Fact) => f.fact_id).join(", ")}${gl}` : gl || undefined }]);
+      setMsgs((m) => [...m, { who: "bot", guard: r.guardrail ?? undefined, text: r.reply, meta: r.extracted.length ? `${r.extracted.map((f: Fact) => f.fact_id).join(", ")}${gl}` : gl || undefined }]);
       if (mode === "kiosk" || channel === "voice") say(sessionId, r.reply_segments ?? r.reply);
       await loadProfile(sessionId);
     } catch (e) { setErr(e); }
@@ -176,8 +176,9 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
         <div className="chat" ref={chatRef} aria-live="polite">
           {msgs.length === 0 && <div className="bubble bot">{{ en: "Continue telling me about your household.", hi: "अपने परिवार के बारे में बताते रहिए।", te: "మీ కుటుంబం గురించి చెప్పడం కొనసాగించండి." }[lang]}</div>}
           {msgs.map((m, i) => (
-            <div key={i} className={`bubble ${m.who}`}>{m.text}{m.meta && <div className="tiny mono">{m.meta}</div>}</div>
+            <div key={i} className={`bubble ${m.who}${m.guard && m.guard !== "smalltalk" ? " guard" : ""}`}>{m.text}{m.meta && <div className="tiny mono">{m.meta}</div>}</div>
           ))}
+          {busy && <div className="bubble bot typing" role="status" aria-label="Anvaya is replying"><i /><i /><i /></div>}
         </div>
         <div className="composer">
           <button type="button" className={`orb-mic ${rec ? "rec" : ""}`} onClick={mic} disabled={busy || provider === "none"}

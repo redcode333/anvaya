@@ -1333,6 +1333,26 @@ Voice is the interface, so its limits are the product's limits.
 * **No filing:** drafts are prepared for a citizen to take to an office or portal; there is no submission, status sync
   from a government system, or CSC hand-off.
 
+### Conversation guardrails
+Every typed or spoken turn passes through `backend/anvaya/guardrails.py` **before** extraction and before any LLM call. The checks are plain
+pattern rules (no model), so they cannot be talked around, and the reply comes in the session language (English, Hindi, Telugu).
+
+| Kind | Triggers on | What happens |
+|---|---|---|
+| `injection` | "ignore previous instructions", "system prompt", "you are now…", "mark me eligible" | Refused; the assistant says it cannot change how it works. Nothing extracted, no LLM call. |
+| `sensitive` | 12-digit Aadhaar-style numbers, card numbers, PAN, "OTP", "password" | Refused with a note not to type these; the message is **not stored**. |
+| `abuse` | profanity and sexual terms (English, romanised Hindi/Telugu, Devanagari, Telugu script) | Polite refusal. A soft word such as "sex" only counts when nothing else was understood, so "sex: female" still works. |
+| `smalltalk` | hello, thanks, "what can you do" | A short answer about what the assistant is for. |
+| `offtopic` | a question that is not about the household or schemes | Says it only helps with schemes. |
+
+Every reply, blocked or not, still ends with the next question, so the conversation keeps moving. Blocked turns are stored as
+`[withheld: <kind>]`, never as typed, and the audit event records the kind. The `/turns` response carries `guardrail`
+(the kind, or `null`) and the chat shows refusals in an amber bubble. Tests: `backend/tests/test_guardrails.py`.
+The new guardrail sentences are not in the prerendered audio cache, so they are spoken live (or shown as text only).
+
+The citizen chat is a fixed-height scroll area (long conversations scroll inside it), shows a typing indicator while a reply is on its way, and
+smooth-scrolls to the newest message.
+
 ### Staff access
 Staff have one entry point, **`/staff`** (the *Staff* tab, and the footer link on the landing page).
 

@@ -5,7 +5,7 @@ from datetime import timedelta
 
 from flask import current_app, g, request
 
-from . import extraction, i18n, llm, metrics
+from . import extraction, guardrails, i18n, llm, metrics
 from .llm import merge as llm_merge
 from .common import ApiError, audit
 from .db import dumps, get_db, iso, iso_in, new_id, now, parse_iso
@@ -479,8 +479,13 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
     if not utterance or len(utterance) > 2000:
         raise ApiError("INVALID_UTTERANCE", "Utterance must be 1–2000 characters.", 422)
 
-    result = extraction.extract(utterance)
-    candidates, llm_summary = _llm_turn(session, utterance, result["facts"], result["other_people"])
+    blocked = guardrails.screen(utterance)  # before extraction and before any LLM call
+    if blocked:
+        result = {"facts": [], "other_people": [], "intents": [], "glossary": []}
+        candidates, llm_summary = [], {"used": False, "result": "blocked", "provider": None, "cached": False}
+    else:
+        result = extraction.extract(utterance)
+        candidates, llm_summary = _llm_turn(session, utterance, result["facts"], result["other_people"])
     held = facts.by_attribute()
     applied = []
     for cand in candidates:
@@ -511,6 +516,7 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
 
     wf = refresh_workflow_state(session_id, session, facts)
     parts = []
+    guard = blocked
     settled = [f for f in applied if not f["disputed"]]
     if settled:
         heard = ", ".join(
@@ -519,7 +525,9 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
         )
         parts.append(f"{i18n.t(i18n.MESSAGES, 'heard', lang)} {heard}.")
     elif not applied:
-        parts.append(i18n.t(i18n.MESSAGES, "nothing_heard", lang))
+        kind = blocked or (guardrails.no_details(utterance) if not result["other_people"] else "nothing_heard")
+        guard = guard or (kind if kind != "nothing_heard" else None)
+        parts.append(i18n.t(i18n.MESSAGES, "nothing_heard" if kind == "nothing_heard" else f"guard_{kind}", lang))
     for f in applied:
         if f["disputed"]:
             a, b = (display_value(f["attribute"], v, lang) for v in f["alternatives"][:2])
@@ -544,17 +552,19 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
     db = get_db()
     db.execute(
         "INSERT INTO turns(turn_id, session_id, language, utterance, channel, extracted_json, reply, created_at) VALUES (?,?,?,?,?,?,?,?)",
-        (new_id("TRN"), session_id, lang, utterance, channel, dumps({**result, "llm": llm_summary}), reply, iso()),
+        (new_id("TRN"), session_id, lang, guardrails.placeholder(blocked) if blocked else utterance, channel,
+         dumps({**result, "llm": llm_summary}), reply, iso()),
     )
     metrics.TURNS.labels(channel, lang).inc()
     for f in applied:
         metrics.FACTS_EXTRACTED.labels(f["attribute"]).inc()
     audit("conversation.turn", session_id=session_id,
-          details={"channel": channel, "facts_extracted": [f["fact_id"] for f in applied],
+          details={"channel": channel, "facts_extracted": [f["fact_id"] for f in applied], "guardrail": guard,
                    "llm": {k: llm_summary.get(k) for k in ("used", "result", "provider", "cached")}})
     db.commit()
     return {
         "reply": reply,
+        "guardrail": guard,  # abuse | injection | sensitive | smalltalk | offtopic | None
         "reply_segments": parts,  # read aloud one by one: fixed sentences come from the prerendered audio cache
         "language": lang,
         "extracted": applied,
