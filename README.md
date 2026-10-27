@@ -1373,6 +1373,31 @@ beside it three numbered steps (*Tell us about your family*, *Check what we unde
 is English, Hindi and Telugu (`wStep*`, `wChip*` in `frontend/src/i18n.ts`). The Turnstile check, error notes, the retention notice and the voice line are
 unchanged, and the Start button stays disabled until the check passes.
 
+### Voice help on the draft and the documents
+* **Fill the draft by speaking.** The Draft page has *Fill by speaking*. A card asks for each field that is still open (name, district, gender, anything marked "To fill in"), one
+  question at a time: it **reads the question aloud**, you tap the microphone (or type), it shows what it understood ("I understood: Applicant name: Lakshmi Devi"), and you tap
+  *Use this*, *Say it again* or *Skip*. At the end, *Save these details* saves them through the normal versioned draft edit, so nothing is saved until you say so.
+  `GET /drafts/<id>/voice-fill/plan?language=` gives the open fields with their questions; `POST /drafts/<id>/voice-fill` `{utterance, asked, language}` turns an answer into field values
+  (`backend/anvaya/draftvoice.py`). It understands "My name is Ravi and I live in Guntur" (name and district together), "मेरा नाम लक्ष्मी देवी है", "నా పేరు లక్ష్మి", "I am a woman", and
+  takes any plain district name. It only fills fields that are open; the same guardrails as the chat apply (no Aadhaar or card numbers, no abuse), a refused answer is not echoed back,
+  and what was said is never stored (the audit event records only which fields were filled). A draft with a reviewer cannot be changed (409), and only its owner can use it.
+* **Check documents by speaking.** The Document Guide has *Check by speaking*: for each undecided document it asks "Do you have this document: …?", and the answer ("I have it", "no",
+  "I lost it", "it has expired", "I'm not sure", "हाँ है", "नहीं है", "తెలియదు"…) marks it the normal way and moves on by itself. `POST /sessions/<id>/documents/parse-answer` only
+  reads the answer; a question such as "why do you need this?" is not an answer.
+* Both use one reusable card (`frontend/src/VoiceGuide.tsx`): progress bar, the question (also read aloud), the microphone, a typed fallback, Skip and Close. English, Hindi, Telugu.
+
+### Why this result (the panel under every scheme)
+The panel opens with the verdict in plain sentences ("You meet every condition we can check", "A reviewer still has to verify your documents") instead of codes such as `CRITERIA_PASSED`; then
+**Conditions**, one line each: a tick / cross / question mark, the condition, what is needed and what you said ("needs at least 65 · yours 67", "Met"); the officer's checks; the **documents to bring**
+(only those not yet verified, by name, with a link to update them); the official source with a "not yet verified" note when that is so; and a folded **Technical details** (rule id, source id, dates).
+The official wording of each condition is behind *Show the official wording*. Rule operators (`>= 65`, `18–60`, `yes`) are turned into sentences, in English, Hindi and Telugu (`frontend/src/why.ts`, tested).
+Answering a missing detail, the officer's checks and *Prepare draft* work as before.
+
+### Plain words for statuses and sources
+Every status badge says what it means ("Draft saved", "With a reviewer", "Correction requested") in the site language, and each draft field says where its value came from ("Confirmed", "You entered",
+"Please check", "To fill in") instead of `DRAFT_SAVED` / `citizen_entered` / `missing` (`frontend/src/statusLabels.ts`). The draft header shows the screening result and the date; the draft id, version and rule id are under
+*Draft details*. Messages that were English-only on the Draft page ("Retry detected", "Re-checked under the current rules…") are now translated.
+
 ### Language on the journey pages
 The language buttons now change the *content* of the Scheme Passport and Document Guide, not only the labels. Before, results were translated using the language stored on the server-side session
 (the language the conversation started in), so a Hindi-started session still showed Hindi after choosing English. Now `POST /sessions/<id>/eligibility/evaluate` takes `{"language": "en|hi|te"}`,

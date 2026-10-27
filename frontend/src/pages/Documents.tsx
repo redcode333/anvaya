@@ -5,7 +5,19 @@ import { ErrorNote } from "../components";
 import { t, type Lang } from "../i18n";
 import { useApp } from "../state";
 import { fileProblem, uploadDocument, viewLink } from "../uploads";
+import { VoiceGuide, type GuideResult, type GuideStep } from "../VoiceGuide";
 import { Steps } from "./Passport";
+
+const VT = {
+  start: { en: "Check by speaking", hi: "बोलकर जाँचें", te: "మాట్లాడి తనిఖీ చేయండి" },
+  title: { en: "Check your documents by speaking", hi: "अपने दस्तावेज़ बोलकर जाँचें", te: "మీ పత్రాలను మాట్లాడి తనిఖీ చేయండి" },
+  question: { en: "Do you have this document: {doc}?", hi: "क्या आपके पास यह दस्तावेज़ है: {doc}?", te: "మీ దగ్గర ఈ పత్రం ఉందా: {doc}?" },
+  hint: { en: "You can say: I have it, missing, expired, or not sure.", hi: "आप कह सकते हैं: मेरे पास है, नहीं है, समाप्त, या पता नहीं।", te: "మీరు చెప్పవచ్చు: నా దగ్గర ఉంది, లేదు, గడువు ముగిసింది, లేదా తెలియదు." },
+  marked: { en: "Marked: {s}", hi: "दर्ज किया: {s}", te: "నమోదు చేశాం: {s}" },
+  done: { en: "All the documents are checked. Check your schemes again to see what changed.", hi: "सभी दस्तावेज़ जाँच लिए गए। क्या बदला, यह देखने के लिए योजनाएँ दोबारा जाँचिए।", te: "అన్ని పత్రాలను తనిఖీ చేశాం. ఏమి మారిందో చూడటానికి పథకాలను మళ్ళీ చూడండి." },
+  none: { en: "Every document is already marked.", hi: "हर दस्तावेज़ पहले से दर्ज है।", te: "ప్రతి పత్రం ఇప్పటికే నమోదైంది." },
+} satisfies Record<string, Record<Lang, string>>;
+const vt = (k: keyof typeof VT, lang: Lang) => VT[k][lang];
 
 const READY = ["available", "uploaded", "verified"];
 const MISSING = ["missing", "expired", "reupload_requested"];
@@ -82,6 +94,20 @@ export default function Documents() {
     try { setDocs((await api<{ documents: Doc[] }>(`/sessions/${sessionId}/documents/${doc}`, { method: "PUT", body: { status, language: lang } })).documents); }
     catch (e) { setErr(e); }
   };
+  // Check by speaking: one question per document that is not yet decided; a spoken answer is parsed on the server, then marked the normal way.
+  const [guide, setGuide] = useState<GuideStep[] | null>(null);
+  const startGuide = () => {
+    const todo = (docs ?? []).filter((d) => !d.upload && d.status !== "verified" && d.status !== "available");
+    if (!todo.length) { setErr({ code: "NOTHING_TO_ASK", message: vt("none", lang) }); return; }
+    setErr(null);
+    setGuide(todo.map((d) => ({ key: d.doc_key, label: d.label, question: vt("question", lang).replace("{doc}", d.label), hint: vt("hint", lang) })));
+  };
+  const answer = async (step: GuideStep, utterance: string): Promise<GuideResult> => {
+    const r = await api<{ status: string | null; understood: boolean; message: string | null }>(`/sessions/${sessionId}/documents/parse-answer`, { body: { utterance, language: lang } });
+    if (!r.understood || !r.status) return { ok: false, message: r.message ?? "" };
+    const status = r.status;
+    return { ok: true, message: vt("marked", lang).replace("{s}", r.message ?? status), apply: () => { void mark(step.key, status); } };
+  };
   if (!sessionId) return <div className="card">No active session.</div>;
   const total = docs?.length ?? 0;
   const ready = docs?.filter((d) => READY.includes(d.status)).length ?? 0;
@@ -98,8 +124,9 @@ export default function Documents() {
           <div className="docs-progress">
             <div className="row spread">
               <strong>{t("docsReadyOf", lang).replace("{a}", String(ready)).replace("{b}", String(total))}</strong>
-              <span className="tiny">{t("docsTapHint", lang)}</span>
+              {!guide && <button type="button" className="btn small" onClick={startGuide}>🎙 {vt("start", lang)}</button>}
             </div>
+            <span className="tiny">{t("docsTapHint", lang)}</span>
             <div className="docs-bar" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={ready}>
               <i className="ok" style={{ width: `${(ready / total) * 100}%` }} /><i className="check" style={{ width: `${(check / total) * 100}%` }} /><i className="miss" style={{ width: `${(missing / total) * 100}%` }} />
             </div>
@@ -109,6 +136,20 @@ export default function Documents() {
           </div>
         )}
       </div>
+      {guide && (
+        <div style={{ marginTop: "1rem" }}>
+          <VoiceGuide lang={lang} sessionId={sessionId} title={vt("title", lang)} steps={guide} confirm={false} answer={answer} onClose={() => setGuide(null)}
+            done={(close) => (
+              <div className="stack">
+                <p>{vt("done", lang)}</p>
+                <div className="row">
+                  <Link className="btn primary" to="/citizen/schemes">{t("checkSchemes", lang)} ↻</Link>
+                  <button className="btn" onClick={close}>{lang === "en" ? "Close" : lang === "hi" ? "बंद करें" : "మూసివేయండి"}</button>
+                </div>
+              </div>
+            )} />
+        </div>
+      )}
       {docs?.length === 0 && (
         <div className="card stack" style={{ marginTop: "1rem" }}>
           <p className="muted">{t("docsEmpty", lang)}</p>

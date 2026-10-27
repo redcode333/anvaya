@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, newKey, type Draft, type Evaluation, type SchemeResult } from "../api";
 import { SavePanel } from "../AccountUI";
-import { ErrorNote, OutcomeBadge, ValueInput } from "../components";
+import { ErrorNote, OutcomeBadge } from "../components";
+import { WhyPanel } from "../WhyPanel";
 import { ListenButton } from "../ListenControls";
 import { downloadPassportPdf } from "../passportPdf";
-import { attrLabel, showValue, t, type Lang } from "../i18n";
+import { t, type Lang } from "../i18n";
 import { speak, voiceProvider } from "../speech";
 import { useApp } from "../state";
 
@@ -37,7 +38,6 @@ export function Steps({ active }: { active: string }) {
 
 function SchemeCard({ r, lang, onDraft, onAnswer }: { r: SchemeResult; lang: Lang; onDraft: (r: SchemeResult) => void; onAnswer: (attr: string, v: any) => void }) {
   const [open, setOpen] = useState(false);
-  const [answers, setAnswers] = useState<Record<string, any>>({});
   const tone = r.outcome === "MATCH" || r.outcome === "PROVISIONAL" ? "ok" : r.outcome === "MISMATCH" ? "no" : "info";
   const pass = r.criteria.filter((c) => c.outcome === "PASS").length;
   const candidate = tone === "ok";
@@ -74,57 +74,7 @@ function SchemeCard({ r, lang, onDraft, onAnswer }: { r: SchemeResult; lang: Lan
       </div>
       {open && (
         <div className="scheme-body">
-          <ul className="small" style={{ margin: 0, paddingLeft: "1.1rem" }}>
-            {r.decision_reason.map((d, i) => <li key={i}><span className="mono tiny">{d.code}</span> — {d.text}</li>)}
-          </ul>
-          <div className="table-wrap">
-            <table className="trace">
-              <thead><tr><th>Criterion</th><th>Rule needs</th><th>Your fact</th><th>Result</th></tr></thead>
-              <tbody>
-                {r.criteria.map((c) => (
-                  <tr key={c.criterion_id}>
-                    <td>{attrLabel(c.fact, lang)}
-                      {c.quote && <blockquote>“{c.quote}”</blockquote>}
-                      {c.note && <div className="tiny">{c.note}</div>}</td>
-                    <td className="mono">{c.expected_text}</td>
-                    <td>{c.fact_id ? showValue(c.fact, c.observed, lang) : "—"}</td>
-                    <td className={`c-${c.outcome}`}><strong>{c.outcome}</strong></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {r.missing_questions && r.missing_questions.length > 0 && (
-            <div className="stack">
-              <strong className="small">{t("missingInfo", lang)}</strong>
-              {r.missing_questions.map((q) => (
-                <div key={q.attribute} className="row">
-                  <span className="small" style={{ flex: "1 1 220px" }}>{q.text}</span>
-                  <div style={{ flex: "1 1 160px" }}><ValueInput attr={q.attribute} value={answers[q.attribute] ?? null} lang={lang} onChange={(v) => setAnswers({ ...answers, [q.attribute]: v })} /></div>
-                  <button className="btn small" disabled={answers[q.attribute] == null} onClick={() => onAnswer(q.attribute, answers[q.attribute])}>{t("save", lang)}</button>
-                </div>
-              ))}
-            </div>
-          )}
-          {r.manual_checks.length > 0 && (
-            <div className="small"><strong>Checked by an officer:</strong>
-              <ul style={{ margin: ".2rem 0 0", paddingLeft: "1.1rem" }}>{r.manual_checks.map((m) => <li key={m.id}>{m.text}</li>)}</ul></div>
-          )}
-          <div className="small"><strong>{t("documents", lang)}:</strong>{" "}
-            {r.evidence.map((e) => <span key={e.doc_key} className={`chip ${e.satisfied ? "on" : ""}`} style={{ margin: "0 .25rem .25rem 0" }}>{e.label} · {e.status_label}</span>)}
-            {r.evidence_note && <div className="tiny">{r.evidence_note}</div>}
-          </div>
-          <dl className="kv">
-            <dt>{t("source", lang)}</dt><dd><a href={r.source.source_url} target="_blank" rel="noreferrer">{r.source.source_url}</a></dd>
-            <dt>Source ID</dt><dd className="mono">{r.source.source_id}</dd>
-            <dt>Imported</dt><dd>{r.source.imported_at}</dd>
-            <dt>Rule reviewed</dt><dd>{r.source.rule_reviewed_at} (team review against dataset text)</dd>
-            <dt>Official source verified</dt><dd>{r.source.source_verified_at ?? "Not yet verified by a data steward"}</dd>
-            <dt>Rule</dt><dd className="mono">{r.rule_id} v{r.rule_version}</dd>
-          </dl>
-          {!candidate && r.outcome !== "MISMATCH" && r.outcome !== "NEEDS_HUMAN_REVIEW" && (
-            <button className="btn primary" onClick={() => onDraft(r)}>{t("prepareDraft", lang)}</button>
-          )}
+          <WhyPanel r={r} lang={lang} candidate={candidate} onDraft={onDraft} onAnswer={onAnswer} />
         </div>
       )}
     </article>

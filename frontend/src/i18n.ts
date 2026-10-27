@@ -97,6 +97,7 @@ const S = {
   allConfirmedMsg: { en: "Confirmed ✓ All the details you checked.", hi: "पुष्टि हो गई ✓ आपने जो जानकारी जाँची वह सब।", te: "నిర్ధారించబడింది ✓ మీరు చూసిన వివరాలన్నీ." },
   schemesScreened: { en: "{n} schemes screened", hi: "{n} योजनाओं की जाँच हुई", te: "{n} పథకాలను పరిశీలించారు" },
   jumpTo: { en: "Tap a group to jump to it.", hi: "किसी समूह पर दबाइए, वहाँ पहुँच जाएँगे।", te: "ఒక సమూహంపై నొక్కితే అక్కడికి వెళ్తారు." },
+  updateDocsLink: { en: "Update documents →", hi: "दस्तावेज़ अपडेट करें →", te: "పత్రాలను నవీకరించండి →" },
   stopListening: { en: "Stop", hi: "रोकें", te: "ఆపండి" },
   updatedAt: { en: "Updated", hi: "अपडेट", te: "నవీకరణ" },
   reviewerNote: { en: "Reviewer note", hi: "समीक्षक का नोट", te: "సమీక్షకుని గమనిక" },

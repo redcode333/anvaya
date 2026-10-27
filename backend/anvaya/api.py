@@ -2,7 +2,7 @@ from functools import wraps
 
 from flask import Blueprint, Response, current_app, g, jsonify, request
 
-from . import (accounts, auth, cases, catalogue, digilocker, documents, formhelper, i18n, jobs, llm, migrations, profile,
+from . import (accounts, auth, cases, catalogue, digilocker, documents, draftvoice, formhelper, i18n, jobs, llm, migrations, profile,
                sync, testrunner, translation, voice)
 from .common import ApiError, audit, current_user, idempotency_key, idempotent, rate_limit, require_role
 from .db import bump, get_db, iso
@@ -561,6 +561,28 @@ def passport_pdf(sid):
     get_db().commit()
     return Response(data, mimetype="application/pdf", headers={
         "Content-Disposition": f'attachment; filename="anvaya-scheme-passport-{lang}.pdf"', "Cache-Control": "no-store"})
+
+
+@bp.get("/drafts/<draft_id>/voice-fill/plan")
+def draft_voice_plan(draft_id):
+    """The fields of a draft the citizen can still fill, in form order, each with the question to ask (spoken or on screen)."""
+    return draftvoice.plan(draft_id, session_header(), request.args.get("language") or "en")
+
+
+@bp.post("/drafts/<draft_id>/voice-fill")
+def draft_voice_fill(draft_id):
+    """Turn a spoken or typed answer into draft field values. Nothing is saved: the page shows them in the form and saving is the
+    normal, versioned draft edit."""
+    b = body()
+    return draftvoice.parse(draft_id, session_header(), b.get("utterance"), b.get("asked"), b.get("language") or "en")
+
+
+@bp.post("/sessions/<sid>/documents/parse-answer")
+def parse_document_answer(sid):
+    """What a spoken answer says about a document (have it / missing / expired / not sure). Nothing is saved."""
+    profile.get_session(sid)
+    b = body()
+    return draftvoice.parse_document_status(sid, b.get("utterance"), b.get("language") or "en")
 
 
 @bp.get("/schemes/<scheme_id>/portal-qr.svg")

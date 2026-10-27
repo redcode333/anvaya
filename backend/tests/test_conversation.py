@@ -112,3 +112,17 @@ def test_typed_chat_is_unchanged_and_still_uses_the_card(client):
     r = _say(client, sid, "I am 62 years old. I live in Bihar.", channel="text")
     assert i18n.t(i18n.MESSAGES, "please_confirm", "en") in r["reply_segments"]
     assert not _facts(client, sid)["age"]["confirmed"]
+
+
+def test_a_turn_is_stamped_later_than_the_one_before_even_when_the_clock_does_not_move(client, monkeypatch):
+    """Two quick turns used to share a timestamp on a coarse clock, and the bot then read the wrong previous state."""
+    from datetime import datetime, timezone
+    from anvaya import profile
+    frozen = datetime(2026, 10, 27, 12, 0, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(profile, "now", lambda: frozen)
+    sid = _session(client)
+    _say(client, sid, "मेरी उम्र चौबीस साल है और मैं झारखंड में रहता हूँ")
+    _say(client, sid, "हाँ")
+    r = _say(client, sid, "साढ़े चार लाख")  # needs to know the bot just asked about income
+    assert _facts(client, sid).get("annual_income") == 450000 or "annual_income" in str(_facts(client, sid)), _facts(client, sid)
+    assert _msg("nothing_heard") not in r["reply_segments"]

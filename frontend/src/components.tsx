@@ -4,6 +4,7 @@ import { changeStaffPassword, nextMfaStep, staffSignIn, verifyMfa, type AuthLike
 import { supabase } from "./auth";
 import { useCaptcha } from "./Turnstile";
 import { attrLabel, BOOL_ATTRS, ENUMS, NUM_ATTRS, OUTCOME_LABEL, STATES, t, type Lang } from "./i18n";
+import { statusLabel } from "./statusLabels";
 import { useApp } from "./state";
 
 export function ErrorNote({ error }: { error: unknown }) {
@@ -21,8 +22,10 @@ export function OutcomeBadge({ outcome, lang }: { outcome: string; lang: Lang })
   return <span className={`badge o-${outcome}`}>{OUTCOME_LABEL[outcome]?.[lang] ?? outcome}</span>;
 }
 
+/** A status in plain words in the site language (DRAFT_SAVED → "Draft saved"); the code only picks the colour. */
 export function StatusBadge({ status }: { status: string }) {
-  return <span className={`badge s-${status}`}>{status}</span>;
+  const { lang } = useApp();
+  return <span className={`badge s-${status}`}>{statusLabel(status, lang)}</span>;
 }
 
 const authClient = () => supabase!.auth as unknown as AuthLike;

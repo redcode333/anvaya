@@ -89,6 +89,16 @@ OUTCOMES = {
 
 # Questions asked when an attribute needed by a candidate rule is unknown.
 QUESTIONS = {
+    "applicant_name": {
+        "en": "What is your full name?",
+        "hi": "आपका पूरा नाम क्या है?",
+        "te": "మీ పూర్తి పేరు ఏమిటి?",
+    },
+    "district": {
+        "en": "Which district do you live in?",
+        "hi": "आप किस ज़िले में रहते हैं?",
+        "te": "మీరు ఏ జిల్లాలో నివసిస్తున్నారు?",
+    },
     "state": {
         "en": "Which state do you live in?",
         "hi": "आप किस राज्य में रहते हैं?",

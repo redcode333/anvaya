@@ -472,7 +472,7 @@ def _valid(attribute: str, value) -> bool:
         return False
 
 
-LAST_TURN_SQL = "SELECT extracted_json FROM turns WHERE session_id=? ORDER BY created_at DESC LIMIT 1"
+LAST_TURN_SQL = "SELECT extracted_json, created_at FROM turns WHERE session_id=? ORDER BY created_at DESC LIMIT 1"
 
 
 def _turn_state(row) -> dict:
@@ -502,7 +502,8 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
 
     # What the previous turn left open: the attribute the bot asked about (so a bare "नहीं" or "चार" has a meaning) and
     # the facts it read back and is waiting to hear "yes" for.
-    prior = _turn_state(last_turn.fetchone())
+    last_row = last_turn.fetchone()
+    prior = _turn_state(last_row)
     asked = prior.get("asked")
     skipped = set(prior.get("skipped", []))  # questions the citizen said to skip
     quiet = bool(prior.get("quiet"))  # the citizen asked for no more questions
@@ -652,13 +653,23 @@ def handle_turn(session_id: str, utterance: str, channel: str = "text", language
         next_asked = q["attribute"] if q else None
     reply = " ".join(parts)
 
+    # The next turn finds this one as "the latest" by timestamp. A coarse clock (Windows) can give two quick turns the same
+    # microsecond, and then the bot reads the wrong previous state (forgets what it asked), so a turn is always stamped later
+    # than the one before it.
+    turn_at = now()
+    if last_row and last_row["created_at"]:
+        prev_at = parse_iso(last_row["created_at"])
+        if turn_at <= prev_at:
+            turn_at = prev_at + timedelta(microseconds=1)
+    turn_at = turn_at.isoformat()
+
     db = get_db()
     db.execute(
         "INSERT INTO turns(turn_id, session_id, language, utterance, channel, extracted_json, reply, created_at) VALUES (?,?,?,?,?,?,?,?)",
         (new_id("TRN"), session_id, lang, guardrails.placeholder(blocked) if blocked else utterance, channel,
          dumps({**result, "llm": llm_summary, "asked": next_asked, "awaiting": next_awaiting, "misses": misses,
                 "skipped": sorted(skipped), "quiet": quiet}), reply,
-         now().isoformat()),  # microseconds: the next turn finds this one as the latest even within the same second
+         turn_at),
     )
     metrics.TURNS.labels(channel, lang).inc()
     for f in applied:

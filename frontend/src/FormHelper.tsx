@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, apiBlob, type Helper } from "./api";
 import { copyText } from "./clipboard";
 import { ErrorNote } from "./components";
@@ -74,7 +75,7 @@ export function FormHelper({ draftId, caseCode }: { draftId: string; caseCode?: 
         <ul style={{ margin: ".3rem 0 0", paddingLeft: "1.1rem" }}>{h.office_only.map((o) => <li key={o.key}>{o.label}: {o.hint}</li>)}</ul>
       </div>
 
-      <h3>{h.labels.documents}</h3>
+      <h3>{h.labels.documents} <Link to="/citizen/documents" className="small hf-update">{t("updateDocsLink", lang)}</Link></h3>
       <ul className="small hf-docs">
         {h.documents.map((d) => <li key={d.doc_key} data-ready={d.ready}><span aria-hidden="true">{d.ready ? "✓" : ""}</span>{d.label} — {d.status_label}</li>)}
       </ul>
