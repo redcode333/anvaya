@@ -69,9 +69,6 @@ export default function Landing() {
                 <MicLabel active={line.id} />
               </div>
               <div className="l-cta-side">
-                <button type="button" className="l-link" onClick={() => go("personal")}>
-                  <KeyboardIcon />{t("typeInstead", lang)}
-                </button>
                 <div className="l-alt" role="group" aria-label={t("heroMore", lang)}>
                   <Tile icon={<KioskIcon />} label={t("kiosk", lang)} onClick={() => go("kiosk")} />
                   <Tile icon={<StatusIcon />} label={t("checkStatus", lang)} onClick={() => nav("/case")} />
@@ -218,7 +215,6 @@ function Tile({ icon, label, onClick }: { icon: ReactNode; label: string; onClic
 const Svg = ({ children }: { children: ReactNode }) => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
 );
-const KeyboardIcon = () => <Svg><rect x="2.5" y="6" width="19" height="12" rx="2.5" /><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7.5 14h9" /></Svg>;
 const KioskIcon = () => <Svg><rect x="4" y="3" width="16" height="12" rx="2" /><path d="M12 15v4M8 21h8" /></Svg>;
 const StatusIcon = () => <Svg><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2M8.5 11l1.8 1.8 3.2-3.4" /></Svg>;
 const ResumeIcon = () => <Svg><path d="M4 12a8 8 0 1 0 2.5-5.8" /><path d="M4 4v4h4M12 8v4l2.5 2" /></Svg>;

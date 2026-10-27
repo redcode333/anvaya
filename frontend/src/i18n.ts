@@ -196,7 +196,6 @@ const S = {
     hi: "अपनी भाषा में बोलिए। Anvaya बताएगा कि आप किन योजनाओं के लिए पात्र हो सकते हैं, कौन-से काग़ज़ चाहिए, और कहाँ आवेदन करना है।",
     te: "మీ భాషలో మాట్లాడండి. మీకు అర్హత ఉండగల పథకాలు, కావలసిన పత్రాలు, ఎక్కడ దరఖాస్తు చేయాలో Anvaya చెబుతుంది.",
   },
-  typeInstead: { en: "Type instead", hi: "लिखकर पूछिए", te: "టైప్ చేసి అడగండి" },
   heroTrust: { en: "No login · No forms · Hindi, English, Telugu", hi: "लॉगिन नहीं · फ़ॉर्म नहीं · हिंदी, English, తెలుగు", te: "లాగిన్ లేదు · ఫారాలు లేవు · हिंदी, English, తెలుగు" },
   headlineLanguages: { en: "Headline language", hi: "शीर्षक की भाषा", te: "శీర్షిక భాష" },
   pauseRotation: { en: "Pause headline rotation", hi: "शीर्षक बदलना रोकें", te: "శీర్షిక మార్పు ఆపండి" },
