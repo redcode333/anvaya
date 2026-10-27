@@ -328,12 +328,18 @@
 .l-cta-inner .l-mic-wrap { padding-top: 24px; }
 
 /* footer */
-.l-foot { background: var(--l-ink); color: #C9CCD1; padding: 44px 0; }
-.l-foot-inner { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 20px 28px; }
-.l-foot-brand { display: flex; align-items: center; gap: 10px; font-family: var(--l-display); font-weight: 700; font-size: 19px; color: #FAF7F2; }
-.l-foot nav { display: flex; flex-wrap: wrap; gap: 4px 22px; }
-.l-foot nav a { color: #FAF7F2; padding: 10px 0; text-underline-offset: 4px; }
-.l-foot p { flex-basis: 100%; margin: 0; font-size: 13px; color: #A3A7AE; }
+.l-foot { background: var(--l-ink); color: #C9CCD1; padding: 56px 0 32px; }
+.l-foot-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr); gap: 36px 48px; }
+.l-foot-about { display: grid; gap: 12px; align-content: start; }
+.l-foot-about p { margin: 0; font-size: 15px; color: #C9CCD1; max-width: 26em; }
+.l-foot-brand { display: flex; align-items: center; gap: 10px; font-family: var(--l-display); font-weight: 700; font-size: 21px; color: #FAF7F2; }
+.l-foot-langs { justify-self: start; padding: 5px 12px; border-radius: 999px; border: 1px solid rgba(250, 247, 242, .22); font-size: 12.5px; color: #FAF7F2; }
+.l-foot nav { display: grid; gap: 2px; align-content: start; }
+.l-foot h4 { margin: 0 0 10px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #8F949C; font-weight: 700; }
+.l-foot nav a, .l-foot nav button { display: block; padding: 8px 0; border: 0; background: none; font: inherit; font-size: 15px; text-align: left; color: #FAF7F2; text-decoration: none; cursor: pointer; transition: color .15s, transform .15s; }
+.l-foot nav a:hover, .l-foot nav button:hover { color: var(--l-accent); transform: translateX(3px); }
+.l-foot .l-foot-note { margin: 36px 0 0; padding-top: 20px; border-top: 1px solid rgba(250, 247, 242, .14); font-size: 13px; color: #A3A7AE; }
+@media (max-width: 760px) { .l-foot-grid { grid-template-columns: 1fr 1fr; } .l-foot-about { grid-column: 1 / -1; } }
 
 @media (prefers-reduced-motion: reduce) {
   .landing *, .landing *::before, .landing *::after { animation: none !important; transition: none !important; }

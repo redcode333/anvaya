@@ -170,8 +170,7 @@ export default function Landing() {
             <div><TrustIcon d={<><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" /><path d="M9 11v3" /><path d="M12 9v7" /><path d="M15 11v3" /></>} />
               <h3>Your recording isn’t stored</h3><p>Speech is turned into text; the audio itself is never saved. Leaving a kiosk session deletes anything you didn’t consent to share.</p></div>
             <div><TrustIcon d={<><path d="M6 3h9l4 4v14H6z" /><path d="M14 3v5h5" /><path d="M9 14l2 2 4-4" /></>} />
-              <h3>Sourced from official rules</h3><p>Every result shows the rule, its source and when it was last checked.</p>
-              <Link to="/admin/schemes">See the scheme catalogue →</Link></div>
+              <h3>Sourced from official rules</h3><p>Every result shows the rule, its source and when it was last checked.</p></div>
           </div>
         </Reveal>
       </section>
@@ -191,12 +190,28 @@ export default function Landing() {
       </section>
 
       <footer className="l-foot">
-        <div className="l-wrap l-foot-inner">
-          <span className="l-foot-brand"><img src="/brand/anvaya-mark-white.svg" alt="" width="28" height="28" />Anvaya AI</span>
-          <nav aria-label="Footer">
-            <Link to="/case">Case status</Link><Link to="/admin/schemes">Scheme sources</Link><Link to="/signin">{t("signIn", lang)}</Link><Link to="/staff">Staff</Link>
-          </nav>
-          <p>{t("notApproval", lang)}</p>
+        <div className="l-wrap">
+          <div className="l-foot-grid">
+            <div className="l-foot-about">
+              <span className="l-foot-brand"><img src="/brand/anvaya-mark-white.svg" alt="" width="28" height="28" />Anvaya AI</span>
+              <p>{t("footTag", lang)}</p>
+              <span className="l-foot-langs">{t("footLangs", lang)}</span>
+            </div>
+            <nav aria-label={t("footCitizens", lang)}>
+              <h4>{t("footCitizens", lang)}</h4>
+              <button type="button" onClick={() => go("personal")}>{t("footStart", lang)}</button>
+              <Link to="/citizen/passports">{t("myPassports", lang)}</Link>
+              <Link to="/case">{t("checkStatus", lang)}</Link>
+              <Link to="/resume">{t("resume", lang)}</Link>
+              <Link to="/signin">{t("signIn", lang)}</Link>
+            </nav>
+            <nav aria-label={t("footStaff", lang)}>
+              <h4>{t("footStaff", lang)}</h4>
+              <button type="button" onClick={() => go("kiosk")}>{t("kiosk", lang)}</button>
+              <Link to="/staff">{t("staffLink", lang)}</Link>
+            </nav>
+          </div>
+          <p className="l-foot-note">{t("notApproval", lang)}</p>
         </div>
       </footer>
     </div>

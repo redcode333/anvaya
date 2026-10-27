@@ -287,6 +287,11 @@ const S = {
   wChip1: { en: "Free", hi: "मुफ़्त", te: "ఉచితం" },
   wChip2: { en: "No Aadhaar number asked", hi: "आधार नंबर नहीं माँगा जाता", te: "ఆధార్ నంబర్ అడగము" },
   wChip3: { en: "Audio is not stored", hi: "ऑडियो सहेजा नहीं जाता", te: "ఆడియో సేవ్ చేయము" },
+  footTag: { en: "Government schemes, in your language.", hi: "सरकारी योजनाएँ, आपकी भाषा में।", te: "ప్రభుత్వ పథకాలు, మీ భాషలో." },
+  footCitizens: { en: "For citizens", hi: "नागरिकों के लिए", te: "పౌరులకు" },
+  footStaff: { en: "For staff", hi: "कर्मचारियों के लिए", te: "సిబ్బందికి" },
+  footStart: { en: "Start a conversation", hi: "बातचीत शुरू करें", te: "సంభాషణ ప్రారంభించండి" },
+  footLangs: { en: "Hindi · English · Telugu", hi: "हिंदी · अंग्रेज़ी · तेलुगु", te: "హిందీ · ఇంగ్లీష్ · తెలుగు" },
   staffLead: { en: "Staff, reviewer or admin?", hi: "कर्मचारी, समीक्षक या एडमिन?", te: "సిబ్బంది, సమీక్షకుడు లేదా అడ్మిన్?" },
   staffLink: { en: "Staff sign-in", hi: "स्टाफ़ साइन-इन", te: "సిబ్బంది సైన్ ఇన్" },
   kioskVerifiedOff: {

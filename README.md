@@ -1363,6 +1363,12 @@ Not sure*) fills with its own colour when chosen. The upload form (consent, file
 line that opens by itself once a file is uploaded, so the page is no longer a wall of upload text. *Check schemes again* is a full-width button at the end.
 With no screening yet, an empty state links to the Scheme Passport. Behaviour is unchanged: marking, upload rules, masking and consent work as before.
 
+### Landing footer
+The dark footer is three columns: the brand with a one-line tagline and a "Hindi · English · Telugu" pill; **For citizens** (*Start a conversation, My Passports, Check case
+status, Resume with Passport code, Sign in*); **For staff** (*Kiosk / assisted, Staff sign-in*); and the "preliminary screening only" notice under a rule. On a phone it is two
+columns under the brand. The public landing page no longer links to staff-only pages (the catalogue link in the "Sourced from official rules" card, the "Scheme
+sources" footer link and the "For judges & staff" note were removed); staff reach their tools through *Staff sign-in*.
+
 ### Reviewer pages
 * **Review queue** (`/reviewer`) follows the staff-area pattern (account bar, title, at-a-glance numbers, tabs): *Waiting for review*, *Longest wait* (amber after
   4 h, red after a day), *Correction asked* and *Reviewed*, then tabs *All / Waiting / Correction asked / Reviewed* with counts. The list loads once and is
