@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { PageHead, Stat, Stats } from "../AdminUI";
 import { ErrorNote, Json, StaffBar, StaffLogin } from "../components";
 import { useApp } from "../state";
 
@@ -29,17 +30,26 @@ export default function TestRuns() {
   return (
     <div className="stack">
       <StaffBar />
-      <div className="row spread">
-        <h1>Official scenarios TC1–TC5</h1>
+      <PageHead title="Official scenarios TC1–TC5" sub="Each scenario runs the real pipeline end to end; evidence is saved with every run.">
         {canRun && <div className="row">
           {Object.keys(defs).map((tc) => <button key={tc} className="btn" disabled={!!busy} onClick={() => run(tc)}>{busy === tc ? "…" : `Run ${tc}`}</button>)}
           <button className="btn primary" disabled={!!busy} onClick={runAll}>Run all</button>
           <button className="btn ghost" onClick={reset}>Reset</button>
         </div>}
-      </div>
+      </PageHead>
+      {Object.keys(defs).length > 0 && (() => {
+        const ran = Object.values(runs).filter((r): r is Run => !!r);
+        const passed = ran.filter((r) => r.passed).length;
+        return (
+          <Stats>
+            <Stat label="Scenarios" value={Object.keys(defs).length} />
+            <Stat label="Passed" value={`${passed} / ${ran.length}`} tone={ran.length === 0 ? undefined : passed === ran.length ? "ok" : "bad"} hint={ran.length ? undefined : "none run yet"} />
+            <Stat label="Failed" value={ran.length - passed} tone={ran.length - passed ? "bad" : "ok"} />
+          </Stats>
+        );
+      })()}
       {!canRun && Object.keys(defs).length > 0 && <StaffLogin roles={["admin"]} title="Admin sign-in to run scenarios"
         hint="Running or resetting TC1–TC5 writes test data, so it needs an admin account. The latest saved runs are shown below." />}
-      <p className="small muted">Each scenario creates an isolated test session and runs the real pipeline (extraction → confirmation → deterministic rules → drafts). Evidence is saved with every run.</p>
       <ErrorNote error={err} />
       {Object.entries(defs).map(([tc, d]) => {
         const r = runs[tc];

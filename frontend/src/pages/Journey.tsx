@@ -9,7 +9,8 @@ import { ErrorNote, KioskOperatorBar, StaffLogin, ValueInput } from "../componen
 import { MicIcon } from "../landing/DemoCard";
 import { useCaptcha } from "../Turnstile";
 import { ATTR, attrLabel, showValue, t, type Lang } from "../i18n";
-import { listen, speak, verbxFailedOver, voiceProvider, type Provider, type Recorder } from "../speech";
+import { callSupported, startCall, type Call, type CallState } from "../call";
+import { speak, stopSpeaking, verbxFailedOver, voiceProvider, type Provider } from "../speech";
 import { useApp } from "../state";
 import { getOutbox, refreshBundle } from "../offline/store";
 import OfflinePrescreen from "./OfflinePrescreen";
@@ -34,11 +35,20 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [provider, setProvider] = useState<Provider>("none");
-  const [rec, setRec] = useState<Recorder | null>(null);
+  const [call, setCall] = useState<Call | null>(null);  // the hands-free call, while one is open
+  const [callState, setCallState] = useState<CallState>("listening");
   const [voiceNote, setVoiceNote] = useState<string>("");
   const [audioNote, setAudioNote] = useState(false);
   const [editing, setEditing] = useState<{ fact_id?: string; attribute: string; value: any } | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
+  // The call's callbacks outlive a render, so they read the latest values through refs.
+  const callRef = useRef<Call | null>(null);
+  const starting = useRef(false);
+  const busyRef = useRef(false);
+  const langRef = useRef(lang);
+  const sendRef = useRef<(u: string, c?: "text" | "voice") => Promise<void>>(async () => undefined);
+  const turns = useRef<Promise<void>>(Promise.resolve());  // sentences spoken while a reply is pending wait their turn
+  busyRef.current = busy; langRef.current = lang;
 
   useEffect(() => { if (app.mode !== mode) setMode(mode); }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { voiceProvider().then(setProvider); }, []);
@@ -83,7 +93,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
     } catch (e) { setErr(e); }
   };
 
-  const send = async (utterance: string, channel: "text" | "voice" = "text") => {
+  const send = async (utterance: string, channel: "text" | "voice" = "text"): Promise<void> => {
     if (!sessionId || !utterance.trim()) return;
     setBusy(true); setErr(null);
     setMsgs((m) => [...m, { who: "me", text: utterance, meta: channel === "voice" ? `${t("heard", lang)} (${provider})` : undefined }]);
@@ -97,14 +107,31 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
     } catch (e) { setErr(e); }
     setBusy(false);
   };
+  sendRef.current = send;
 
-  const mic = () => {
-    if (rec) { rec.stop(); setRec(null); return; }
+  // One tap opens a hands-free call (the mic stays open, sentences are sent as they finish, and talking over the bot
+  // makes it stop and listen); the next tap ends it.
+  const mic = async () => {
+    if (callRef.current) { callRef.current.stop(); return; }
+    if (starting.current || !sessionId) return;
+    starting.current = true;
     setVoiceNote("");
-    const r = listen(provider, sessionId!, lang, (txt) => send(txt, "voice"), (m) => setVoiceNote(m),
-      () => { setRec(null); voiceProvider().then(setProvider); });
-    setRec(r);
+    stopSpeaking();
+    const c = await startCall({
+      provider, sessionId, lang: () => langRef.current, busy: () => busyRef.current,
+      onText: (txt) => { turns.current = turns.current.then(() => sendRef.current(txt, "voice")); },
+      onState: setCallState, onError: setVoiceNote,
+      onEnd: () => { callRef.current = null; setCall(null); setCallState("listening"); voiceProvider().then(setProvider); },
+    });
+    starting.current = false;
+    if (!c) return;
+    callRef.current = c; setCall(c);
+    // Like picking up a phone: the bot greets first when nothing has been said yet.
+    if (msgs.length === 1 && msgs[0].who === "bot") say(sessionId, msgs[0].text);
   };
+  // The call ends with the session, and when the page is left.
+  useEffect(() => { if (!sessionId) callRef.current?.stop(); }, [sessionId]);
+  useEffect(() => () => { callRef.current?.stop(); stopSpeaking(); }, []);
 
   const confirmFact = async (f: Fact) => {
     await api(`/sessions/${sessionId}/profile/facts/${f.fact_id}`, { method: "PATCH", body: { confirmed: true } }).catch(setErr);
@@ -199,8 +226,8 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
           {busy && <div className="bubble bot typing" role="status" aria-label="Anvaya is replying"><i /><i /><i /></div>}
         </div>
         <div className="composer">
-          <button type="button" className={`orb-mic ${rec ? "rec" : ""}`} onClick={mic} disabled={busy || provider === "none"}
-            aria-label={rec ? t("listening", lang) : t("speak", lang)} aria-pressed={!!rec}
+          <button type="button" className={`orb-mic ${call ? "rec" : ""}`} onClick={mic} disabled={!callSupported(provider)}
+            aria-label={call ? t("endCall", lang) : t("speak", lang)} aria-pressed={!!call}
             title={provider === "none" ? "Voice not available" : `Voice via ${provider}`}>
             <span className="orb-ring" aria-hidden="true" /><span className="orb-ring r2" aria-hidden="true" />
             <MicIcon size={28} />
@@ -209,7 +236,7 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(text); } }} />
           <button className="btn primary" onClick={() => send(text)} disabled={busy || !text.trim()}>{t("send", lang)}</button>
         </div>
-        {rec && <p className="small" role="status">{t("listening", lang)}</p>}
+        {call && <p className="small" role="status">{t(({ listening: "callListening", hearing: "callHearing", thinking: "callThinking", speaking: "callSpeaking" } as const)[callState], lang)}</p>}
         {voiceNote && <p className="notice small">{voiceNote}</p>}
         {audioNote && <p className="tiny muted" role="status">🔇 {t("audioUnavailable", lang)}</p>}
         <details className="small" style={{ marginTop: ".75rem" }}>

@@ -109,10 +109,19 @@ export function subscribeSpeaking(f: () => void) { speakingSubs.add(f); return (
 
 let playId = 0;
 let playing: HTMLAudioElement | null = null;
+let resolvePlay: ((ok: boolean) => void) | null = null;  // lets stopSpeaking() end a clip that will never fire "ended"
+let pendingSpeak = 0;                                     // speak() calls still fetching or playing clips
 let aborts: AbortController[] = [];
+
+/** True while the bot is audibly speaking (or about to): the hands-free call raises its microphone bar for this. */
+export function botSpeaking(): boolean {
+  return !!playing || pendingSpeak > 0 || (typeof window !== "undefined" && "speechSynthesis" in window && speechSynthesis.speaking);
+}
 
 export function stopSpeaking() {
   playId++;
+  resolvePlay?.(false);
+  resolvePlay = null;
   aborts.forEach((a) => a.abort());
   aborts = [];
   playing?.pause();
@@ -136,13 +145,20 @@ function play(src: string, id: number): Promise<boolean> {
     if (id !== playId) return resolve(false);
     const a = new Audio(src);
     playing = a;
-    a.onended = () => resolve(true);
-    a.onerror = () => resolve(false);
-    a.play().catch(() => resolve(false));  // e.g. autoplay blocked
+    const done = (ok: boolean) => { if (playing === a) playing = null; if (resolvePlay === done) resolvePlay = null; resolve(ok); };
+    resolvePlay = done;
+    a.onended = () => done(true);
+    a.onerror = () => done(false);
+    a.play().catch(() => done(false));  // e.g. autoplay blocked
   });
 }
 
 export async function speak(provider: Provider, sessionId: string | null, text: string | string[], lang: Lang): Promise<SpeakResult> {
+  pendingSpeak++;
+  try { return await speakParts(provider, sessionId, text, lang); } finally { pendingSpeak--; }
+}
+
+async function speakParts(provider: Provider, sessionId: string | null, text: string | string[], lang: Lang): Promise<SpeakResult> {
   const parts = (Array.isArray(text) ? text : [text]).map((s) => s.trim()).filter(Boolean);
   stopSpeaking();
   const id = playId;

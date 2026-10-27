@@ -30,10 +30,10 @@ _HI_0_99 = _table(
     "अठारह उन्नीस बीस इक्कीस बाईस तेईस चौबीस पच्चीस छब्बीस सत्ताईस अट्ठाईस/अठ्ठाईस/अठाईस उनतीस तीस इकतीस "
     "बत्तीस तैंतीस चौंतीस पैंतीस छत्तीस सैंतीस अड़तीस उनतालीस चालीस इकतालीस बयालीस तैंतालीस चवालीस/चौवालीस "
     "पैंतालीस छियालीस सैंतालीस अड़तालीस उनचास पचास इक्यावन बावन तिरेपन/तिरपन चौवन पचपन छप्पन सत्तावन "
-    "अट्ठावन/अठ्ठावन उनसठ साठ इकसठ बासठ तिरसठ चौंसठ पैंसठ छियासठ सड़सठ/सरसठ अड़सठ उनहत्तर सत्तर इकहत्तर "
+    "अट्ठावन/अठ्ठावन/अठावन उनसठ साठ इकसठ बासठ तिरसठ चौंसठ पैंसठ छियासठ सड़सठ/सरसठ अड़सठ उनहत्तर सत्तर इकहत्तर "
     "बहत्तर तिहत्तर चौहत्तर पचहत्तर छिहत्तर सतहत्तर अठहत्तर उन्यासी/उनासी अस्सी इक्यासी बयासी तिरासी चौरासी "
-    "पचासी छियासी सत्तासी अट्ठासी/अठ्ठासी नवासी नब्बे इक्यानवे बानवे तिरानवे चौरानवे पचानवे छियानवे सत्तानवे "
-    "अट्ठानवे/अठ्ठानवे निन्यानवे"
+    "पचासी छियासी सत्तासी अट्ठासी/अठ्ठासी/अठासी नवासी नब्बे इक्यानवे बानवे तिरानवे चौरानवे पचानवे/पंचानवे छियानवे सत्तानवे "
+    "अट्ठानवे/अठ्ठानवे/अठानवे निन्यानवे"
 )
 _EN_0_19 = _table("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen "
                   "fifteen sixteen seventeen eighteen nineteen")
@@ -306,6 +306,9 @@ HOUSEHOLD_RE = [
     re.compile(r"\bfamily of\s*(\d{1,2})\b", re.I),
     re.compile(r"(\d{1,2})\s*(?:लोग|सदस्य)"),
     re.compile(r"(\d{1,2})\s*(?:మంది|సభ్యులు)"),
+    re.compile(r"\bwe are (\d{1,2})\b|\b(\d{1,2}) (?:in|of) (?:the|my|our) family\b", re.I),
+    re.compile(r"(?:हम|hum)\s*(\d{1,2})\s*(?:हैं|hain|लोग|log)", re.I),
+    re.compile(r"(?:परिवार|घर)\s*में\s*(\d{1,2})\s*(?:लोग|सदस्य|हैं)"),
 ]
 
 # "widow pension" / "विधवा पेंशन" names a scheme the citizen asks about; it says nothing about the speaker.
@@ -322,24 +325,35 @@ WIDOW = re.compile(
     r"वितंतु|వితంతువు" + _NOT_PENSION + r"|భర్త చనిపోయ|భర్త మరణించ|భర్త పోయారు|భర్త లేరు",
     re.I,
 )
-SINGLE = re.compile(r"\b(?:unmarried|single|not married)\b|अविवाहित|कुंवारा|कुंवारी|పెళ్లి కాలేదు|అవివాహిత", re.I)
-MARRIED = re.compile(r"\b(?:married|shaadi ?shuda)\b|शादीशुदा|विवाहित|పెళ్లి అయింది|వివాహిత", re.I)
+SINGLE = re.compile(r"\b(?:unmarried|single|not married)\b|शादी\s*नहीं\s*हुई|अविवाहित|कुंवारा|कुंवारी|పెళ్లి కాలేదు|అవివాహిత", re.I)
+MARRIED = re.compile(r"\b(?:married|shaadi ?shuda)\b|शादी\s*(?:हो\s*(?:गई|गयी|चुकी)|हुई)|शादीशुदा|विवाहित|పెళ్లి అయింది|వివాహిత", re.I)
 
 BPL = re.compile(
     r"\bbpl\b|below poverty|antyodaya|gareebi rekha|garibi rekha|गरीबी रेखा|बीपीएल|बी\.पी\.एल|अंत्योदय|బీపీఎల్|దారిద్య్ర రేఖ|అంత్యోదయ",
     re.I,
 )
-WHITE_RATION = re.compile(r"white ration|safed ration|सफेद राशन|తెల్ల రేషన్", re.I)
+WHITE_RATION = re.compile(r"white ration|safed ration|सफेद राशन|राशन कार्ड सफेद|सफेद कार्ड|తెల్ల రేషన్", re.I)
 
-RURAL = re.compile(r"\b(?:village|rural|gaon|gaav|gaanv)\b|गाँव|गांव|ग्रामीण|గ్రామం|గ్రామ|పల్లె|ఊరు", re.I)
+RURAL = re.compile(r"\b(?:village|rural|gaon|gaav|gaanv|dehat|dehaat)\b|देहात|गाँव|गांव|ग्रामीण|గ్రామం|గ్రామ|పల్లె|ఊరు", re.I)
 URBAN = re.compile(r"\b(?:city|town|urban|shahar)\b|शहर|नगर|కస్బా|పట్టణం|నగరం", re.I)
 
 OCCUPATIONS = [
-    ("farmer", re.compile(r"\b(?:farmer|farming|kisan|kisaan|rythu|raitu|agricultur\w*)\b|किसान|खेती|రైతు|వ్యవసాయ", re.I)),
+    ("farmer", re.compile(r"\b(?:farmer|farming|kisan|kisaan|kheti|rythu|raitu|agricultur\w*)\b|किसान|खेती|రైతు|వ్యవసాయ", re.I)),
     ("construction_worker", re.compile(r"\bconstruction\b|mistri|मिस्त्री|निर्माण मज़दूर|భవన నిర్మాణ", re.I)),
     ("weaver", re.compile(r"\b(?:weaver|weaving|bunkar)\b|बुनकर|నేత", re.I)),
     ("labourer", re.compile(r"\b(?:labou?rer|labou?r|mazdoor|majdoor|coolie|kooli)\b|मज़दूर|मजदूर|కూలీ|కూలి", re.I)),
     ("student", re.compile(r"\b(?:student|studying)\b|छात्र|विद्यार्थी|విద్యార్థి", re.I)),
+    ("self_employed", re.compile(r"\b(?:self[- ]employed|dukaan|dukan|vyapar|dhandha|business (?:karta|karti|chalata|chalati|hai))\b|"
+                                 r"दुकान\s*(?:चला|है)|दुकानदार|व्यापार|धंधा|స్వయం ఉపాధి", re.I)),
+    ("salaried", re.compile(r"\b(?:salaried|naukri (?:karta|karti|hai)|job (?:karta|karti|hai))\b|नौकरी\s*(?:करता|करती|करते|है)|"
+                            r"सरकारी नौकरी|ఉద్యోగి|ఉద్యోగం చేస్తున్నాను", re.I)),
+    ("homemaker", re.compile(r"\b(?:homemaker|housewife|house wife|ghar ka kaam)\b|गृहिणी|घर का काम|ఇంటి పని|గృహిణి", re.I)),
+]
+
+# Words that stand for the occupation only as an answer to "what work do you do?".
+OCCUPATION_ANSWERS = [
+    ("self_employed", re.compile(r"\b(?:shop|business|dukaan|dukan)\b|दुकान|बिज़नेस|बिजनेस|व्यवसाय", re.I)),
+    ("salaried", re.compile(r"\b(?:job|naukri|service)\b|नौकरी|नौकर", re.I)),
 ]
 
 PENSION = re.compile(r"\bpension\b|pinchan|पेंशन|पेन्शन|పెన్షన్|పింఛన్|పింఛను|ఫించను", re.I)
@@ -394,9 +408,10 @@ def _amount(clause: str) -> tuple[int, str, int, str] | None:
         if not num_s:
             continue
         tail = clause[m.end(): m.end() + 12].lower()
-        if re.match(r"\s*(?:years?|yrs?|saal|sal|साल|वर्ष|సంవత్సర|ఏళ్ల|members|people|लोग|మంది)", tail):
-            continue
         val = float(num_s)
+        # "45 saal" is an age, but "150000 saal ki aay" (a year's income) is not.
+        if val < 1000 and re.match(r"\s*(?:years?|yrs?|saal|sal|साल|वर्ष|సంవత్సర|ఏళ్ల|members|people|लोग|మంది)", tail):
+            continue
         unit = (m.group(2) or "").lower()
         mult = next((v for k, v in MULTIPLIERS.items() if unit.startswith(k)), 1)
         val = int(round(val * mult))
@@ -462,7 +477,133 @@ def _relation_before(clause: str, at: int) -> str | None:
     return None
 
 
-def extract(text: str, default_state: str | None = None) -> dict:
+# ---------------------------------------------------------------- conversational understanding
+# Short answers ("नहीं", "चार", "पुरुष"), who is in the household, and masculine/feminine verb forms. Everything here
+# is a reading of what the speaker most likely meant, so the facts it adds are marked inferred where they are guesses.
+
+_TOKEN = re.compile(r"[\wऀ-ॿఀ-౿]+")
+_STRONG_YES = {"हाँ", "हां", "हा", "हाँजी", "हांजी", "बिल्कुल", "बिलकुल", "अवश्य", "जरूर", "ज़रूर", "सही", "yes", "yeah",
+               "yep", "haan", "han", "ha", "haa", "hanji", "bilkul", "sure", "correct", "sahi", "అవును", "సరే", "కరెక్ట్",
+               "సరైనది", "ఉంది", "ఉన్నాయి", "ఉన్నది", "ఉన్నారు"}
+_WEAK_YES = {"है", "हैं", "जी", "ji", "hai", "hain", "ok", "okay", "ठीक", "theek", "thik", "right", "have", "do"}
+_NO = {"नहीं", "नही", "नहि", "ना", "न", "गलत", "no", "nahi", "nahin", "nhi", "na", "nope", "not", "never", "wrong",
+       "లేదు", "లేవు", "కాదు", "తప్పు", "లేరు", "none"}
+
+
+def polarity(text: str) -> bool | None:
+    """True for a yes, False for a no, None when the words say neither (or both). "नहीं है" is a no and "जी नहीं" is a no:
+    है / जी only count towards yes when no "no" word is present."""
+    toks = {t.lower() for t in _TOKEN.findall(text or "")}
+    no, strong = bool(toks & _NO), bool(toks & _STRONG_YES)
+    if no and strong:
+        return None
+    if no:
+        return False
+    if strong or toks & _WEAK_YES:
+        return True
+    return None
+
+
+BOOL_ATTRS = ("bpl", "receives_other_pension", "owns_cultivable_land", "has_bank_account", "owns_pucca_house")
+
+# Masculine / feminine first-person verb forms ("रहता हूँ" / "रहती हूँ", "karta hoon" / "karti hoon").
+_HOON = r"(?:हूँ|हूं|हुँ|hoon|hun|hu)"
+MASC_SELF = re.compile(r"(?:ता|वाला|का|आदमी)\s*" + _HOON + r"(?=\s|$|[।.,?!])|\b\w+(?:ta|wala)\s+" + _HOON + r"\b|अकेला|\bakela\b", re.I)
+FEM_SELF = re.compile(r"(?:ती|वाली|की)\s*" + _HOON + r"(?=\s|$|[।.,?!])|\b\w+(?:ti|wali)\s+" + _HOON + r"\b|अकेली|\bakeli\b", re.I)
+SELF_BOY_GIRL = re.compile(r"(?:मैं|मै|main|i am|i'm)\s+(?:एक\s+)?(?:(लड़का|ladka|boy)|(लड़की|ladki|girl))", re.I)
+# Bare gender words that only mean the speaker when the bot has just asked "woman or man?".
+ANSWER_MALE = re.compile(r"मर्द|\bmard\b|लड़का|\bladka\b|\bboy\b|\bmen\b|\bmale\b|पुरुष|\bman\b", re.I)
+ANSWER_FEMALE = re.compile(r"औरत|\baurat\b|लड़की|\bladki\b|\bgirl\b|\bfemale\b|\bwoman\b|महिला|स्त्री|మహిళ|స్త్రీ", re.I)
+
+LIVES_ALONE = re.compile(r"अकेला\s*(?:रहता|हूँ|हूं)|अकेली\s*(?:रहती|हूँ|हूं)|अकेले\s*रह|\bakel[ai]\s+(?:rehta|rehti|rahta|rahti|hoon|hun)|"
+                         r"\b(?:live|living|stay|staying) (?:alone|by myself)\b|\bby myself\b|ఒంటరిగా", re.I)
+
+_SELF_TOKENS = {"मैं", "मै", "main", "mai", "me", "i", "నేను"}
+_MEMBER_GROUPS = {
+    "father": {"पिताजी", "पिता", "पापा", "papa", "father", "dad", "daddy", "pita", "pitaji", "నాన్న", "తండ్రి"},
+    "mother": {"माता", "माँ", "मां", "माताजी", "मम्मी", "मम्मा", "mother", "mom", "mummy", "maa", "mum", "అమ్మ", "తల్లి"},
+    "grandfather": {"दादा", "दादाजी", "नाना", "नानाजी", "grandfather", "dada", "nana", "తాత"},
+    "grandmother": {"दादी", "दादीजी", "नानी", "grandmother", "dadi", "nani", "నానమ్మ", "అమ్మమ్మ"},
+    "wife": {"पत्नी", "बीवी", "wife", "patni", "భార్య"},
+    "husband": {"पति", "husband", "pati", "భర్త"},
+    "brother": {"भाई", "bhai", "brother", "తమ్ముడు", "అన్న"},
+    "sister": {"बहन", "behen", "bahan", "sister", "చెల్లి", "అక్క"},
+    "son": {"बेटा", "son", "beta", "కొడుకు"},
+    "daughter": {"बेटी", "daughter", "beti", "కూతురు"},
+}
+_CHILDREN = {"बच्चे", "बच्चों", "बच्चा", "बच्ची", "children", "kids", "child", "bachche", "bacche"}
+_SMALL_NUMBERS = {"एक": 1, "दो": 2, "one": 1, "two": 2, "ఒక": 1, "రెండు": 2}
+HOUSEHOLD_CUE = re.compile(r"घर\s*में|परिवार\s*में|\bfamily\b|\bhousehold\b|साथ|\bwith me\b|\b(?:all|together) (?:live|stay)\b", re.I)
+# "रहते हैं" alone also counts, unless the speaker then says what *they* do ("… गाँव में रहते हैं और मैं शहर में काम करता हूँ").
+WEAK_HOUSEHOLD_CUE = re.compile(r"रहते\s*हैं|\brehte\s+hain\b", re.I)
+
+
+def household_from_listing(norm: str) -> tuple[int, str] | None:
+    """People named as living together ("घर में मेरे पिताजी, माता जी, दादाजी और मैं") → (count, span). Needs a household
+    cue and at least two members, and counts each kind of relative once ("दो बच्चे" counts two)."""
+    if not HOUSEHOLD_CUE.search(norm) and not (WEAK_HOUSEHOLD_CUE.search(norm) and not (MASC_SELF.search(norm) or FEM_SELF.search(norm))):
+        return None
+    toks = [t.lower() for t in _TOKEN.findall(norm)]
+    seen = set()
+    count = 0
+    if any(t in _SELF_TOKENS for t in toks):
+        count += 1
+    for i, t in enumerate(toks):
+        for kind, words in _MEMBER_GROUPS.items():
+            if t in words and kind not in seen:
+                seen.add(kind)
+                count += 1
+        if t in _CHILDREN and "children" not in seen:
+            prev = toks[i - 1] if i else ""
+            n = int(prev) if prev.isdigit() else _SMALL_NUMBERS.get(prev)
+            if n:
+                seen.add("children")
+                count += n
+    if count < 2 or count > 30:
+        return None
+    return count, norm.strip()
+
+
+def _answer(asked: str, norm: str, raw: str, found: set[str]) -> dict | None:
+    """The fact a short reply carries when the bot had just asked about `asked` and nothing else was understood."""
+    toks = _TOKEN.findall(norm)
+    if asked in BOOL_ATTRS:
+        pol = polarity(norm)
+        if pol is not None and len(toks) <= 8 and not found:
+            return _fact(asked, pol, raw, 0.85)
+        return None
+    if asked == "gender":
+        m, f = ANSWER_MALE.search(norm), ANSWER_FEMALE.search(norm)
+        if m and not f:
+            return _fact("gender", "male", m.group(0))
+        if f and not m:
+            return _fact("gender", "female", f.group(0))
+        return None
+    if asked == "occupation":
+        for occ, pat in OCCUPATION_ANSWERS:
+            m = pat.search(norm)
+            if m:
+                return _fact("occupation", occ, m.group(0))
+        return None
+    if asked in ("age", "household_size") and len(toks) == 1 and toks[0].lower() in _SMALL_NUMBERS:
+        return _fact(asked, _SMALL_NUMBERS[toks[0].lower()], raw, 0.8)  # "एक" / "दो" alone stay words in numerize
+    nums = [m for m in re.finditer(r"\d[\d,]*(?:\.\d+)?", norm)]
+    if asked in ("age", "household_size") and len(nums) == 1 and not re.search(r"लाख|हज़ार|हजार|lakh|thousand|₹|rs\b|rupe|रुपय|రూపాయ", norm, re.I):
+        n = int(float(nums[0].group(0).replace(",", "")))
+        lo, hi = (1, 119) if asked == "age" else (1, 30)
+        return _fact(asked, n, raw, 0.8) if lo <= n <= hi else None
+    if asked == "annual_income":
+        amt = _amount(norm)
+        if amt and amt[0] >= 1000:
+            val, span, at, digits = amt
+            if _is_monthly(norm, at):
+                return _fact("annual_income", val * 12, raw, 0.8, inferred=True,
+                             note=f"Stated as ₹{val:,} per month; converted to yearly (×12).")
+            return _fact("annual_income", val, raw)
+    return None
+
+
+def extract(text: str, default_state: str | None = None, asked: str | None = None) -> dict:
     raw = text or ""
     norm, rewrites = numerize(raw.translate(_DIGITS))
     clauses = _clauses(norm)
@@ -508,8 +649,17 @@ def extract(text: str, default_state: str | None = None) -> dict:
     for pat in HOUSEHOLD_RE:
         m = pat.search(norm)
         if m:
-            facts.append(_heard(_fact("household_size", int(m.group(1)), m.group(0)), m.group(1), rewrites))
+            digits = next(g for g in m.groups() if g)
+            facts.append(_heard(_fact("household_size", int(digits), m.group(0)), digits, rewrites))
             break
+    else:
+        listed = None if others else household_from_listing(norm)  # a relative named only for their age is not a listing
+        if LIVES_ALONE.search(norm):
+            facts.append(_fact("household_size", 1, LIVES_ALONE.search(norm).group(0), 0.8, inferred=True,
+                               note="Understood as living alone; please confirm."))
+        elif listed:
+            facts.append(_fact("household_size", listed[0], listed[1], 0.7, inferred=True,
+                               note=f"Counted {listed[0]} people from who you named; please confirm."))
 
     low = norm.lower()
     found_state = None
@@ -543,10 +693,22 @@ def extract(text: str, default_state: str | None = None) -> dict:
 
     if not any(f["attribute"] == "gender" for f in facts):
         fm, mm = FEMALE.search(norm), MALE.search(norm)
+        bg = SELF_BOY_GIRL.search(norm)
         if fm and not mm:
             facts.append(_fact("gender", "female", fm.group(0)))
         elif mm and not fm:
             facts.append(_fact("gender", "male", mm.group(0)))
+        elif bg:
+            facts.append(_fact("gender", "male" if bg.group(1) else "female", bg.group(0)))
+        else:
+            # Hindi first-person verbs carry the speaker's gender: "रहता हूँ" (man) / "रहती हूँ" (woman).
+            vm, vf = MASC_SELF.search(norm), FEM_SELF.search(norm)
+            if vm and not vf:
+                facts.append(_fact("gender", "male", vm.group(0), 0.75, inferred=True,
+                                   note="Inferred from the masculine verb form you used; please confirm."))
+            elif vf and not vm:
+                facts.append(_fact("gender", "female", vf.group(0), 0.75, inferred=True,
+                                   note="Inferred from the feminine verb form you used; please confirm."))
 
     for c in clauses:
         m = BPL.search(c)
@@ -619,6 +781,13 @@ def extract(text: str, default_state: str | None = None) -> dict:
         m = pat.search(norm)
         if m:
             glossary_hits.append({"term": m.group(0), "meaning": meaning})
+
+    # A short reply to the bot's last question ("नहीं", "चार", "पुरुष") only means something in that context.
+    if asked and not any(f["attribute"] == asked for f in facts):
+        ans = _answer(asked, norm, raw, {f["attribute"] for f in facts})
+        if ans:
+            numeric = isinstance(ans["value"], int) and not isinstance(ans["value"], bool)
+            facts.append(_heard(ans, str(ans["value"]), rewrites) if numeric else ans)
 
     # One candidate per attribute; the first (most specific) wins.
     dedup: dict[str, dict] = {}

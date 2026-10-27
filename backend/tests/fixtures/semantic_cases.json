@@ -1,0 +1,1026 @@
+{
+ "description": "Conversational utterances (Hindi, Hinglish, Telugu, English, with speech-recognition noise) and what a careful listener takes from each. 'asked' is the attribute the bot had just asked about; 'expected' lists values that must be extracted; 'forbid' lists attributes that must NOT be extracted. Demo sentences only, no real citizen data.",
+ "items": [
+  {
+   "id": "ans-bpl-01",
+   "asked": "bpl",
+   "utterance": "नहीं",
+   "expected": {
+    "bpl": false
+   }
+  },
+  {
+   "id": "ans-bpl-02",
+   "asked": "bpl",
+   "utterance": "हाँ",
+   "expected": {
+    "bpl": true
+   }
+  },
+  {
+   "id": "ans-bpl-03",
+   "asked": "bpl",
+   "utterance": "हां है",
+   "expected": {
+    "bpl": true
+   }
+  },
+  {
+   "id": "ans-bpl-04",
+   "asked": "bpl",
+   "utterance": "नहीं है",
+   "expected": {
+    "bpl": false
+   }
+  },
+  {
+   "id": "ans-bpl-05",
+   "asked": "bpl",
+   "utterance": "जी हाँ हमारे पास है",
+   "expected": {
+    "bpl": true
+   }
+  },
+  {
+   "id": "ans-bpl-06",
+   "asked": "bpl",
+   "utterance": "nahi",
+   "expected": {
+    "bpl": false
+   }
+  },
+  {
+   "id": "ans-bpl-07",
+   "asked": "bpl",
+   "utterance": "haan hai",
+   "expected": {
+    "bpl": true
+   }
+  },
+  {
+   "id": "ans-bpl-08",
+   "asked": "bpl",
+   "utterance": "yes",
+   "expected": {
+    "bpl": true
+   }
+  },
+  {
+   "id": "ans-bpl-09",
+   "asked": "bpl",
+   "utterance": "no we don't",
+   "expected": {
+    "bpl": false
+   }
+  },
+  {
+   "id": "ans-bpl-10",
+   "asked": "bpl",
+   "utterance": "नहीं हमारे पास बीपीएल का कार्ड नहीं है",
+   "expected": {
+    "bpl": false
+   }
+  },
+  {
+   "id": "ans-bpl-11",
+   "asked": "bpl",
+   "utterance": "లేదు",
+   "expected": {
+    "bpl": false
+   }
+  },
+  {
+   "id": "ans-bpl-12",
+   "asked": "bpl",
+   "utterance": "అవును ఉంది",
+   "expected": {
+    "bpl": true
+   }
+  },
+  {
+   "id": "ans-bpl-13",
+   "asked": "bpl",
+   "utterance": "जी नहीं",
+   "expected": {
+    "bpl": false
+   }
+  },
+  {
+   "id": "ans-bpl-14",
+   "asked": "bpl",
+   "utterance": "ना",
+   "expected": {
+    "bpl": false
+   }
+  },
+  {
+   "id": "ans-bpl-15",
+   "asked": "bpl",
+   "utterance": "बिल्कुल है जी",
+   "expected": {
+    "bpl": true
+   }
+  },
+  {
+   "id": "ans-pen-01",
+   "asked": "receives_other_pension",
+   "utterance": "नहीं",
+   "expected": {
+    "receives_other_pension": false
+   }
+  },
+  {
+   "id": "ans-pen-02",
+   "asked": "receives_other_pension",
+   "utterance": "हाँ मिलती है",
+   "expected": {
+    "receives_other_pension": true
+   }
+  },
+  {
+   "id": "ans-pen-03",
+   "asked": "receives_other_pension",
+   "utterance": "no",
+   "expected": {
+    "receives_other_pension": false
+   }
+  },
+  {
+   "id": "ans-pen-04",
+   "asked": "receives_other_pension",
+   "utterance": "कोई पेंशन नहीं मिलती",
+   "expected": {
+    "receives_other_pension": false
+   }
+  },
+  {
+   "id": "ans-land-01",
+   "asked": "owns_cultivable_land",
+   "utterance": "नहीं",
+   "expected": {
+    "owns_cultivable_land": false
+   }
+  },
+  {
+   "id": "ans-land-02",
+   "asked": "owns_cultivable_land",
+   "utterance": "हाँ दो एकड़ है",
+   "expected": {
+    "owns_cultivable_land": true
+   }
+  },
+  {
+   "id": "ans-land-03",
+   "asked": "owns_cultivable_land",
+   "utterance": "हाँ",
+   "expected": {
+    "owns_cultivable_land": true
+   }
+  },
+  {
+   "id": "ans-land-04",
+   "asked": "owns_cultivable_land",
+   "utterance": "nahi hai",
+   "expected": {
+    "owns_cultivable_land": false
+   }
+  },
+  {
+   "id": "ans-bank-01",
+   "asked": "has_bank_account",
+   "utterance": "हाँ",
+   "expected": {
+    "has_bank_account": true
+   }
+  },
+  {
+   "id": "ans-bank-02",
+   "asked": "has_bank_account",
+   "utterance": "नहीं है",
+   "expected": {
+    "has_bank_account": false
+   }
+  },
+  {
+   "id": "ans-bank-03",
+   "asked": "has_bank_account",
+   "utterance": "हाँ जन धन खाता है",
+   "expected": {
+    "has_bank_account": true
+   }
+  },
+  {
+   "id": "ans-bank-04",
+   "asked": "has_bank_account",
+   "utterance": "yes I have",
+   "expected": {
+    "has_bank_account": true
+   }
+  },
+  {
+   "id": "ans-house-01",
+   "asked": "owns_pucca_house",
+   "utterance": "हाँ पक्का मकान है",
+   "expected": {
+    "owns_pucca_house": true
+   }
+  },
+  {
+   "id": "ans-house-02",
+   "asked": "owns_pucca_house",
+   "utterance": "नहीं कच्चा है",
+   "expected": {
+    "owns_pucca_house": false
+   }
+  },
+  {
+   "id": "ans-house-03",
+   "asked": "owns_pucca_house",
+   "utterance": "no",
+   "expected": {
+    "owns_pucca_house": false
+   }
+  },
+  {
+   "id": "ans-house-04",
+   "asked": "owns_pucca_house",
+   "utterance": "जी हाँ",
+   "expected": {
+    "owns_pucca_house": true
+   }
+  },
+  {
+   "id": "ans-age-01",
+   "asked": "age",
+   "utterance": "चौबीस",
+   "expected": {
+    "age": 24
+   }
+  },
+  {
+   "id": "ans-age-02",
+   "asked": "age",
+   "utterance": "24",
+   "expected": {
+    "age": 24
+   }
+  },
+  {
+   "id": "ans-age-03",
+   "asked": "age",
+   "utterance": "पैंतीस साल",
+   "expected": {
+    "age": 35
+   }
+  },
+  {
+   "id": "ans-age-04",
+   "asked": "age",
+   "utterance": "मेरी उम्र साठ है",
+   "expected": {
+    "age": 60
+   }
+  },
+  {
+   "id": "ans-age-05",
+   "asked": "age",
+   "utterance": "sixty five",
+   "expected": {
+    "age": 65
+   }
+  },
+  {
+   "id": "ans-age-06",
+   "asked": "age",
+   "utterance": "बाईस साल का हूँ",
+   "expected": {
+    "age": 22
+   }
+  },
+  {
+   "id": "ans-age-07",
+   "asked": "age",
+   "utterance": "उन्नीस",
+   "expected": {
+    "age": 19
+   }
+  },
+  {
+   "id": "ans-age-08",
+   "asked": "age",
+   "utterance": "అరవై ఐదు",
+   "expected": {
+    "age": 65
+   }
+  },
+  {
+   "id": "ans-age-09",
+   "asked": "age",
+   "utterance": "I'm thirty two",
+   "expected": {
+    "age": 32
+   }
+  },
+  {
+   "id": "ans-hh-01",
+   "asked": "household_size",
+   "utterance": "चार",
+   "expected": {
+    "household_size": 4
+   }
+  },
+  {
+   "id": "ans-hh-02",
+   "asked": "household_size",
+   "utterance": "4 लोग",
+   "expected": {
+    "household_size": 4
+   }
+  },
+  {
+   "id": "ans-hh-03",
+   "asked": "household_size",
+   "utterance": "five",
+   "expected": {
+    "household_size": 5
+   }
+  },
+  {
+   "id": "ans-hh-04",
+   "asked": "household_size",
+   "utterance": "हम पाँच हैं",
+   "expected": {
+    "household_size": 5
+   }
+  },
+  {
+   "id": "ans-hh-05",
+   "asked": "household_size",
+   "utterance": "मेरे परिवार में चार लोग हैं",
+   "expected": {
+    "household_size": 4
+   }
+  },
+  {
+   "id": "ans-hh-06",
+   "asked": "household_size",
+   "utterance": "छह",
+   "expected": {
+    "household_size": 6
+   }
+  },
+  {
+   "id": "ans-inc-01",
+   "asked": "annual_income",
+   "utterance": "साढ़े चार लाख",
+   "expected": {
+    "annual_income": 450000
+   }
+  },
+  {
+   "id": "ans-inc-02",
+   "asked": "annual_income",
+   "utterance": "चार लाख",
+   "expected": {
+    "annual_income": 400000
+   }
+  },
+  {
+   "id": "ans-inc-03",
+   "asked": "annual_income",
+   "utterance": "डेढ़ लाख",
+   "expected": {
+    "annual_income": 150000
+   }
+  },
+  {
+   "id": "ans-inc-04",
+   "asked": "annual_income",
+   "utterance": "50000",
+   "expected": {
+    "annual_income": 50000
+   }
+  },
+  {
+   "id": "ans-inc-05",
+   "asked": "annual_income",
+   "utterance": "पचास हज़ार",
+   "expected": {
+    "annual_income": 50000
+   }
+  },
+  {
+   "id": "ans-inc-06",
+   "asked": "annual_income",
+   "utterance": "मेरे घर की सालाना आय साढ़े चार लाख रुपए है",
+   "expected": {
+    "annual_income": 450000
+   }
+  },
+  {
+   "id": "ans-inc-07",
+   "asked": "annual_income",
+   "utterance": "two lakh",
+   "expected": {
+    "annual_income": 200000
+   }
+  },
+  {
+   "id": "ans-inc-08",
+   "asked": "annual_income",
+   "utterance": "महीने का दस हज़ार",
+   "expected": {
+    "annual_income": 120000
+   }
+  },
+  {
+   "id": "ans-inc-09",
+   "asked": "annual_income",
+   "utterance": "ఒక లక్ష",
+   "expected": {
+    "annual_income": 100000
+   }
+  },
+  {
+   "id": "ans-gen-01",
+   "asked": "gender",
+   "utterance": "पुरुष",
+   "expected": {
+    "gender": "male"
+   }
+  },
+  {
+   "id": "ans-gen-02",
+   "asked": "gender",
+   "utterance": "महिला",
+   "expected": {
+    "gender": "female"
+   }
+  },
+  {
+   "id": "ans-gen-03",
+   "asked": "gender",
+   "utterance": "male",
+   "expected": {
+    "gender": "male"
+   }
+  },
+  {
+   "id": "ans-gen-04",
+   "asked": "gender",
+   "utterance": "मैं लड़का हूँ",
+   "expected": {
+    "gender": "male"
+   }
+  },
+  {
+   "id": "ans-gen-05",
+   "asked": "gender",
+   "utterance": "मैं लड़की हूँ",
+   "expected": {
+    "gender": "female"
+   }
+  },
+  {
+   "id": "ans-gen-06",
+   "asked": "gender",
+   "utterance": "औरत",
+   "expected": {
+    "gender": "female"
+   }
+  },
+  {
+   "id": "ans-gen-07",
+   "asked": "gender",
+   "utterance": "मर्द",
+   "expected": {
+    "gender": "male"
+   }
+  },
+  {
+   "id": "ans-gen-08",
+   "asked": "gender",
+   "utterance": "female",
+   "expected": {
+    "gender": "female"
+   }
+  },
+  {
+   "id": "ans-gen-09",
+   "asked": "gender",
+   "utterance": "మహిళ",
+   "expected": {
+    "gender": "female"
+   }
+  },
+  {
+   "id": "ans-area-01",
+   "asked": "area",
+   "utterance": "गाँव",
+   "expected": {
+    "area": "rural"
+   }
+  },
+  {
+   "id": "ans-area-02",
+   "asked": "area",
+   "utterance": "शहर",
+   "expected": {
+    "area": "urban"
+   }
+  },
+  {
+   "id": "ans-area-03",
+   "asked": "area",
+   "utterance": "village",
+   "expected": {
+    "area": "rural"
+   }
+  },
+  {
+   "id": "ans-area-04",
+   "asked": "area",
+   "utterance": "city",
+   "expected": {
+    "area": "urban"
+   }
+  },
+  {
+   "id": "ans-area-05",
+   "asked": "area",
+   "utterance": "देहात में",
+   "expected": {
+    "area": "rural"
+   }
+  },
+  {
+   "id": "ans-area-06",
+   "asked": "area",
+   "utterance": "हम गांव में रहते हैं",
+   "expected": {
+    "area": "rural"
+   }
+  },
+  {
+   "id": "ans-mar-01",
+   "asked": "marital_status",
+   "utterance": "शादीशुदा",
+   "expected": {
+    "marital_status": "married"
+   }
+  },
+  {
+   "id": "ans-mar-02",
+   "asked": "marital_status",
+   "utterance": "अविवाहित",
+   "expected": {
+    "marital_status": "single"
+   }
+  },
+  {
+   "id": "ans-mar-03",
+   "asked": "marital_status",
+   "utterance": "विधवा",
+   "expected": {
+    "marital_status": "widowed"
+   }
+  },
+  {
+   "id": "ans-mar-04",
+   "asked": "marital_status",
+   "utterance": "married",
+   "expected": {
+    "marital_status": "married"
+   }
+  },
+  {
+   "id": "ans-mar-05",
+   "asked": "marital_status",
+   "utterance": "हाँ शादी हो गई है",
+   "expected": {
+    "marital_status": "married"
+   }
+  },
+  {
+   "id": "ans-mar-06",
+   "asked": "marital_status",
+   "utterance": "शादी नहीं हुई",
+   "expected": {
+    "marital_status": "single"
+   }
+  },
+  {
+   "id": "ans-occ-01",
+   "asked": "occupation",
+   "utterance": "किसान",
+   "expected": {
+    "occupation": "farmer"
+   }
+  },
+  {
+   "id": "ans-occ-02",
+   "asked": "occupation",
+   "utterance": "मज़दूरी करता हूँ",
+   "expected": {
+    "occupation": "labourer"
+   }
+  },
+  {
+   "id": "ans-occ-03",
+   "asked": "occupation",
+   "utterance": "student",
+   "expected": {
+    "occupation": "student"
+   }
+  },
+  {
+   "id": "ans-occ-04",
+   "asked": "occupation",
+   "utterance": "मैं दुकान चलाता हूँ",
+   "expected": {
+    "occupation": "self_employed"
+   }
+  },
+  {
+   "id": "ans-occ-05",
+   "asked": "occupation",
+   "utterance": "सरकारी नौकरी",
+   "expected": {
+    "occupation": "salaried"
+   }
+  },
+  {
+   "id": "ans-occ-06",
+   "asked": "occupation",
+   "utterance": "घर का काम करती हूँ",
+   "expected": {
+    "occupation": "homemaker"
+   }
+  },
+  {
+   "id": "ans-state-01",
+   "asked": "state",
+   "utterance": "झारखंड",
+   "expected": {
+    "state": "Jharkhand"
+   }
+  },
+  {
+   "id": "ans-state-02",
+   "asked": "state",
+   "utterance": "bihar",
+   "expected": {
+    "state": "Bihar"
+   }
+  },
+  {
+   "id": "ans-state-03",
+   "asked": "state",
+   "utterance": "आंध्र प्रदेश",
+   "expected": {
+    "state": "Andhra Pradesh"
+   }
+  },
+  {
+   "id": "ans-state-04",
+   "asked": "state",
+   "utterance": "हम उत्तर प्रदेश से हैं",
+   "expected": {
+    "state": "Uttar Pradesh"
+   }
+  },
+  {
+   "id": "ans-state-05",
+   "asked": "state",
+   "utterance": "తెలంగాణ",
+   "expected": {
+    "state": "Telangana"
+   }
+  },
+  {
+   "id": "free-01",
+   "utterance": "हेलो मेरा नाम अमन अग्रवाल मैं सुंदरनगर में रहता हूँ जमशेदपुर झारखंड भारत मेरी उम्र चौबीस साल है मुझे सारी योजनाओं के बारे में बताइए जिसके लिए मैं एलिजिबल हूँ",
+   "expected": {
+    "age": 24,
+    "state": "Jharkhand",
+    "gender": "male"
+   }
+  },
+  {
+   "id": "free-02",
+   "utterance": "मैं सुंदरनगर में रहती हूँ",
+   "expected": {
+    "gender": "female"
+   }
+  },
+  {
+   "id": "free-03",
+   "utterance": "main kheti karta hoon",
+   "expected": {
+    "occupation": "farmer",
+    "gender": "male"
+   }
+  },
+  {
+   "id": "free-04",
+   "utterance": "main kheti karti hoon",
+   "expected": {
+    "occupation": "farmer",
+    "gender": "female"
+   }
+  },
+  {
+   "id": "free-05",
+   "utterance": "हमारे घर में मेरे पिताजी माता जी मेरे दादाजी और मैं हूं",
+   "expected": {
+    "household_size": 4
+   },
+   "forbid": [
+    "age"
+   ]
+  },
+  {
+   "id": "free-06",
+   "utterance": "मेरे परिवार में मैं मेरी पत्नी और दो बच्चे हैं",
+   "expected": {
+    "household_size": 4
+   }
+  },
+  {
+   "id": "free-07",
+   "utterance": "हम पाँच लोग हैं",
+   "expected": {
+    "household_size": 5
+   }
+  },
+  {
+   "id": "free-08",
+   "utterance": "we are six in the family",
+   "expected": {
+    "household_size": 6
+   }
+  },
+  {
+   "id": "free-09",
+   "utterance": "family mein 4 log hain",
+   "expected": {
+    "household_size": 4
+   }
+  },
+  {
+   "id": "free-10",
+   "utterance": "मैं और मेरी पत्नी दोनों रहते हैं",
+   "expected": {
+    "household_size": 2
+   }
+  },
+  {
+   "id": "free-11",
+   "utterance": "मैं अकेला रहता हूँ",
+   "expected": {
+    "household_size": 1,
+    "gender": "male"
+   }
+  },
+  {
+   "id": "free-12",
+   "utterance": "I live alone",
+   "expected": {
+    "household_size": 1
+   }
+  },
+  {
+   "id": "free-13",
+   "utterance": "main akeli rehti hoon",
+   "expected": {
+    "household_size": 1,
+    "gender": "female"
+   }
+  },
+  {
+   "id": "free-14",
+   "utterance": "मेरे पिताजी की उम्र साठ साल है",
+   "expected": {},
+   "forbid": [
+    "age"
+   ]
+  },
+  {
+   "id": "free-15",
+   "utterance": "मेरी उम्र 24 साल है और मेरे पापा 55 के हैं",
+   "expected": {
+    "age": 24
+   }
+  },
+  {
+   "id": "free-16",
+   "utterance": "my father is 60 and I am 30",
+   "expected": {
+    "age": 30
+   }
+  },
+  {
+   "id": "free-17",
+   "utterance": "हमारी कमाई महीने के दस हज़ार है",
+   "expected": {
+    "annual_income": 120000
+   }
+  },
+  {
+   "id": "free-18",
+   "utterance": "ek lakh pachas hazar saal ki aay",
+   "expected": {
+    "annual_income": 150000
+   }
+  },
+  {
+   "id": "free-19",
+   "utterance": "income is 3 lakh",
+   "expected": {
+    "annual_income": 300000
+   }
+  },
+  {
+   "id": "free-20",
+   "utterance": "हम 20 हज़ार महीना कमाते हैं",
+   "expected": {
+    "annual_income": 240000
+   }
+  },
+  {
+   "id": "free-21",
+   "utterance": "నా వయసు 62 సంవత్సరాలు, ఆంధ్రప్రదేశ్ లో ఉంటాను, ఆదాయం సంవత్సరానికి 50 వేలు",
+   "expected": {
+    "age": 62,
+    "state": "Andhra Pradesh",
+    "annual_income": 50000
+   }
+  },
+  {
+   "id": "free-22",
+   "utterance": "हम गाँव में रहते हैं और खेती करते हैं",
+   "expected": {
+    "area": "rural",
+    "occupation": "farmer"
+   }
+  },
+  {
+   "id": "free-23",
+   "utterance": "हेलो",
+   "expected": {},
+   "forbid": [
+    "age",
+    "state",
+    "gender",
+    "bpl"
+   ]
+  },
+  {
+   "id": "free-24",
+   "utterance": "hello hello",
+   "expected": {},
+   "forbid": [
+    "age",
+    "state",
+    "gender",
+    "bpl"
+   ]
+  },
+  {
+   "id": "free-25",
+   "utterance": "क्या आप मेरी मदद कर सकते हैं",
+   "expected": {},
+   "forbid": [
+    "age",
+    "state",
+    "gender",
+    "bpl"
+   ]
+  },
+  {
+   "id": "free-26",
+   "utterance": "मुझे सारी योजनाओं के बारे में बताइए",
+   "expected": {},
+   "forbid": [
+    "age",
+    "state",
+    "gender",
+    "bpl"
+   ]
+  },
+  {
+   "id": "free-27",
+   "utterance": "मैं बिहार का रहने वाला हूँ पटना में रहता हूँ",
+   "expected": {
+    "state": "Bihar",
+    "gender": "male"
+   }
+  },
+  {
+   "id": "free-28",
+   "utterance": "मैं बिहार की रहने वाली हूँ",
+   "expected": {
+    "state": "Bihar",
+    "gender": "female"
+   }
+  },
+  {
+   "id": "free-29",
+   "utterance": "मेरी शादी हो चुकी है और दो बच्चे हैं",
+   "expected": {
+    "marital_status": "married"
+   }
+  },
+  {
+   "id": "free-30",
+   "utterance": "मेरे पति का देहांत हो गया है",
+   "expected": {
+    "marital_status": "widowed",
+    "gender": "female"
+   }
+  },
+  {
+   "id": "free-31",
+   "utterance": "मेरी पत्नी का निधन हो गया है",
+   "expected": {},
+   "forbid": [
+    "marital_status"
+   ]
+  },
+  {
+   "id": "free-32",
+   "utterance": "मैं एक छात्र हूँ और मेरी उम्र उन्नीस साल है",
+   "expected": {
+    "occupation": "student",
+    "age": 19
+   }
+  },
+  {
+   "id": "free-33",
+   "utterance": "हमारे पास राशन कार्ड सफेद है",
+   "expected": {
+    "bpl": true
+   }
+  },
+  {
+   "id": "free-34",
+   "utterance": "हमारे पास बीपीएल कार्ड नहीं है लेकिन बैंक खाता है",
+   "expected": {
+    "bpl": false,
+    "has_bank_account": true
+   }
+  },
+  {
+   "id": "free-35",
+   "utterance": "मैं रांची झारखंड में रहता हूँ और मेरी उम्र पैंतालीस साल है",
+   "expected": {
+    "age": 45,
+    "state": "Jharkhand",
+    "gender": "male"
+   }
+  },
+  {
+   "id": "free-36",
+   "utterance": "i am a woman from bihar and i am 40 years old",
+   "expected": {
+    "age": 40,
+    "state": "Bihar",
+    "gender": "female"
+   }
+  },
+  {
+   "id": "free-37",
+   "utterance": "ਮੈਂ ਪੰਜਾਬ ਵਿੱਚ ਰਹਿੰਦਾ ਹਾਂ",
+   "expected": {},
+   "forbid": [
+    "age"
+   ]
+  },
+  {
+   "id": "free-38",
+   "utterance": "मैं एक विधवा हूँ मेरी उम्र साठ साल है",
+   "expected": {
+    "marital_status": "widowed",
+    "gender": "female",
+    "age": 60
+   }
+  },
+  {
+   "id": "free-39",
+   "utterance": "मेरे चार बच्चे हैं",
+   "expected": {},
+   "forbid": [
+    "age",
+    "household_size"
+   ]
+  },
+  {
+   "id": "free-40",
+   "utterance": "उम्र चौबीस साल है और हम चार लोग हैं",
+   "expected": {
+    "age": 24,
+    "household_size": 4
+   }
+  }
+ ]
+}
