@@ -6,6 +6,7 @@ import { ensureAnonymous, startDigiLocker, type AuthLike } from "../account";
 import { RetentionNote } from "../AccountUI";
 import { supabase } from "../auth";
 import { ErrorNote, KioskOperatorBar, StaffLogin, ValueInput } from "../components";
+import { MicIcon } from "../landing/DemoCard";
 import { useCaptcha } from "../Turnstile";
 import { ATTR, attrLabel, showValue, t, type Lang } from "../i18n";
 import { listen, speak, verbxFailedOver, voiceProvider, type Provider, type Recorder } from "../speech";
@@ -179,8 +180,12 @@ export default function Journey({ mode }: { mode: "personal" | "kiosk" }) {
           ))}
         </div>
         <div className="composer">
-          <button className={`btn mic ${rec ? "rec" : ""}`} onClick={mic} disabled={busy || provider === "none"}
-            aria-label={rec ? t("listening", lang) : t("speak", lang)} title={provider === "none" ? "Voice not available" : `Voice via ${provider}`}>🎤</button>
+          <button type="button" className={`orb-mic ${rec ? "rec" : ""}`} onClick={mic} disabled={busy || provider === "none"}
+            aria-label={rec ? t("listening", lang) : t("speak", lang)} aria-pressed={!!rec}
+            title={provider === "none" ? "Voice not available" : `Voice via ${provider}`}>
+            <span className="orb-ring" aria-hidden="true" /><span className="orb-ring r2" aria-hidden="true" />
+            <MicIcon size={28} />
+          </button>
           <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder={t("typeHere", lang)} aria-label={t("typeHere", lang)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(text); } }} />
           <button className="btn primary" onClick={() => send(text)} disabled={busy || !text.trim()}>{t("send", lang)}</button>

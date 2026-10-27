@@ -70,6 +70,7 @@ export default function App() {
   const landing = loc.pathname === "/";
   const role = staff?.role;
   const reviewer = role === "reviewer" || role === "admin";
+  const inStaffArea = /^\/(reviewer|admin|test-runs|profile)/.test(loc.pathname);
   return (
     <>
       <header className={`topbar${landing ? " is-landing" : ""}`}>
@@ -87,10 +88,13 @@ export default function App() {
                 <NavLink to={mode === "kiosk" ? "/kiosk" : "/citizen"}>Citizen</NavLink>
                 {mode !== "kiosk" && <NavLink to="/citizen/passports">{t("myPassports", lang)}</NavLink>}
                 <NavLink to="/case">Case status</NavLink>
-                {reviewer && <NavLink to="/reviewer">Reviewer</NavLink>}
-                {reviewer && <NavLink to="/admin/schemes">Catalogue</NavLink>}
-                {role === "admin" && <NavLink to="/admin/security">Security</NavLink>}
-                {role === "admin" && <NavLink to="/test-runs">TC1–TC5</NavLink>}
+                {/* Staff tabs belong to the staff area: a signed-in admin browsing as a citizen never sees Security next to
+                    Citizen. From public pages, signed-in staff get one link back in. */}
+                {inStaffArea && reviewer && <NavLink to="/reviewer">Reviewer</NavLink>}
+                {inStaffArea && reviewer && <NavLink to="/admin/schemes">Catalogue</NavLink>}
+                {inStaffArea && role === "admin" && <NavLink to="/admin/security">Security</NavLink>}
+                {inStaffArea && role === "admin" && <NavLink to="/test-runs">TC1–TC5</NavLink>}
+                {!inStaffArea && reviewer && <NavLink to={role === "admin" ? "/admin/security" : "/reviewer"}>Staff area</NavLink>}
                 <NavLink to="/signin">Sign in</NavLink>
               </nav>
               <LangSwitch />

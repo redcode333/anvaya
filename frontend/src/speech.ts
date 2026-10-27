@@ -20,7 +20,9 @@ export function noteVerbxError(e: unknown): boolean {
 }
 export async function voiceProvider(): Promise<Provider> {
   if (verbx === null) {
-    try { verbx = (await api<{ verbx_configured: boolean }>("/voice/status")).verbx_configured; } catch { verbx = false; }
+    // A failed status call (backend still starting, flaky network) is not "VerbX is off": leave it unknown so the next
+    // check asks again, and use browser speech meanwhile.
+    try { verbx = (await api<{ verbx_configured: boolean }>("/voice/status")).verbx_configured; } catch { /* retry next time */ }
   }
   if (verbx && !verbxDown) return "verbx";
   const w = window as any;
@@ -39,20 +41,34 @@ export function listen(provider: Provider, sessionId: string, lang: Lang,
     const rec = new Rec();
     rec.lang = speechCode(lang);
     rec.interimResults = false;
-    rec.onresult = (e: any) => onText(e.results[0][0].transcript);
-    rec.onerror = (e: any) => onError(`Browser speech error: ${e.error}. Please type instead.`);
+    rec.onresult = (e: any) => {
+      const said = Array.from(e.results as ArrayLike<any>).map((r) => r[0].transcript).join(" ").trim();
+      if (said) onText(said);
+    };
+    rec.onerror = (e: any) => {
+      if (e.error === "aborted") return;
+      onError(e.error === "no-speech" ? "I did not hear anything. Tap the mic and try again, or type."
+        : e.error === "not-allowed" || e.error === "service-not-allowed" ? "Microphone permission is blocked. Allow it in the browser, or type."
+        : `Browser speech error: ${e.error}. Please type instead.`);
+    };
     rec.onend = onEnd;
-    rec.start();
-    return { stop: () => rec.stop() };
+    try { rec.start(); } catch { onError("Could not start the microphone. Please try again or type."); onEnd(); return null; }
+    return { stop: () => { try { rec.stop(); } catch { /* already stopped */ } } };
   }
   if (provider === "verbx") {
     let mr: MediaRecorder | null = null;
+    let cancelled = false;  // stop tapped before the microphone permission came back
     const chunks: BlobPart[] = [];
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      onError("Microphone not available. Please type instead."); onEnd(); return null;
+    }
     navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+      if (cancelled) { stream.getTracks().forEach((t) => t.stop()); onEnd(); return; }
       mr = new MediaRecorder(stream);
       mr.ondataavailable = (e) => chunks.push(e.data);
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
+        if (!chunks.length) { onError("Nothing was recorded. Tap the mic and try again, or type."); onEnd(); return; }
         const fd = new FormData();
         fd.append("audio", new Blob(chunks, { type: mr!.mimeType }), "speech.webm");
         fd.append("language", lang);
@@ -69,7 +85,7 @@ export function listen(provider: Provider, sessionId: string, lang: Lang,
       };
       mr.start();
     }).catch(() => { onError("Microphone not available. Please type instead."); onEnd(); });
-    return { stop: () => mr?.state === "recording" && mr.stop() };
+    return { stop: () => { cancelled = true; if (mr?.state === "recording") mr.stop(); } };
   }
   onError("Voice input is not available on this device. Please type.");
   onEnd();
