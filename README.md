@@ -130,65 +130,95 @@ Measured latency and Langfuse charts are in [Metrics, latency and scores](#metri
 
 ## High-level design
 
+<p align="center"><a href="docs/diagrams/hld.svg"><img src="docs/diagrams/hld.png" alt="High-level design: the browser and kiosk PWA call a Flask API, which stores data in Supabase; optional services, planned integrations and operations sit alongside" width="100%"></a></p>
+
+<sub>Click the picture for the full-size vector version. Solid lines are built and used; dotted lines are optional (they degrade gracefully) or planned.</sub>
+
+<details>
+<summary>Diagram source (Mermaid, editable)</summary>
+
 ```mermaid
 flowchart TB
-  subgraph EDGE["Edge: browser / kiosk PWA (React + Vite)"]
-    direction LR
-    UI["Citizen · Kiosk<br/>Reviewer · Admin"]
-    VOICE["Voice in/out<br/>VerbX → browser speech → typing"]
-    OFFLINE["Offline pre-screen<br/>cached rule bundle · outbox"]
-    UI --- VOICE --- OFFLINE
+  subgraph EDGE["Browser and kiosk PWA (React + Vite)"]
+    UI["Citizen · Kiosk operator<br/>Reviewer · Admin"]
+    VOICE["Voice in and out<br/>VerbX → browser speech → typing"]
+    OFFLINE["Offline pre-screen<br/>cached rule bundle + outbox"]
   end
 
-  subgraph CLOUD["Cloud: Flask API, gunicorn (1 worker × 8 threads)"]
-    direction LR
-    AUTH["Auth<br/>JWT checked on every request<br/>TOTP (aal2) for staff"] --> CONV["Conversation<br/>rules extractor + optional LLM,<br/>merged, always confirmed"]
-    CONV --> RULES["Rules engine<br/>pure · versioned · quoted"]
-    RULES --> CASES["Drafts · Form Helper<br/>cases · review · audit"]
-    SYNC["Offline sync<br/>dedupe · re-check"] --> RULES
-    DOCS["Documents<br/>signed short-lived links"]
-    JOBS["Jobs<br/>retention · cleanup"]
-    LIMITS["Rate limits<br/>DB counters"]
+  subgraph API["Flask API (gunicorn, 1 worker x 8 threads)"]
+    AUTH["Auth<br/>JWT on every request<br/>TOTP for staff"]
+    CONV["Conversation<br/>rules extractor + optional LLM<br/>always confirmed by the citizen"]
+    CAT["Catalogue<br/>3,534 schemes · 17 reviewed rules"]
+    RULES["Rules engine<br/>pure · versioned · quoted"]
+    CASES["Drafts · Form Helper<br/>cases · review · audit"]
+    SYNC["Offline sync<br/>dedupe + re-check"]
+    SUP["Documents · Jobs · Rate limits"]
   end
 
   subgraph DATA["Data: Supabase"]
-    direction LR
     PG[("Postgres<br/>RLS on, no policies")]
     STORE[("Private Storage")]
     SBAUTH["Supabase Auth<br/>anonymous · email OTP · password + TOTP"]
   end
 
-  subgraph EXT["External services: optional, each with a fallback"]
-    direction LR
-    VERBX["VerbX<br/>STT · TTS · translate"]
+  subgraph EXT["Optional services (each has a fallback)"]
+    VERBX["VerbX<br/>speech · translate"]
     LLM["Groq → Gemini<br/>candidate facts only"]
-    LF["Langfuse<br/>traces · experiments"]
-    TURN["Cloudflare Turnstile"]
+    LF["Langfuse<br/>LLM traces"]
+    TURN["Cloudflare Turnstile<br/>CAPTCHA"]
   end
 
   subgraph OPS["Operations"]
-    direction LR
-    GHA["GitHub Actions<br/>hourly cron"]
+    GHA["GitHub Actions<br/>hourly jobs"]
     PROM["Prometheus"] --> GRAF["Grafana"]
   end
 
   subgraph SOON["Planned"]
-    direction LR
-    DL["DigiLocker / Meri Pehchaan<br/>adapter built, awaiting onboarding"]
-    SETU["API Setu live scheme data<br/>requested; scheduled sync"]
+    DL["DigiLocker<br/>Meri Pehchaan"]
+    SETU["API Setu<br/>live scheme data"]
   end
 
-  EDGE -->|"HTTPS + JWT"| CLOUD
-  EDGE <-->|"sign-in only"| DATA
-  EDGE -.->|"speech · CAPTCHA"| EXT
-  CLOUD --> DATA
-  CLOUD -.->|"candidate facts · traces"| EXT
-  OPS -->|"hourly job call · metrics scrape"| CLOUD
-  SOON -.->|"verified facts · live scheme data"| CLOUD
+  UI -->|"HTTPS + JWT"| AUTH
+  UI -.->|"sign-in only"| SBAUTH
+  UI -.-> TURN
+  VOICE -.-> VERBX
+  OFFLINE --> SYNC
+
+  AUTH --> CONV
+  CONV --> RULES
+  CAT --> RULES
+  RULES --> CASES
+  SYNC --> RULES
+  CONV -.->|"candidate facts"| LLM
+  CONV -.->|"traces"| LF
+
+  CASES --> PG
+  SUP --> PG
+  SUP --> STORE
+  AUTH -.->|"verify tokens"| SBAUTH
+
+  GHA -->|"hourly job call"| SUP
+  PROM -.->|"scrape /metrics"| AUTH
+  DL -.->|"verified facts"| CONV
+  SETU -.->|"scheduled sync"| CAT
+
+  classDef edge fill:#e3eef9,stroke:#155e9c,color:#10243a
+  classDef api fill:#e2f3e6,stroke:#1f7a3a,color:#10281a
+  classDef data fill:#efe6f8,stroke:#6b3fa0,color:#241338
+  classDef ext fill:#fdf0d6,stroke:#9a5b00,color:#33270f,stroke-dasharray: 4 3
+  classDef ops fill:#eceeed,stroke:#5f6966,color:#1d2422
+  classDef soon fill:#ffffff,stroke:#8a8f8d,color:#4b5653,stroke-dasharray: 2 4
+  class UI,VOICE,OFFLINE edge
+  class AUTH,CONV,CAT,RULES,CASES,SYNC,SUP api
+  class PG,STORE,SBAUTH data
+  class VERBX,LLM,LF,TURN ext
+  class GHA,PROM,GRAF ops
+  class DL,SETU soon
 ```
 
-Solid lines are built and used; dotted lines are optional (they degrade gracefully) or planned.
+Edit `docs/diagrams/hld.mmd`, then run `python scripts/render_diagram.py docs/diagrams/hld.mmd` to rebuild the picture. The README shows the hand-laid-out `docs/diagrams/hld.svg` and `hld.png`, rebuilt with `python scripts/make_hld_svg.py`, because GitHub does not always render large Mermaid diagrams.
 
+</details>
 | Layer | Responsibility | Where |
 |---|---|---|
 | **Edge UI** | A landing page with a rotating Hinglish / Hindi / English / Telugu headline and live demo, then four role-specific surfaces, three languages, voice with fallbacks, offline kiosk mode; Supabase is used for sign-in only | `frontend/src/` |

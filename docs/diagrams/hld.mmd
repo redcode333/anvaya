@@ -1,0 +1,76 @@
+flowchart TB
+  subgraph EDGE["Browser and kiosk PWA (React + Vite)"]
+    UI["Citizen · Kiosk operator<br/>Reviewer · Admin"]
+    VOICE["Voice in and out<br/>VerbX → browser speech → typing"]
+    OFFLINE["Offline pre-screen<br/>cached rule bundle + outbox"]
+  end
+
+  subgraph API["Flask API (gunicorn, 1 worker x 8 threads)"]
+    AUTH["Auth<br/>JWT on every request<br/>TOTP for staff"]
+    CONV["Conversation<br/>rules extractor + optional LLM<br/>always confirmed by the citizen"]
+    CAT["Catalogue<br/>3,534 schemes · 17 reviewed rules"]
+    RULES["Rules engine<br/>pure · versioned · quoted"]
+    CASES["Drafts · Form Helper<br/>cases · review · audit"]
+    SYNC["Offline sync<br/>dedupe + re-check"]
+    SUP["Documents · Jobs · Rate limits"]
+  end
+
+  subgraph DATA["Data: Supabase"]
+    PG[("Postgres<br/>RLS on, no policies")]
+    STORE[("Private Storage")]
+    SBAUTH["Supabase Auth<br/>anonymous · email OTP · password + TOTP"]
+  end
+
+  subgraph EXT["Optional services (each has a fallback)"]
+    VERBX["VerbX<br/>speech · translate"]
+    LLM["Groq → Gemini<br/>candidate facts only"]
+    LF["Langfuse<br/>LLM traces"]
+    TURN["Cloudflare Turnstile<br/>CAPTCHA"]
+  end
+
+  subgraph OPS["Operations"]
+    GHA["GitHub Actions<br/>hourly jobs"]
+    PROM["Prometheus"] --> GRAF["Grafana"]
+  end
+
+  subgraph SOON["Planned"]
+    DL["DigiLocker<br/>Meri Pehchaan"]
+    SETU["API Setu<br/>live scheme data"]
+  end
+
+  UI -->|"HTTPS + JWT"| AUTH
+  UI -.->|"sign-in only"| SBAUTH
+  UI -.-> TURN
+  VOICE -.-> VERBX
+  OFFLINE --> SYNC
+
+  AUTH --> CONV
+  CONV --> RULES
+  CAT --> RULES
+  RULES --> CASES
+  SYNC --> RULES
+  CONV -.->|"candidate facts"| LLM
+  CONV -.->|"traces"| LF
+
+  CASES --> PG
+  SUP --> PG
+  SUP --> STORE
+  AUTH -.->|"verify tokens"| SBAUTH
+
+  GHA -->|"hourly job call"| SUP
+  PROM -.->|"scrape /metrics"| AUTH
+  DL -.->|"verified facts"| CONV
+  SETU -.->|"scheduled sync"| CAT
+
+  classDef edge fill:#e3eef9,stroke:#155e9c,color:#10243a
+  classDef api fill:#e2f3e6,stroke:#1f7a3a,color:#10281a
+  classDef data fill:#efe6f8,stroke:#6b3fa0,color:#241338
+  classDef ext fill:#fdf0d6,stroke:#9a5b00,color:#33270f,stroke-dasharray: 4 3
+  classDef ops fill:#eceeed,stroke:#5f6966,color:#1d2422
+  classDef soon fill:#ffffff,stroke:#8a8f8d,color:#4b5653,stroke-dasharray: 2 4
+  class UI,VOICE,OFFLINE edge
+  class AUTH,CONV,CAT,RULES,CASES,SYNC,SUP api
+  class PG,STORE,SBAUTH data
+  class VERBX,LLM,LF,TURN ext
+  class GHA,PROM,GRAF ops
+  class DL,SETU soon
