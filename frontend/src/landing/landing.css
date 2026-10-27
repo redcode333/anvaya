@@ -320,7 +320,6 @@
 .trust > div { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--l-ink); padding-top: 24px; }
 .trust h3 { margin: 0; font-family: var(--l-display); font-weight: 600; font-size: 22px; }
 .trust p { margin: 0; font-size: 16px; line-height: 1.5; color: var(--l-ink-2); }
-.staff-note { font-size: 14px; line-height: 1.6; color: var(--l-ink-2); padding: 16px 18px; border-radius: 14px; background: #FFFFFF; border: 1px solid var(--l-line); }
 
 /* closing call to action */
 .l-cta { background: #FBE6D4; padding: 120px 0 0; border-top: 1px solid #F1D3B8; }

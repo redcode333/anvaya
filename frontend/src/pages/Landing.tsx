@@ -173,11 +173,6 @@ export default function Landing() {
               <h3>Sourced from official rules</h3><p>Every result shows the rule, its source and when it was last checked.</p>
               <Link to="/admin/schemes">See the scheme catalogue →</Link></div>
           </div>
-          <div className="staff-note">
-            <b>For judges &amp; staff.</b> Run the official scenarios on <Link to="/test-runs">TC1–TC5</Link>, review cases on <Link to="/reviewer">Reviewer</Link>,
-            inspect data freshness on <Link to="/admin/schemes">Catalogue</Link>. Kiosk mode needs an operator sign-in; staff use the email and password
-            (and authenticator code) an administrator created for them.
-          </div>
         </Reveal>
       </section>
 
