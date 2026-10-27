@@ -1363,6 +1363,18 @@ Not sure*) fills with its own colour when chosen. The upload form (consent, file
 line that opens by itself once a file is uploaded, so the page is no longer a wall of upload text. *Check schemes again* is a full-width button at the end.
 With no screening yet, an empty state links to the Scheme Passport. Behaviour is unchanged: marking, upload rules, masking and consent work as before.
 
+### Reviewer pages
+* **Review queue** (`/reviewer`) follows the staff-area pattern (account bar, title, at-a-glance numbers, tabs): *Waiting for review*, *Longest wait* (amber after
+  4 h, red after a day), *Correction asked* and *Reviewed*, then tabs *All / Waiting / Correction asked / Reviewed* with counts. The list loads once and is
+  filtered in the page, so the counts always agree with the rows. Each case is one clickable row with a status-coloured edge: scheme, case id, screening and
+  status badges, origin, and "waiting 2 d" (red after a day). Waiting cases come first, the longest-waiting at the top (`queueOrder` in `reviewerQueue.ts`, tested);
+  there is a *Refresh* button, an empty state per tab, and *Open by code* upper-cases what you type.
+* **Case page** (`/reviewer/case/<id>`): the scheme and badges, then four numbers (criteria met, documents verified, facts with how many are unconfirmed, draft
+  version), then tabs *Facts & draft / Rule trace / Documents / Audit trail* with the **Decision** card always in view on the right (below on a phone). Documents are
+  cards that turn green when verified; the audit trail and raw JSON live in their own tab. Every action is as before: preview an upload, verify it or ask for a new
+  one, tick documents to verify, request a correction, record a review (never an approval).
+* The Scheme Passport result tiles use the class `pstat` so they no longer share `.stat` with the staff-area numbers.
+
 ### Kiosk screens
 * **Set up this kiosk** (`/kiosk`, before an operator signs in): a green panel says what a kiosk is (an operator signs in once; citizens get short private sessions
   erased when they finish or go idle; works without internet for a quick check; operator sign-out ends every session) next to the operator sign-in form.

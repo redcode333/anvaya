@@ -198,7 +198,7 @@ export default function Passport() {
             <p className="notice small">{t("notApproval", lang)}</p>
             <div className="stat-row">
               {([["candidates", "statSuit", "ok"], ["info", "statInfo", "info"], ["no", "statNo", "no"]] as const).map(([k, label, tone]) => (
-                <div key={k} className={`stat t-${tone}`}><b>{groups.find(([g]) => g === k)?.[1].length ?? 0}</b><span>{t(label, lang)}</span></div>
+                <div key={k} className={`pstat t-${tone}`}><b>{groups.find(([g]) => g === k)?.[1].length ?? 0}</b><span>{t(label, lang)}</span></div>
               ))}
             </div>
             <p className={`small summary${moreSummary ? "" : " clamp"}`}>{ev.voice_summary}
