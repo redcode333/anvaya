@@ -13,7 +13,7 @@ langfuse>=5.0.4,<6
 # gzip / brotli responses
 Flask-Compress>=1.15
 brotli>=1.1
-gunicorn>=22; sys_platform != "win32"
+gunicorn>=26.2.0; sys_platform != "win32"
 fpdf2==2.8.9
 uharfbuzz>=0.50
 segno>=1.6
